@@ -1,0 +1,48 @@
+name: AERP Daily Execution Engine
+
+on:
+  schedule:
+    # This tells the robot to run Monday through Friday at 10:00 PM UTC (after markets close)
+    - cron: '0 22 * * 1-5'
+  workflow_dispatch: # This adds a manual "Play" button so you can run it whenever you want!
+
+jobs:
+  analyze-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Code Base
+      uses: actions/checkout@v4
+
+    - name: Setup Python environment
+      uses: actions/actions-setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install System and Python Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Execute Analysis Engine
+      run: |
+        python -m src.report_generator
+
+    - name: Upload Report to GitHub Pages Artifacts
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: 'public/'
+
+  deploy-pages:
+    needs: analyze-and-deploy
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+    - name: Deploy Dashboard Live to Web
+      id: deployment
+      uses: actions/deploy-pages@v4
