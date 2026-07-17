@@ -1,53 +1,71 @@
+import time
 import yfinance as yf
-import requests
 from src.config import WATCHLIST
 
-def get_camouflaged_session():
-    """Creates a requests session configured to mimic a desktop web browser browser."""
-    session = requests.Session()
-    session.headers.update({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Connection': 'keep-alive'
-    })
-    return session
-
 def fetch_market_data():
-    print("🚀 Running AERP Browser Camouflage Data Engine...")
-    all_data = {}
-    session = get_camouflaged_session()
+    """
+    Throttled, Fault-Tolerant Market Data Fetcher.
+    Introduces explicit cooling windows between API requests to bypass provider 429 locks.
+    """
+    print("📥 Initializing Throttled Data Engine...")
+    data_package = {}
     
-    for category, tickers in WATCHLIST.items():
-        print(f"Pulling live data matrix for category: [{category.upper()}]")
-        for ticker in tickers:
+    # Dynamically flatten the watchlist regardless of structure configuration
+    items_to_fetch = []
+    if isinstance(WATCHLIST, dict):
+        for category, tickers in WATCHLIST.items():
+            if isinstance(tickers, list):
+                for ticker in tickers:
+                    items_to_fetch.append((ticker, category))
+            elif isinstance(tickers, dict):
+                for ticker in tickers.keys():
+                    items_to_fetch.append((ticker, category))
+    elif isinstance(WATCHLIST, list):
+        for ticker in WATCHLIST:
+            items_to_fetch.append((ticker, "general"))
+
+    # Execute throttled loops over target asset tokens
+    for ticker, category in items_to_fetch:
+        print(f"🔄 Requesting context array for {ticker} [{category}]...")
+        try:
+            # REQUEST THROTTLING: Cooling delay to safeguard provider boundaries
+            time.sleep(2.0)
+            
+            asset = yf.Ticker(ticker)
+            
+            # Extract daily pricing metrics over a rolling 3-month window
+            hist = asset.history(period="3mo", interval="1d")
+            
+            if hist.empty:
+                print(f"⚠️ Warning: Received empty history footprint for {ticker}. Skipping asset.")
+                continue
+                
+            # Safely extract supplementary balance sheet metrics
             try:
-                # Directing yfinance to use our custom masqueraded network browser session
-                asset = yf.Ticker(ticker, session=session)
+                q_fin = asset.quarterly_financials
+            except Exception:
+                q_fin = None
                 
-                # Fetch live historical daily charts
-                df = asset.history(period="1mo")
+            # Safely extract corporate naming matrices
+            try:
+                info = asset.info
+                if not info or "longName" not in info:
+                    info = {"longName": f"{ticker} Asset"}
+            except Exception:
+                info = {"longName": f"{ticker} Asset"}
                 
-                if not df.empty:
-                    # Explicitly pull official quarterly and annual statement sheets
-                    try:
-                        q_financials = asset.quarterly_financials
-                        balance_sheet = asset.balance_sheet
-                    except Exception:
-                        q_financials = None
-                        balance_sheet = None
-                        
-                    all_data[ticker] = {
-                        "history": df,
-                        "quarterly_financials": q_financials,
-                        "balance_sheet": balance_sheet,
-                        "category": category,
-                        "info": asset.info if isinstance(asset.info, dict) else {}
-                    }
-                    print(f"✅ Downloaded historical data & financial statements for {ticker}")
-                else:
-                    print(f"⚠️ Empty price matrix returned for {ticker}")
-            except Exception as e:
-                print(f"❌ Network issue reading {ticker}: {e}")
-                
-    return all_data
+            # Build valid dictionary entry
+            data_package[ticker] = {
+                "history": hist,
+                "quarterly_financials": q_fin,
+                "info": info,
+                "category": category
+            }
+            
+        except Exception as e:
+            # FAULT-TOLERANT EXCEPTION WRAPPER: Logs issues instead of terminating process
+            print(f"⚠️ Safe Skip: Network issue reading {ticker}: {e}. Continuing processing matrix...")
+            continue
+            
+    print(f"📋 Data compilation phase terminated. Successfully populated {len(data_package)} live components.")
+    return data_package
