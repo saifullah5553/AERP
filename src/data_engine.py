@@ -1,45 +1,53 @@
 import yfinance as yf
+import requests
 from src.config import WATCHLIST
 
+def get_camouflaged_session():
+    """Creates a requests session configured to mimic a desktop web browser browser."""
+    session = requests.Session()
+    session.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Connection': 'keep-alive'
+    })
+    return session
+
 def fetch_market_data():
-    print("🚀 Starting Market Data Engine...")
+    print("🚀 Running AERP Browser Camouflage Data Engine...")
     all_data = {}
+    session = get_camouflaged_session()
     
     for category, tickers in WATCHLIST.items():
-        print(f"Fetching {category} assets...")
+        print(f"Pulling live data matrix for category: [{category.upper()}]")
         for ticker in tickers:
             try:
-                asset = yf.Ticker(ticker)
+                # Directing yfinance to use our custom masqueraded network browser session
+                asset = yf.Ticker(ticker, session=session)
                 
-                # 1. Fetch historical prices first (this endpoint is highly stable)
-                df = asset.history(period="1y")
+                # Fetch live historical daily charts
+                df = asset.history(period="1mo")
                 
                 if not df.empty:
-                    # 2. Fetch metadata with its own safety bubble
-                    info_data = {}
+                    # Explicitly pull official quarterly and annual statement sheets
                     try:
-                        info_data = asset.info
-                        if not info_data or not isinstance(info_data, dict):
-                            info_data = {}
-                    except Exception as info_err:
-                        print(f"⚠️ Note: Yahoo metadata restricted for {ticker}. Using fallback profile.")
-                    
-                    # 3. Apply safe defaults if Yahoo blocks the profile info
-                    if not info_data.get('longName'):
-                        info_data['longName'] = f"{ticker} Asset"
-                    if not info_data.get('sector'):
-                        info_data['sector'] = category
-                    if not info_data.get('industry'):
-                        info_data['industry'] = "Publicly Traded Equity"
+                        q_financials = asset.quarterly_financials
+                        balance_sheet = asset.balance_sheet
+                    except Exception:
+                        q_financials = None
+                        balance_sheet = None
                         
                     all_data[ticker] = {
                         "history": df,
-                        "info": info_data
+                        "quarterly_financials": q_financials,
+                        "balance_sheet": balance_sheet,
+                        "category": category,
+                        "info": asset.info if isinstance(asset.info, dict) else {}
                     }
-                    print(f"✅ Successfully loaded historical data for {ticker}")
+                    print(f"✅ Downloaded historical data & financial statements for {ticker}")
                 else:
-                    print(f"⚠️ No price history data returned for {ticker}")
+                    print(f"⚠️ Empty price matrix returned for {ticker}")
             except Exception as e:
-                print(f"❌ Error fetching {ticker}: {e}")
+                print(f"❌ Network issue reading {ticker}: {e}")
                 
     return all_data
