@@ -20,7 +20,7 @@ def detect_technical_patterns(df):
     body_1 = abs(c[-1] - o[-1])
     range_1 = max(h[-1] - l[-1], 0.001)
     ushad_1 = h[-1] - max(o[-1], c[-1])
-    lshad_1 = min(o[-1], c[-1]) - l[-1])
+    lshad_1 = min(o[-1], c[-1]) - l[-1]
     is_green_1 = c[-1] > o[-1]
 
     # Prior candle metrics [-2]
