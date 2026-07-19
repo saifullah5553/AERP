@@ -53,9 +53,21 @@ def fetch_bulk_market_data():
             cat = ticker_to_cat[ticker]
             seed_val = int(hashlib.md5(ticker.encode('utf-8')).hexdigest(), 16) % 10000
             
-            # Realistic baseline price maps mirroring true current exchange rates
+            # Updated baseline price maps mirroring true current exchange rates
             if cat == "pak":
-                base_price = 780.0 if "LUCK" in ticker else (365.0 if "SYS" in ticker else (280.0 if "AIRLINK" in ticker else (145.0 if "HUBC" in ticker else 310.0)))
+                if "LUCK" in ticker:
+                    base_price = 445.63
+                elif "SYS" in ticker:
+                    base_price = 377.00
+                elif "AIRLINK" in ticker:
+                    base_price = 290.00
+                elif "ENGRO" in ticker:
+                    base_price = 437.00
+                elif "HUBC" in ticker:
+                    base_price = 444.00
+                else:
+                    base_price = 350.00
+                    
                 pe = 6.2 + (seed_val % 3)
                 change = -0.45 + (seed_val % 400) / 100.0
                 name = f"{ticker.split('.')[0]} Corp (PSX)"
