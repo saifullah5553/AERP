@@ -2,7 +2,8 @@
 
 import requests
 import hashlib
-from src.config import WATCHLIST
+# src/data_engine.py line 5
+from src.config import GLOBAL_WATCHLIST as WATCHLIST
 
 def fetch_bulk_market_data():
     """
