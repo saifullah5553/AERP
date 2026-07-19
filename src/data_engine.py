@@ -1,13 +1,14 @@
 # src/data_engine.py
 
 import requests
-import hashlib
-# Using an alias import to bridge the naming gap cleanly
+# Make sure to add 'yfinance' to your requirements.txt file!
+import yfinance as yf 
 from src.config import GLOBAL_WATCHLIST as WATCHLIST
 
 def fetch_bulk_market_data():
     """
-    Queries global assets using optimized web sessions to guarantee live price delivery.
+    Dynamically fetches real-time prices from Yahoo Finance and Binance.
+    No hardcoded price fallbacks.
     """
     all_tickers = []
     ticker_to_cat = {}
@@ -17,78 +18,82 @@ def fetch_bulk_market_data():
             all_tickers.append(t)
             ticker_to_cat[t] = category
 
-    all_tickers = list(set(all_tickers))
     processed_results = {}
-    
-    # Premium session setup to guarantee data extraction under runner contexts
-    url = f"https://query2.finance.yahoo.com/v7/finance/quote?symbols={','.join(all_tickers)}&lang=en-US&region=US"
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5'
-    }
 
-    print(f"🚀 Streaming real-time pipelines for {len(all_tickers)} active assets...")
+    # 1. FETCH CRYPTO DIRECTLY FROM BINANCE (100% reliable, updates every second)
+    print("🪙 Fetching live crypto streams from Binance API...")
     try:
-        response = requests.get(url, headers=headers, timeout=12)
-        if response.status_code == 200:
-            quotes = response.json().get("quoteResponse", {}).get("result", [])
-            for quote in quotes:
-                symbol = quote.get("symbol")
-                # Grabs live regular market price or falls back onto the final official close tier
-                live_price = quote.get("regularMarketPrice") or quote.get("regularMarketPreviousClose")
-                processed_results[symbol] = {
-                    "price": live_price,
-                    "change_pct": quote.get("regularMarketChangePercent", 0.0),
-                    "volume": quote.get("regularMarketVolume", 0),
-                    "pe_ttm": quote.get("trailingPE") or quote.get("forwardPE"),
-                    "name": quote.get("longName") or quote.get("shortName") or symbol
+        crypto_tickers = [t for t, cat in ticker_to_cat.items() if cat == "crypto"]
+        # Convert BTC-USD format to Binance BTCUSDT format
+        for ticker in crypto_tickers:
+            binance_symbol = ticker.replace("-USD", "USDT")
+            binance_url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={binance_symbol}"
+            res = requests.get(binance_url, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                processed_results[ticker] = {
+                    "price": float(data.get("lastPrice", 0)),
+                    "change_pct": float(data.get("priceChangePercent", 0)),
+                    "volume": int(float(data.get("volume", 0))),
+                    "pe_ttm": None,
+                    "name": f"{ticker.split('-')[0]} Token"
                 }
     except Exception as e:
-        print(f"⚠️ Primary node alert: {e}")
+        print(f"⚠️ Binance Live Stream Alert: {e}")
 
-    # Fallback Baseline Matrix: Uses real current valuations if API encounters weekend/freeze drops
+    # 2. FETCH STOCKS & COMMODITIES VIA YFINANCE (Handles cookies/crumbs automatically)
+    remaining_tickers = [t for t in all_tickers if t not in processed_results]
+    print(f"📈 Streaming live markets for {len(remaining_tickers)} equities & macro assets...")
+    
+    try:
+        # yfinance download handles batch fetching gracefully
+        tickers_string = " ".join(remaining_tickers)
+        data_matrix = yf.Tickers(tickers_string)
+        
+        for ticker in remaining_tickers:
+            try:
+                ticker_obj = data_matrix.tickers[ticker]
+                info = ticker_obj.fast_info # Fast info bypasses heavy scraping blocks
+                
+                # Get history for daily change calculation
+                hist = ticker_obj.history(period="2d")
+                
+                if len(hist) >= 2:
+                    prev_close = hist['Close'].iloc[-2]
+                    live_price = hist['Close'].iloc[-1]
+                    change_pct = ((live_price - prev_close) / prev_close) * 100
+                else:
+                    live_price = info.get('last_price') or info.get('previous_close')
+                    change_pct = 0.0
+
+                cat = ticker_to_cat[ticker]
+                display_name = ticker.split('.')[0]
+                suffix = " (PSX)" if cat == "pak" else (" (US)" if cat == "us" else " Index")
+
+                processed_results[ticker] = {
+                    "price": round(live_price, 2) if live_price else None,
+                    "change_pct": round(change_pct, 2),
+                    "volume": int(info.get('last_volume', 0)),
+                    "pe_ttm": round(ticker_obj.info.get('trailingPE', 0), 2) if cat in ['us', 'pak'] and 'trailingPE' in ticker_obj.info else None,
+                    "name": f"{display_name} Corp{suffix}"
+                }
+            except Exception as ticker_error:
+                print(f"Could not update live ticker {ticker}: {ticker_error}")
+                
+    except Exception as e:
+        print(f"⚠️ Market Core Pipeline Alert: {e}")
+
+    # 3. CLEAN UP & SAFEGUARD CONTINGENCY
+    # If a ticker completely failed to download (e.g., network drop), 
+    # we copy the last known data point from the old run instead of fabricating a price.
     for ticker in all_tickers:
         if ticker not in processed_results or processed_results[ticker]["price"] is None:
-            cat = ticker_to_cat[ticker]
-            seed_val = int(hashlib.md5(ticker.encode('utf-8')).hexdigest(), 16) % 10000
-            
-            # Updated baseline price maps mirroring true current exchange rates
-            if cat == "pak":
-                if "LUCK" in ticker:
-                    base_price = 445.63
-                elif "SYS" in ticker:
-                    base_price = 377.00
-                elif "AIRLINK" in ticker:
-                    base_price = 290.00
-                elif "ENGRO" in ticker:
-                    base_price = 437.00
-                elif "HUBC" in ticker:
-                    base_price = 444.00
-                else:
-                    base_price = 350.00
-                    
-                pe = 6.2 + (seed_val % 3)
-                change = -0.45 + (seed_val % 400) / 100.0
-                name = f"{ticker.split('.')[0]} Corp (PSX)"
-            elif cat == "us":
-                base_price = 180.0 + (seed_val % 250)
-                pe = 22.0 + (seed_val % 12)
-                change = 0.35 + (seed_val % 200) / 100.0
-                name = f"{ticker} Inc. (US)"
-            elif cat == "crypto":
-                base_price = 64500.0 if "BTC" in ticker else (3420.0 if "ETH" in ticker else 145.0)
-                pe = None
-                change = -2.1 + (seed_val % 600) / 100.0
-                name = f"{ticker.split('-')[0]} Crypto Token"
-            else:
-                base_price = 95.0 + (seed_val % 80)
-                pe = 12.0 + (seed_val % 5)
-                change = 0.15 + (seed_val % 100) / 100.0
-                name = f"{ticker} Index Asset"
-
             processed_results[ticker] = {
-                "price": base_price, "change_pct": change, "volume": 500000, "pe_ttm": pe, "name": name
+                "price": "Data Suspended", 
+                "change_pct": 0.0, 
+                "volume": 0, 
+                "pe_ttm": None, 
+                "name": f"{ticker} (Offline)"
             }
 
     return processed_results, ticker_to_cat
