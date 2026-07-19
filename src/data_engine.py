@@ -2,7 +2,7 @@
 
 import requests
 import hashlib
-# src/data_engine.py line 5
+# Safe alias import to seamlessly resolve naming differences between modules
 from src.config import GLOBAL_WATCHLIST as WATCHLIST
 
 def fetch_bulk_market_data():
