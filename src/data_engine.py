@@ -2,7 +2,7 @@
 
 import requests
 import hashlib
-from src.config import WATCHLIST
+from src.config import GLOBAL_WATCHLIST as WATCHLIST
 
 def fetch_bulk_market_data():
     """
