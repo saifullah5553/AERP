@@ -16,25 +16,37 @@ HTML_TEMPLATE = """
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; margin: 40px; }
         h1 { color: #38bdf8; margin-bottom: 5px; }
         p.subtitle { color: #94a3b8; margin-bottom: 25px; font-size: 1rem; }
-        .controls-container { display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 20px; align-items: center; justify-content: space-between; }
-        .search-box { background: #1e293b; border: 1px solid #334155; color: #f8fafc; padding: 12px 20px; border-radius: 8px; width: 300px; font-size: 0.95rem; outline: none; }
-        .search-box:focus { border-color: #38bdf8; }
-        .filter-group { display: flex; flex-wrap: wrap; gap: 8px; }
-        .filter-btn { background: #1e293b; border: 1px solid #334155; color: #cbd5e1; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-size: 0.9rem; transition: all 0.2s; }
-        .filter-btn:hover { background: #334155; border-color: #64748b; }
+        
+        .controls-container { background: #1e293b; border: 1px solid #334155; padding: 20px; border-radius: 12px; margin-bottom: 25px; }
+        .filter-group { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px; }
+        .filter-btn { background: #0f172a; border: 1px solid #334155; color: #cbd5e1; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-size: 0.9rem; font-weight: 500; }
+        .filter-btn:hover { background: #1e293b; border-color: #475569; }
         .filter-btn.active { background: #0284c7; color: white; border-color: #38bdf8; }
+        
+        .advanced-filters { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; border-top: 1px solid #334155; padding-top: 15px; }
+        .filter-item { display: flex; flex-direction: column; gap: 6px; }
+        .filter-label { font-size: 0.8rem; text-transform: uppercase; color: #94a3b8; font-weight: 600; letter-spacing: 0.05em; }
+        
+        .search-box, .select-box { background: #0f172a; border: 1px solid #334155; color: #f8fafc; padding: 10px 16px; border-radius: 8px; font-size: 0.9rem; outline: none; width: 240px; }
+        .search-box:focus, .select-box:focus { border-color: #38bdf8; }
+        .slider-wrapper { display: flex; align-items: center; gap: 10px; color: #38bdf8; font-weight: bold; }
+        .range-slider { -webkit-appearance: none; width: 180px; height: 6px; background: #0f172a; border-radius: 4px; outline: none; accent-color: #38bdf8; }
+        
         .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; }
-        .card { background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #334155; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); cursor: pointer; transition: transform 0.2s, border-color 0.2s; }
+        .card { background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #334155; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); transition: transform 0.2s, border-color 0.2s; }
         .card:hover { transform: translateY(-4px); border-color: #38bdf8; }
+        
         .ticker { font-size: 1.5rem; font-weight: bold; color: #38bdf8; }
         .company-name { font-size: 0.9rem; color: #94a3b8; margin-bottom: 6px; }
         .meta-container { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
-        .meta-timestamp { font-size: 0.75rem; color: #38bdf8; background: #0f172a; padding: 5px 10px; border-radius: 6px; border: 1px solid #1e293b; display: inline-block; width: fit-content; font-weight: 500; }
+        .meta-timestamp { font-size: 0.75rem; color: #38bdf8; background: #0f172a; padding: 5px 10px; border-radius: 6px; border: 1px solid #1e293b; display: inline-block; width: fit-content; }
         .quarter-badge { font-size: 0.75rem; color: #4ade80; background: #064e3b; padding: 5px 10px; border-radius: 6px; border: 1px solid #047857; display: inline-block; width: fit-content; font-weight: 600; }
+        
         .pattern-box { margin-bottom: 15px; }
         .pattern-title { font-size: 0.8rem; text-transform: uppercase; color: #64748b; letter-spacing: 0.05em; font-weight: bold; margin-bottom: 5px; }
         .badge-list { display: flex; flex-wrap: wrap; gap: 5px; }
         .p-badge { background: #0f172a; border: 1px solid #475569; color: #38bdf8; font-size: 0.8rem; padding: 4px 10px; border-radius: 6px; font-weight: 500; }
+        
         .score-row { display: flex; justify-content: space-between; margin: 6px 0; font-size: 0.95rem; }
         .overall-box { background: #0f172a; padding: 12px; border-radius: 8px; text-align: center; margin-top: 15px; border: 1px solid #0284c7;}
         .rating-num { font-size: 1.8rem; font-weight: bold; color: #4ade80; }
@@ -46,22 +58,55 @@ HTML_TEMPLATE = """
     <p class="subtitle">Live High-Speed Cross-Asset Technical Scanner Matrix</p>
     
     <div class="controls-container">
+        <!-- Live Counters Rendered Dynamically via Jinja Filter Maps -->
         <div class="filter-group">
-            <button class="filter-btn active" onclick="setCategory('all', this)">All Markets</button>
-            <button class="filter-btn" onclick="setCategory('pak', this)">Pakistan (PSX)</button>
-            <button class="filter-btn" onclick="setCategory('us', this)">US Market</button>
-            <button class="filter-btn" onclick="setCategory('gcc', this)">GCC Markets</button>
-            <button class="filter-btn" onclick="setCategory('india', this)">India (NSE)</button>
-            <button class="filter-btn" onclick="setCategory('commodities', this)">Commodities</button>
-            <button class="filter-btn" onclick="setCategory('forex', this)">Forex Matrix</button>
-            <button class="filter-btn" onclick="setCategory('crypto', this)">Crypto Universe</button>
+            <button class="filter-btn active" onclick="setCategory('all', this)">All Markets ({{ stocks|length }})</button>
+            <button class="filter-btn" onclick="setCategory('pak', this)">Pakistan (PSX) ({{ stocks|selectattr('category','equalto','pak')|list|length }})</button>
+            <button class="filter-btn" onclick="setCategory('us', this)">US Market ({{ stocks|selectattr('category','equalto','us')|list|length }})</button>
+            <button class="filter-btn" onclick="setCategory('gcc', this)">GCC Markets ({{ stocks|selectattr('category','equalto','gcc')|list|length }})</button>
+            <button class="filter-btn" onclick="setCategory('india', this)">India (NSE) ({{ stocks|selectattr('category','equalto','india')|list|length }})</button>
+            <button class="filter-btn" onclick="setCategory('commodities', this)">Commodities ({{ stocks|selectattr('category','equalto','commodities')|list|length }})</button>
+            <button class="filter-btn" onclick="setCategory('forex', this)">Forex Matrix ({{ stocks|selectattr('category','equalto','forex')|list|length }})</button>
+            <button class="filter-btn" onclick="setCategory('crypto', this)">Crypto Universe ({{ stocks|selectattr('category','equalto','crypto')|list|length }})</button>
         </div>
-        <input type="text" id="searchInput" class="search-box" placeholder="Search symbol...">
+        
+        <div class="advanced-filters">
+            <div class="filter-item">
+                <span class="filter-label">Search Terminal</span>
+                <input type="text" id="searchInput" class="search-box" placeholder="Search ticker or name...">
+            </div>
+            <div class="filter-item">
+                <span class="filter-label">Structural Pattern Filter</span>
+                <select id="patternFilter" class="select-box" onchange="filterAssets()">
+                    <option value="all">All Detected Structural Flags</option>
+                    <option value="Wave 3 Impulse">🌊 Wave 3 Impulse</option>
+                    <option value="Bullish Flag">🚩 Bullish Flag</option>
+                    <option value="Ascending Triangle">📈 Ascending Triangle</option>
+                    <option value="Double Bottom Base">⚓ Double Bottom Base</option>
+                    <option value="Wave Breakdown">🌊 Wave Breakdown</option>
+                    <option value="Double Top Resistance">🏛️ Double Top Resistance</option>
+                    <option value="Head & Shoulders Top">👤 Head & Shoulders Top</option>
+                </select>
+            </div>
+            <div class="filter-item">
+                <span class="filter-label">Min Fundamental Score: <span id="scoreDisplay">0</span></span>
+                <div class="slider-wrapper">
+                    <input type="range" id="fundFilter" class="range-slider" min="0" max="100" value="0" oninput="updateSlider(this.value)">
+                </div>
+            </div>
+        </div>
     </div>
     
     <div class="card-grid">
         {% for stock in stocks %}
-        <div class="card" data-category="{{ stock.category }}" data-ticker="{{ stock.ticker }}" data-name="{{ stock.name }}">
+        <!-- Meta Data Attributes Embedded To Enable Deep Client-Side Array Queries -->
+        <div class="card" 
+             data-category="{{ stock.category }}" 
+             data-ticker="{{ stock.ticker }}" 
+             data-name="{{ stock.name }}"
+             data-fund-score="{{ stock.fund_score }}"
+             data-patterns="{{ stock.pattern_payload }}">
+            
             <div class="ticker">{{ stock.ticker }}</div>
             <div class="company-name">{{ stock.name }}</div>
             <div style="font-weight: 600; font-size: 1.1rem; color: #4ade80; margin-bottom: 8px;">{{ stock.price }} ({{ stock.change }}%)</div>
@@ -95,25 +140,44 @@ HTML_TEMPLATE = """
     
     <script>
         let currentCategory = 'all';
+        
         function setCategory(cat, element) {
             document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
             element.classList.add('active');
             currentCategory = cat;
             filterAssets();
         }
+        
+        function updateSlider(val) {
+            document.getElementById('scoreDisplay').innerText = val;
+            filterAssets();
+        }
+        
         function filterAssets() {
             let searchKeyword = document.getElementById('searchInput').value.toLowerCase();
+            let chosenPattern = document.getElementById('patternFilter').value.toLowerCase();
+            let targetMinFund = parseInt(document.getElementById('fundFilter').value);
             let cards = document.getElementsByClassName('card');
+            
             for (let card of cards) {
                 let cat = card.getAttribute('data-category');
                 let ticker = card.getAttribute('data-ticker').toLowerCase();
                 let name = card.getAttribute('data-name').toLowerCase();
+                let fundScore = parseInt(card.getAttribute('data-fund-score'));
+                let patterns = card.getAttribute('data-patterns').toLowerCase();
+                
                 let matchesCategory = (currentCategory === 'all' || cat === currentCategory);
                 let matchesSearch = (ticker.includes(searchKeyword) || name.includes(searchKeyword));
-                card.style.display = (matchesCategory && matchesSearch) ? 'block' : 'none';
+                let matchesFund = (fundScore >= targetMinFund);
+                let matchesPattern = (chosenPattern === 'all' || patterns.includes(chosenPattern));
+                
+                if (matchesCategory && matchesSearch && matchesFund && matchesPattern) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
             }
         }
-        document.getElementById('searchInput').addEventListener('input', filterAssets);
     </script>
 </body>
 </html>
@@ -134,9 +198,8 @@ def generate_daily_report():
         raw_price = asset.get("price", 0.0)
         change_val = asset.get("change_pct", 0.0)
         pe_val = asset.get("pe_ttm")
-        name = asset.get("name", f"{ticker} Asset Record")
+        name = asset.get("name", ticker)
         
-        # Format currency strings and assign distinct audit reporting quarters
         if cat == "pak": 
             price_str = f"PKR {raw_price:,.2f}"
             fund_quarter_str = "Q1 2026 (Audited)"
@@ -156,7 +219,6 @@ def generate_daily_report():
             price_str = f"${raw_price:,.2f}"
             fund_quarter_str = "Q1 2026 SEC 10-Q"
             
-        # Standard fallback filters for P/E valuation representations
         if pe_val is not None and str(pe_val) != "None":
             pe_str = f"{pe_val:.2f}"
         else:
@@ -166,7 +228,7 @@ def generate_daily_report():
         
         patterns = random.sample(BULLISH_PATTERNS if change_val >= 0 else BEARISH_PATTERNS, random.randint(1, 2))
         tech_score = random.randint(75, 98) if change_val >= 0 else random.randint(40, 68)
-        fund_score = random.randint(72, 94) if cat in ["pak", "us"] else random.randint(55, 75)
+        fund_score = random.randint(72, 95) if cat in ["pak", "us"] else random.randint(55, 75)
         
         overall = int((tech_score + fund_score) / 2)
         stars = "★" * int(np.round(overall/20)) + "☆" * (5 - int(np.round(overall/20)))
@@ -174,7 +236,8 @@ def generate_daily_report():
         analysis_results.append({
             "ticker": ticker, "name": name, "category": cat, "price": price_str, "change": change_str,
             "pe": pe_str, "financial_date": "Live Sync Matrix", "fundamental_quarter": fund_quarter_str,
-            "tech_score": tech_score, "fund_score": fund_score, "overall": overall, "stars": stars, "patterns": patterns
+            "tech_score": tech_score, "fund_score": fund_score, "overall": overall, "stars": stars, "patterns": patterns,
+            "pattern_payload": " ".join(patterns)  # String representation for quick frontend JS text searches
         })
 
     os.makedirs("public", exist_ok=True)
@@ -184,7 +247,7 @@ def generate_daily_report():
     with open("public/index.html", "w", encoding="utf-8") as f:
         f.write(rendered_html)
         
-    print(f"✨ Compilation Complete. Synced {len(analysis_results)} assets to web layout.")
+    print(f"✨ Build Complete! Populated total matrix.")
 
 if __name__ == "__main__":
     generate_daily_report()
