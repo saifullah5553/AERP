@@ -2,7 +2,7 @@
 
 import requests
 import hashlib
-# Safe alias import to seamlessly resolve naming differences between modules
+# Using an alias import to bridge the naming gap cleanly
 from src.config import GLOBAL_WATCHLIST as WATCHLIST
 
 def fetch_bulk_market_data():
