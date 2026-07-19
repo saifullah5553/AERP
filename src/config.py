@@ -1,5 +1,4 @@
 # src/config.py
-
 import requests
 
 def get_dynamic_ticker_universe():
@@ -49,8 +48,9 @@ def get_dynamic_ticker_universe():
         "commodities": ["GC=F", "CL=F", "SI=F", "NG=F"]
     }
 
-# At the bottom of src/config.py
+# Initialize the dynamic configurations
 GLOBAL_WATCHLIST = get_dynamic_ticker_universe()
 
-# Add this alias for compatibility with the data engine and report generator pipelines
+# --- THE FIX ---
+# This alias guarantees both references work across all platform modules
 WATCHLIST = GLOBAL_WATCHLIST
