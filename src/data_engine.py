@@ -1,10 +1,13 @@
 # src/data_engine.py
 
+import os
 import requests
 import hashlib
 import re
-import yfinance as yf 
 from src.config import GLOBAL_WATCHLIST as WATCHLIST
+
+# Retrieve Twelve Data Token from system environment variables (Add this to your GitHub Repository Secrets)
+TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "demo")
 
 def fetch_psx_official_data():
     """
@@ -23,8 +26,6 @@ def fetch_psx_official_data():
         if response.status_code == 200:
             html_content = response.text
             
-            # Robust extraction matching rows inside the official sector tables
-            # Pattern tracks the symbol name, current trading price, net change, and volume
             row_pattern = re.compile(
                 r'<tr>\s*<td[^>]*><a[^>]*>([^<]+)</a>.*?<td class="current">([^<]+)</td>\s*<td class="change">([^<]+)</td>\s*<td class="volume">([^<]+)</td>', 
                 re.DOTALL
@@ -34,13 +35,10 @@ def fetch_psx_official_data():
             for match in matches:
                 symbol = match[0].strip().upper()
                 try:
-                    # Clean and normalize raw strings into computational metrics
                     price = float(match[1].replace(',', '').strip())
                     change_raw = match[2].strip()
                     volume = int(match[3].replace(',', '').strip() or 0)
                     
-                    # Compute percentage shift from raw net change points
-                    # Falls back gracefully to 0.0 if calculations encounter flat trading states
                     if " " in change_raw:
                         net_change = float(change_raw.split()[0])
                     else:
@@ -53,7 +51,7 @@ def fetch_psx_official_data():
                         "price": round(price, 2),
                         "change_pct": round(change_pct, 2),
                         "volume": volume,
-                        "pe_ttm": None, # Dynamic PE calculated inside downstream blocks
+                        "pe_ttm": None, 
                         "name": f"{symbol} Corp (PSX)"
                     }
                 except Exception:
@@ -66,7 +64,7 @@ def fetch_psx_official_data():
 def fetch_bulk_market_data():
     """
     Dual-Pipeline Data Engine. 
-    Combines direct PSX portal scrapers with Binance and yfinance streams.
+    Combines direct PSX portal scrapers with Binance and Twelve Data API pipelines.
     """
     all_tickers = []
     ticker_to_cat = {}
@@ -104,53 +102,50 @@ def fetch_bulk_market_data():
     except Exception as e:
         print(f"⚠️ Binance Live Stream Alert: {e}")
 
-    # PIPELINE 3: GLOBAL EQUITIES & MACRO VIA YFINANCE
+    # PIPELINE 3: GLOBAL EQUITIES & MACRO VIA TWELVE DATA BATCH QUOTE
     remaining_tickers = [t for t in all_tickers if t not in processed_results]
     if remaining_tickers:
-        print(f"📈 Streaming live international markets for {len(remaining_tickers)} assets...")
+        print(f"📈 Streaming live international markets via Twelve Data for {len(remaining_tickers)} assets...")
         try:
-            tickers_string = " ".join(remaining_tickers)
-            data_matrix = yf.Tickers(tickers_string)
+            # Batch multiple symbols inside a single query parameters block to save API credits
+            symbols_csv = ",".join(remaining_tickers)
+            url = f"https://api.twelvedata.com/quote?symbol={symbols_csv}&apikey={TWELVE_DATA_API_KEY}"
             
-            for ticker in remaining_tickers:
-                try:
-                    ticker_obj = data_matrix.tickers[ticker]
-                    info = ticker_obj.fast_info
-                    
-                    hist = ticker_obj.history(period="2d")
-                    if len(hist) >= 2:
-                        prev_close = hist['Close'].iloc[-2]
-                        live_price = hist['Close'].iloc[-1]
-                        change_pct = ((live_price - prev_close) / prev_close) * 100
-                    else:
-                        live_price = info.get('last_price') or info.get('previous_close')
-                        change_pct = 0.0
+            res = requests.get(url, timeout=15)
+            if res.status_code == 200:
+                data = res.json()
+                
+                for ticker in remaining_tickers:
+                    # Twelve Data keys nested JSON entries by target ticker when symbols are batched
+                    ticker_data = data.get(ticker) if len(remaining_tickers) > 1 else data
+                    if ticker_data and "close" in ticker_data:
+                        try:
+                            live_price = float(ticker_data.get("close", 0))
+                            change_pct = float(ticker_data.get("percent_change", 0))
+                            volume = int(ticker_data.get("volume", 0) or 0)
+                            
+                            cat = ticker_to_cat[ticker]
+                            display_name = ticker.split('.')[0]
+                            suffix = " (US)" if cat == "us" else " Index Asset"
 
-                    cat = ticker_to_cat[ticker]
-                    display_name = ticker.split('.')[0]
-                    suffix = " (US)" if cat == "us" else " Index Asset"
-
-                    processed_results[ticker] = {
-                        "price": round(live_price, 2) if live_price else None,
-                        "change_pct": round(change_pct, 2),
-                        "volume": int(info.get('last_volume', 0)),
-                        "pe_ttm": round(ticker_obj.info.get('trailingPE', 0), 2) if 'trailingPE' in ticker_obj.info else None,
-                        "name": f"{display_name} Inc.{suffix}"
-                    }
-                except Exception:
-                    continue
+                            processed_results[ticker] = {
+                                "price": round(live_price, 2),
+                                "change_pct": round(change_pct, 2),
+                                "volume": volume,
+                                "pe_ttm": None, # Restricted on free tier endpoint profiles
+                                "name": f"{ticker_data.get('name', display_name)}{suffix}"
+                            }
+                        except Exception:
+                            continue
         except Exception as e:
-            print(f"⚠️ Global Core Pipeline Alert: {e}")
+            print(f"⚠️ Twelve Data Core Pipeline Alert: {e}")
 
     # FINAL CHECK: DYNAMIC STRUCTURAL SAFEGUARD
-    # If any asset encounters zeroed arrays or weekend connectivity dropouts,
-    # it applies an analytical seeding logic based on true baseline assets.
     for ticker in all_tickers:
         if ticker not in processed_results or processed_results[ticker]["price"] is None:
             cat = ticker_to_cat[ticker]
             seed_val = int(hashlib.md5(ticker.encode('utf-8')).hexdigest(), 16) % 10000
             
-            # Fully normalized true valuation maps replacing the old static placeholders
             if cat == "pak":
                 if "LUCK" in ticker: base_price = 445.63
                 elif "SYS" in ticker: base_price = 377.00
