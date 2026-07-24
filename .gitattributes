@@ -1,0 +1,17 @@
+# Normalise line endings. Text files use LF in the repo; shell scripts MUST stay
+# LF so they run inside Linux containers regardless of the author's OS.
+* text=auto eol=lf
+
+*.sh        text eol=lf
+Dockerfile  text eol=lf
+*.py        text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.toml      text eol=lf
+*.md        text eol=lf
+
+# Binary assets (none yet, but keep them safe from normalisation).
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary

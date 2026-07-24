@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd 'C:\\\\Users\\\\Saif.Ullah\\\\Downloads\\\\AERP\\\\AERP-main' && find . -type f -not -path './.git/*' | head -200)",
+      "Bash(./.venv/Scripts/python.exe -m pip install --quiet \"fastapi==0.115.6\" \"pydantic==2.10.4\" \"pydantic-settings==2.7.1\" \"sqlalchemy==2.0.36\" \"redis==5.2.1\" \"httpx==0.28.1\" \"pytest==8.3.4\")",
+      "Bash(./.venv/Scripts/python.exe -m pytest -q)",
+      "Bash(./.venv/Scripts/python.exe -m pip install --quiet \"psycopg[binary]==3.2.3\")",
+      "Bash(./.venv/Scripts/python.exe -m pip install --quiet \"ruff==0.8.6\")",
+      "Bash(./.venv/Scripts/python.exe -m ruff check .)",
+      "Bash(./.venv/Scripts/python.exe -m ruff check . --output-format=concise)",
+      "Bash(./.venv/Scripts/python.exe -m ruff check . --fix)",
+      "Bash(./.venv/Scripts/python.exe -m pytest)",
+      "Bash(git add *)",
+      "Bash(git rm *)"
+    ]
+  }
+}

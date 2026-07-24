@@ -1,0 +1,103 @@
+# Render blueprint for AERP.
+# Deploy: push to GitHub, then "New +" → "Blueprint" in the Render dashboard and
+# point it at this file. Render provisions Postgres, Redis, the API web service,
+# a Celery worker, and a Celery Beat scheduler.
+#
+# Set the data-provider secrets (FMP_API_KEY, TWELVE_DATA_API_KEY, …) in the Render
+# dashboard — never commit them.
+
+databases:
+  - name: aerp-postgres
+    plan: basic-256mb
+    databaseName: aerp
+    user: aerp
+
+services:
+  # ── Redis (broker + cache + pub/sub) ────────────────────────
+  - type: redis
+    name: aerp-redis
+    plan: starter
+    ipAllowList: []   # only reachable from Render services
+
+  # ── API (FastAPI) ───────────────────────────────────────────
+  - type: web
+    name: aerp-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: RUN_MIGRATIONS
+        value: "1"
+      - key: AERP_ENV
+        value: production
+      - key: AERP_DEBUG
+        value: "false"
+      - key: AERP_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: aerp-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: aerp-redis
+          property: connectionString
+      - key: AERP_CORS_ORIGINS
+        sync: false   # set to your deployed frontend origin
+      - key: FMP_API_KEY
+        sync: false
+      - key: TWELVE_DATA_API_KEY
+        sync: false
+      - key: EODHD_API_KEY
+        sync: false
+
+  # ── Celery worker ───────────────────────────────────────────
+  - type: worker
+    name: aerp-worker
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    dockerCommand: celery -A app.tasks.celery_app.celery_app worker --loglevel=info --concurrency=2
+    envVars:
+      - key: AERP_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: aerp-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: aerp-redis
+          property: connectionString
+      - key: FMP_API_KEY
+        sync: false
+      - key: TWELVE_DATA_API_KEY
+        sync: false
+      - key: EODHD_API_KEY
+        sync: false
+
+  # ── Celery Beat scheduler ───────────────────────────────────
+  - type: worker
+    name: aerp-beat
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    dockerCommand: celery -A app.tasks.celery_app.celery_app beat --loglevel=info
+    envVars:
+      - key: AERP_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: aerp-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: aerp-redis
+          property: connectionString

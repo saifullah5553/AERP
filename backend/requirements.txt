@@ -1,0 +1,29 @@
+# ── Web framework ─────────────────────────────────────────────
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+gunicorn==23.0.0
+
+# ── Data / config ─────────────────────────────────────────────
+pydantic==2.10.4
+pydantic-settings==2.7.1
+
+# ── Database ──────────────────────────────────────────────────
+sqlalchemy==2.0.36
+alembic==1.14.0
+psycopg[binary]==3.2.3
+
+# ── Cache / queue ─────────────────────────────────────────────
+redis==5.2.1
+celery==5.4.0
+
+# ── Auth (used from Phase 10; harmless now) ───────────────────
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+python-multipart==0.0.20
+
+# ── HTTP client (ingestion, Phase 2) ──────────────────────────
+httpx==0.28.1
+
+# ── Numeric (engines, Phase 3+) ───────────────────────────────
+numpy==2.2.1
+pandas==2.2.3

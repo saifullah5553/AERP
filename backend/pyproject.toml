@@ -1,0 +1,35 @@
+[project]
+name = "aerp-backend"
+version = "0.1.0"
+description = "AERP — AI Equity Research Platform backend"
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["app", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM"]
+ignore = ["B008"]  # FastAPI Depends() in defaults is idiomatic
+
+[tool.ruff.lint.per-file-ignores]
+# Seed rows are wide, aligned data tables — readability beats an 100-col wrap.
+"app/db/seed.py" = ["E501"]
+# Env vars must be set before app imports; that forces E402/I001 by design.
+"tests/conftest.py" = ["E402", "I001"]
+# Alembic scaffolding imports app modules after the header docstring by design.
+"alembic/env.py" = ["I001"]
+"alembic/versions/*" = ["I001"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+warn_unused_ignores = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-q"
