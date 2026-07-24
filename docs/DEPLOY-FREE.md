@@ -8,9 +8,12 @@ Option B adds a real live backend (still free) for full interactivity.
 - **Frontend:** GitHub Pages → https://saifullah5553.github.io/AERP/
 - **"Backend":** the [`Refresh Demo Data`](../.github/workflows/refresh-data.yml)
   GitHub Actions workflow runs the full pipeline every 6 hours (free minutes),
-  regenerates the real data snapshot (`frontend/public/data`), and commits it —
-  which triggers [`Deploy Pages`](../.github/workflows/deploy-pages.yml) to
-  republish. Self-updating, no server, no database.
+  regenerates the real data snapshot (`frontend/public/data`), commits it for the
+  record, then builds and deploys the Pages site **in the same run**. Self-updating,
+  no server, no database.
+  (It deploys itself rather than triggering [`Deploy Pages`](../.github/workflows/deploy-pages.yml)
+  because pushes made with the default `GITHUB_TOKEN` don't trigger other workflows.
+  `Deploy Pages` still handles ordinary frontend-code pushes.)
 
 Nothing to do — it's running. To refresh on demand: Actions tab → *Refresh Demo
 Data* → *Run workflow*. To regenerate locally:
