@@ -1,4 +1,5 @@
 import type { Page, ScreenerQuery, ScreenerRow } from "@/types/api";
+import type { CompanyDetail } from "@/types/company";
 
 const BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
 const V1 = `${BASE}/api/v1`;
@@ -23,6 +24,12 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
 export const api = {
   screener(query: ScreenerQuery, signal?: AbortSignal): Promise<Page<ScreenerRow>> {
     return getJson<Page<ScreenerRow>>(`${V1}/screener${qs({ ...query })}`, signal);
+  },
+  company(providerSymbol: string, signal?: AbortSignal): Promise<CompanyDetail> {
+    return getJson<CompanyDetail>(
+      `${V1}/company/${encodeURIComponent(providerSymbol)}`,
+      signal,
+    );
   },
   health(signal?: AbortSignal): Promise<unknown> {
     return getJson(`${V1}/health`, signal);

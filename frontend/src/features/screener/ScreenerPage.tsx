@@ -1,5 +1,6 @@
 import type { GridApi } from "ag-grid-community";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { api } from "@/lib/api";
 import { exportScreenerCsv } from "@/lib/exportCsv";
@@ -22,6 +23,7 @@ export default function ScreenerPage() {
   const [online, setOnline] = useState<boolean | null>(null);
   const [exporting, setExporting] = useState(false);
   const gridApiRef = useRef<GridApi<ScreenerRow> | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -130,6 +132,7 @@ export default function ScreenerPage() {
           filters={filters}
           onTotal={setTotal}
           onGridReady={(gridApi) => (gridApiRef.current = gridApi)}
+          onRowClick={(row) => navigate(`/company/${encodeURIComponent(row.provider_symbol)}`)}
         />
       </div>
     </div>
