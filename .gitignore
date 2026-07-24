@@ -46,3 +46,8 @@ Thumbs.db
 pgdata/
 redisdata/
 /backend/.data/
+# Local market data (PSX CSVs, etc.) — large, not versioned. Keep the folder.
+/data/*
+!/data/psx_csv/
+/data/psx_csv/*
+!/data/psx_csv/.gitkeep

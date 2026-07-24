@@ -1,0 +1,2 @@
+Place PSX statement CSVs here (<TICKER>_Income_Statement.csv etc.).
+Generate/refresh with scripts/scrape_psx.py. Contents are gitignored.

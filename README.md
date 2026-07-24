@@ -39,6 +39,23 @@ aerp/
 └── .github/     # CI + frontend deploy
 ```
 
+## Run the whole pipeline locally (no Docker/Celery needed)
+
+The management CLI runs ingestion + all engines directly against the database.
+Point `DATABASE_URL` at SQLite for a keyless local run:
+
+```bash
+cd backend
+export DATABASE_URL="sqlite+pysqlite:///./aerp.db"
+export AERP_PSX_CSV_DIR="../data/psx_csv"     # your PSX statement CSVs
+python -m app.cli all        # schema → seed → ingest (PSX CSV, macro, quotes,
+                             # prices, fundamentals) → compute every engine
+```
+
+Individual steps: `init-db`, `seed`, `ingest-psx`, `ingest-macro`, `ingest-quotes`,
+`backfill`, `ingest-fundamentals`, `compute`. (Live prices/fundamentals via yfinance
+need a normal IP — datacenter IPs get rate-limited by Yahoo.)
+
 ## Frontend (Phase 7)
 
 The screener is a professional AG Grid data table (dark institutional theme) using

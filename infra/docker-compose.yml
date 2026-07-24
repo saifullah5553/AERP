@@ -42,6 +42,10 @@ services:
       POSTGRES_HOST: postgres
       REDIS_URL: redis://redis:6379/0
       RUN_MIGRATIONS: "1"
+      AERP_PSX_CSV_DIR: /data/psx_csv
+    volumes:
+      # Mount the PSX CSV folder (put files in ./data/psx_csv or set PSX_CSV_HOST_DIR).
+      - ${PSX_CSV_HOST_DIR:-../data/psx_csv}:/data/psx_csv:ro
     ports:
       - "8000:8000"
     depends_on:
@@ -65,7 +69,10 @@ services:
     environment:
       POSTGRES_HOST: postgres
       REDIS_URL: redis://redis:6379/0
+      AERP_PSX_CSV_DIR: /data/psx_csv
     command: ["celery", "-A", "app.tasks.celery_app.celery_app", "worker", "--loglevel=info", "--concurrency=2"]
+    volumes:
+      - ${PSX_CSV_HOST_DIR:-../data/psx_csv}:/data/psx_csv:ro
     depends_on:
       api:
         condition: service_healthy
@@ -80,6 +87,19 @@ services:
       POSTGRES_HOST: postgres
       REDIS_URL: redis://redis:6379/0
     command: ["celery", "-A", "app.tasks.celery_app.celery_app", "beat", "--loglevel=info"]
+    depends_on:
+      api:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        # Browser talks to the API on the host-published port.
+        VITE_API_BASE: http://localhost:8000
+    ports:
+      - "5173:80"
     depends_on:
       api:
         condition: service_healthy
