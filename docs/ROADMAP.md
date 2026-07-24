@@ -32,10 +32,12 @@ Yahoo Finance format, so `yfinance` is the universal provider.
 | Commodities | ✅ | none (by design) | yfinance (`=F`) |
 | Crypto | ✅ real-time | none (by design) | Binance (yfinance fallback) |
 
-**Insider transactions:** US via SEC EDGAR Form 4 (keyless, live). **PSX** via a
-CSV of director/insider dealings (Sarmaaya/PSX have no public API — a Playwright
-scraper `scripts/scrape_psx_insider.py` produces the CSV, `AERP_PSX_INSIDER_CSV`);
-both feed the same market-agnostic insider engine (60-day buy/sell score).
+**Insider transactions:** US via SEC EDGAR Form 4 (keyless, live). **PSX** via
+**Portfolio360** (`/markets/insider-transactions` — clean Date/Symbol/Person/Role/
+Type/Shares/Rate/Value table): `scripts/scrape_psx_insider.py` (Playwright) writes
+the CSV `AERP_PSX_INSIDER_CSV`, which `ingest_psx_insider` loads. Both US and PSX
+feed the same market-agnostic insider engine (60-day buy/sell score). Validated on
+real data (PKGS strong-buying, EFUL strong-selling).
 
 **Fundamentals by asset class:** equities (incl. PSX) → financial statements →
 ratios/Piotroski/Altman → 0–100 score. **Forex** → country macro strength

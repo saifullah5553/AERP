@@ -43,6 +43,24 @@ def test_parse_flexible_headers() -> None:
     assert ffc.transaction_date == date(2026, 7, 11)
 
 
+def test_portfolio360_columns() -> None:
+    # Exact Portfolio360 layout, incl. a "Rs X mn" value that must fall back to
+    # shares*price, and Person→insider / Role→title mapping.
+    csv = "\n".join([
+        "Date,Symbol,Company,Person,Role,Type,Shares,Rate,Value",
+        '2026-07-24,MACTER,—,Asif Misbah,Executive,SELL,"475,000",400,Rs 190.0 mn',
+        '2026-07-23,PKGS,—,SYED BABAR ALI,Executive,BUY,"21,519",785,Rs 16.9 mn',
+    ])
+    rows = parse_insider_csv(csv)
+    assert len(rows) == 2
+    macter = next(r for r in rows if r.symbol == "MACTER")
+    assert macter.insider == "Asif Misbah"        # Person → insider
+    assert macter.title == "Executive"            # Role → title
+    assert macter.transaction_type == InsiderTransactionType.SELL
+    assert macter.shares == 475000 and macter.price == 400
+    assert macter.value == 475000 * 400           # "Rs 190.0 mn" unparsable → computed
+
+
 def test_ingest_creates_and_is_idempotent(db: Session) -> None:
     _psx(db)
     first = ingest_insider_text(db, CSV)

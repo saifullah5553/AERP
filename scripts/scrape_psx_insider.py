@@ -1,15 +1,15 @@
-"""Optional PSX insider-transactions scraper (Sarmaaya) → CSV for the backend.
+"""PSX insider-transactions scraper (Portfolio360) → CSV for the backend.
 
-Sarmaaya's insider-transactions view is a Next.js app with no public JSON API, so
-this uses Playwright (a real browser) — kept OUT of the backend image, exactly like
-scrape_psx.py. It writes a CSV that ``ingest_psx_insider`` loads into the shared
-insider engine (which computes the 60-day buy/sell score for PSX just like US).
+Portfolio360's insider page (https://portfolio360.app/markets/insider-transactions)
+renders a clean table on load — Date, Symbol, Company, Person, Role, Type, Shares,
+Rate, Value — with no tab/interaction needed, which makes it a reliable scrape
+target. It's a React SPA, so this uses Playwright (a real browser); kept OUT of the
+backend image, like scrape_psx.py. The CSV it writes is loaded by
+``ingest_psx_insider`` into the shared insider engine (60-day buy/sell score).
 
-IMPORTANT — needs finalising against the live site: the table selectors and column
-order below are a best-effort starting point. Run it with a visible browser once
-(headless=False) to confirm the row/cell structure, then adjust SELECTORS/columns.
-The backend's CSV parser matches headers flexibly, so only the header names need to
-line up with: symbol, insider, title, date, type, shares, price.
+The backend CSV parser matches headers flexibly, so the raw Portfolio360 column
+names below (Symbol/Person/Role/Date/Type/Shares/Rate/Value) map automatically to
+symbol/insider/title/date/type/shares/price/value.
 
 Setup:
     pip install playwright
@@ -30,30 +30,20 @@ from playwright.sync_api import sync_playwright
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 OUT_CSV = os.environ.get("AERP_PSX_INSIDER_CSV", "data/psx_insider.csv")
-URL = "https://sarmaaya.pk/announcements"
-HEADER = ["symbol", "insider", "title", "date", "type", "shares", "price"]
+URL = "https://portfolio360.app/markets/insider-transactions"
+# Column order as rendered by Portfolio360's table.
+HEADER = ["date", "symbol", "company", "person", "role", "type", "shares", "rate", "value"]
 
 
 def scrape_rows(page) -> list[list[str]]:
-    """Best-effort extraction of the insider-transactions table.
-
-    Adjust the selectors after inspecting the live DOM (the tab is a radio button
-    labelled 'insider transactions'; the table renders below it).
-    """
     page.goto(URL, wait_until="domcontentloaded", timeout=60000)
-    page.wait_for_timeout(2500)
-    # Switch to the Insider Transactions tab.
-    try:
-        page.get_by_role("radio", name="insider transactions").click()
-        page.wait_for_timeout(2500)
-    except Exception as exc:  # noqa: BLE001
-        logging.warning("Could not click the insider tab: %s", exc)
-
+    page.wait_for_selector("table tbody tr", timeout=20000)
+    page.wait_for_timeout(1500)  # let the table finish populating
     rows: list[list[str]] = []
     for tr in page.locator("table tbody tr").all():
         cells = [c.strip() for c in tr.locator("td").all_inner_texts()]
-        if cells:
-            rows.append(cells)
+        if len(cells) >= 8 and cells[0]:  # skip spacer/empty rows
+            rows.append(cells[: len(HEADER)])
     return rows
 
 
@@ -72,9 +62,8 @@ def main() -> None:
     with open(OUT_CSV, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(HEADER)
-        # NOTE: reorder/select cells to match HEADER once the live layout is confirmed.
         for r in rows:
-            w.writerow(r[: len(HEADER)] + [""] * max(0, len(HEADER) - len(r)))
+            w.writerow(r + [""] * max(0, len(HEADER) - len(r)))
     logging.info("Wrote %s", OUT_CSV)
 
 

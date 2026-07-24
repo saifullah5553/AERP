@@ -32,7 +32,7 @@ log = get_logger(__name__)
 FIELD_SYNONYMS: dict[str, list[str]] = {
     "symbol": ["symbol", "scrip", "company", "code", "ticker"],
     "insider": ["insider", "name", "director", "person", "holder", "sponsor"],
-    "title": ["title", "designation", "relation", "capacity", "category"],
+    "title": ["title", "designation", "relation", "capacity", "category", "role"],
     "date": ["date", "dealing date", "transaction date"],
     "type": ["type", "nature", "buy/sell", "transaction", "mode", "action"],
     "shares": ["shares", "quantity", "volume", "qty", "no. of shares", "no of shares"],
