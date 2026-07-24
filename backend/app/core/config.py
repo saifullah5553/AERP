@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     # Cash_Flow,Ratios}.csv.
     psx_csv_dir: str = Field(default="data/psx_csv", alias="AERP_PSX_CSV_DIR")
 
+    # CSV of PSX insider/director transactions (from Sarmaaya/PSX). Columns are
+    # matched flexibly: symbol, insider, date, type (buy/sell), shares, price.
+    psx_insider_csv: str = Field(
+        default="data/psx_insider.csv", alias="AERP_PSX_INSIDER_CSV"
+    )
+
     # ── Auth ──────────────────────────────────────────────────
     jwt_algorithm: str = Field(default="HS256", alias="AERP_JWT_ALGORITHM")
     access_token_expire_minutes: int = Field(

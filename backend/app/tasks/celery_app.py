@@ -88,6 +88,10 @@ celery_app.conf.beat_schedule = {
         "task": "aerp.ingest.insider",
         "schedule": crontab(hour=2, minute=0),  # SEC Form 4 for US securities
     },
+    "ingest-psx-insider": {
+        "task": "aerp.ingest.psx_insider",
+        "schedule": crontab(hour=2, minute=15),  # re-load the PSX insider CSV
+    },
     "compute-insider": {
         "task": "aerp.engine.compute_insider",
         "schedule": crontab(hour=4, minute=45),  # after insider ingest

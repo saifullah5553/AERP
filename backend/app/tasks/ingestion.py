@@ -66,6 +66,15 @@ def ingest_insider_task(limit: int | None = None) -> dict:
         return ingest_insider(db, EdgarClient(), limit=limit)
 
 
+@celery_app.task(name="aerp.ingest.psx_insider")
+def ingest_psx_insider_task() -> dict:
+    """Load PSX insider/director transactions from the configured CSV."""
+    from app.ingestion.psx_insider import ingest_psx_insider
+
+    with session_scope() as db:
+        return ingest_psx_insider(db)
+
+
 @celery_app.task(name="aerp.engine.compute_insider")
 def compute_insider_task(limit: int | None = None) -> dict:
     """Compute the trailing-window insider buy/sell score per security."""

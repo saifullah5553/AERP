@@ -116,6 +116,14 @@ def cmd_ingest_insider(args: argparse.Namespace) -> None:
         log.info("ingest-insider: %s", ingest_insider(db, EdgarClient(), limit=args.limit))
 
 
+def cmd_ingest_psx_insider(args: argparse.Namespace) -> None:
+    from app.db.session import session_scope
+    from app.ingestion.psx_insider import ingest_psx_insider
+
+    with session_scope() as db:
+        log.info("ingest-psx-insider: %s", ingest_psx_insider(db))
+
+
 def cmd_compute(args: argparse.Namespace) -> None:
     """Run every analytics engine in dependency order."""
     from app.db.session import session_scope
@@ -143,6 +151,7 @@ def cmd_all(args: argparse.Namespace) -> None:
     cmd_load_us_universe(argparse.Namespace(limit=None))
     cmd_ingest_psx(args)
     cmd_ingest_macro(args)
+    cmd_ingest_psx_insider(args)
     cmd_ingest_quotes(argparse.Namespace(region=None, limit=None))
     cmd_backfill(argparse.Namespace(region=None, limit=None))
     cmd_ingest_fundamentals(argparse.Namespace(region=None, limit=None))
@@ -174,6 +183,7 @@ def build_parser() -> argparse.ArgumentParser:
     add("backfill", cmd_backfill, region=True, limit=True)
     add("ingest-fundamentals", cmd_ingest_fundamentals, region=True, limit=True)
     add("ingest-insider", cmd_ingest_insider, limit=True)
+    add("ingest-psx-insider", cmd_ingest_psx_insider)
     add("compute", cmd_compute, limit=True)
     add("all", cmd_all)
     return parser

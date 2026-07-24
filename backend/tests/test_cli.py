@@ -9,7 +9,7 @@ def test_parser_has_all_commands() -> None:
     # Every documented subcommand should parse and bind a handler.
     for cmd in ["init-db", "seed", "load-universe", "load-us-universe", "ingest-psx",
                 "ingest-macro", "ingest-quotes", "backfill", "ingest-fundamentals",
-                "ingest-insider", "compute", "all"]:
+                "ingest-insider", "ingest-psx-insider", "compute", "all"]:
         args = parser.parse_args([cmd])
         assert callable(args.func)
 
