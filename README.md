@@ -143,6 +143,22 @@ To run migrations manually (they run automatically at container start):
 docker compose -f infra/docker-compose.yml exec api alembic upgrade head
 ```
 
+### Auth (Phase 10)
+
+JWT auth guards write operations. Register/login, then use the bearer token:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com","password":"supersecret1"}'
+```
+
+Admin ingestion/compute endpoints require a **superuser** — set `AERP_ADMIN_EMAIL`
+and `AERP_ADMIN_PASSWORD` in `.env` to bootstrap one on startup. Per-user
+watchlists live under `/api/v1/watchlists`. A Redis-backed rate limiter
+(`AERP_RATE_LIMIT_PER_MINUTE`, fail-open) protects the API. See
+[`docs/DEPLOY.md`](docs/DEPLOY.md) for production deployment.
+
 ## Development status
 
 Phase 1 (backend foundation) is implemented. See

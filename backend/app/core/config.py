@@ -36,6 +36,18 @@ class Settings(BaseSettings):
 
     seed_on_startup: bool = Field(default=True, alias="AERP_SEED_ON_STARTUP")
 
+    # ── Auth ──────────────────────────────────────────────────
+    jwt_algorithm: str = Field(default="HS256", alias="AERP_JWT_ALGORITHM")
+    access_token_expire_minutes: int = Field(
+        default=60 * 24, alias="AERP_ACCESS_TOKEN_EXPIRE_MINUTES"
+    )
+    # Optional first-superuser bootstrap (created at startup if absent).
+    admin_email: str | None = Field(default=None, alias="AERP_ADMIN_EMAIL")
+    admin_password: str | None = Field(default=None, alias="AERP_ADMIN_PASSWORD")
+
+    # ── Rate limiting ─────────────────────────────────────────
+    rate_limit_per_minute: int = Field(default=120, alias="AERP_RATE_LIMIT_PER_MINUTE")
+
     # ── PostgreSQL ────────────────────────────────────────────
     postgres_user: str = Field(default="aerp", alias="POSTGRES_USER")
     postgres_password: str = Field(default="aerp", alias="POSTGRES_PASSWORD")

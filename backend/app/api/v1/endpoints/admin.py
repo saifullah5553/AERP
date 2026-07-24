@@ -7,10 +7,17 @@ intended for local/operator use.)
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-router = APIRouter(prefix="/admin/ingest", tags=["admin"])
+from app.api.deps import get_current_superuser
+
+# Every admin route requires an authenticated superuser.
+router = APIRouter(
+    prefix="/admin/ingest",
+    tags=["admin"],
+    dependencies=[Depends(get_current_superuser)],
+)
 
 
 class EnqueuedTask(BaseModel):

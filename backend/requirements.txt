@@ -16,8 +16,8 @@ psycopg[binary]==3.2.3
 redis==5.2.1
 celery==5.4.0
 
-# ── Auth (used from Phase 10; harmless now) ───────────────────
-passlib[bcrypt]==1.7.4
+# ── Auth (Phase 10) ───────────────────────────────────────────
+bcrypt==4.2.1
 python-jose[cryptography]==3.3.0
 python-multipart==0.0.20
 

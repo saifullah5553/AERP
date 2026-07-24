@@ -47,6 +47,13 @@ services:
           property: connectionString
       - key: AERP_CORS_ORIGINS
         sync: false   # set to your deployed frontend origin
+      # First-superuser bootstrap (enables the /admin/ingest endpoints).
+      - key: AERP_ADMIN_EMAIL
+        sync: false
+      - key: AERP_ADMIN_PASSWORD
+        sync: false
+      - key: AERP_RATE_LIMIT_PER_MINUTE
+        value: "120"
       - key: FMP_API_KEY
         sync: false
       - key: TWELVE_DATA_API_KEY
