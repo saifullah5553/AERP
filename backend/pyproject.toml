@@ -18,6 +18,9 @@ ignore = ["B008"]  # FastAPI Depends() in defaults is idiomatic
 "app/db/seed.py" = ["E501"]
 # Env vars must be set before app imports; that forces E402/I001 by design.
 "tests/conftest.py" = ["E402", "I001"]
+# Test fixtures include wide, aligned data tables.
+"tests/mock_http.py" = ["E501"]
+"tests/test_pipeline.py" = ["E501"]
 # Alembic scaffolding imports app modules after the header docstring by design.
 "alembic/env.py" = ["I001"]
 "alembic/versions/*" = ["I001"]

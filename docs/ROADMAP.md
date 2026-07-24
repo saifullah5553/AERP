@@ -7,8 +7,8 @@ surfaces "insufficient data" — it never fabricates.
 | Phase | Deliverable | Status |
 |------:|-------------|--------|
 | 1 | **Backend foundation** — normalized DB schema, migrations, config, Docker Compose (Postgres/Redis), FastAPI skeleton, market + security seed, read-only screener endpoint. | ✅ Done |
-| 2 | **Ingestion engine** — provider abstraction with fallback chain (FMP → TwelveData → Binance → PSX scrape), Celery + Beat, universe loader, daily OHLC ingestion. Kills fake data; loads the real universe. | ⏳ Next |
-| 3 | **Fundamental engine** — all ratios, Piotroski F, Altman Z, weighted 0–100 score computed from stored statements. | ◻ Planned |
+| 2 | **Ingestion engine** — provider abstraction with fallback chain (per-market routing across FMP / TwelveData / Binance / PSX), Celery tasks + Beat schedule, universe loader, quote + daily-OHLC ingestion, admin trigger endpoints. Kills fake data; populates the real universe. | ✅ Done |
+| 3 | **Fundamental engine** — all ratios, Piotroski F, Altman Z, weighted 0–100 score computed from stored statements. | ⏳ Next |
 | 4 | **Technical engine** — EMA/SMA/MACD/RSI/ADX/ATR/SuperTrend/Ichimoku/VWAP/OBV/MFI/Bollinger/Keltner/Donchian/RS + 0–100 score from OHLC. | ◻ Planned |
 | 5 | **Pattern detection** — candlestick, classic chart, and harmonic patterns with confidence scores from real pivots. | ◻ Planned |
 | 6 | **Composite scoring + signals** — 35% fundamental / 35% technical / 10% momentum / 10% quality / 10% risk, fully explainable. | ◻ Planned |

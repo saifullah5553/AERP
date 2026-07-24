@@ -1,13 +1,13 @@
 """Celery application.
 
-Phase 1 ships the app plus a trivial ``ping`` task so the worker and Beat
-containers are wired and observable. Phase 2 adds ingestion tasks and the Beat
-schedule (universe refresh, daily prices, score recompute).
+Ships the app, the trivial ``ping`` task, and (Phase 2) the ingestion tasks plus
+their Beat schedule: quote refresh, daily-price backfill, and universe discovery.
 """
 
 from __future__ import annotations
 
 from celery import Celery
+from celery.schedules import crontab
 
 from app.core.config import settings
 
@@ -15,7 +15,7 @@ celery_app = Celery(
     "aerp",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["app.tasks.jobs"],
+    include=["app.tasks.jobs", "app.tasks.ingestion"],
 )
 
 celery_app.conf.update(
@@ -31,5 +31,25 @@ celery_app.conf.update(
     broker_connection_retry_on_startup=True,
 )
 
-# Beat schedule is populated in Phase 2.
-celery_app.conf.beat_schedule = {}
+# ── Beat schedule ─────────────────────────────────────────────
+# Times are UTC. Quote cadence differs by market: crypto trades 24/7, equities
+# are refreshed less aggressively to respect free-tier rate limits.
+celery_app.conf.beat_schedule = {
+    "refresh-crypto-quotes": {
+        "task": "aerp.ingest.refresh_quotes",
+        "schedule": 60.0,  # every minute
+        "kwargs": {"region": "global"},
+    },
+    "refresh-all-quotes": {
+        "task": "aerp.ingest.refresh_quotes",
+        "schedule": 300.0,  # every 5 minutes
+    },
+    "backfill-daily-prices": {
+        "task": "aerp.ingest.backfill_daily",
+        "schedule": crontab(hour=22, minute=30),  # after US close
+    },
+    "load-universe": {
+        "task": "aerp.ingest.load_universe",
+        "schedule": crontab(hour=1, minute=0),  # nightly discovery
+    },
+}

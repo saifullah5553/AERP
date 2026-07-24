@@ -56,8 +56,24 @@ Then:
 - Screener:      http://localhost:8000/api/v1/screener
 
 The stack seeds reference markets and a small set of real securities on first
-boot so the API returns data immediately. Full universe ingestion arrives in
-Phase 2.
+boot so the API returns data immediately.
+
+### Ingestion (Phase 2)
+
+Crypto (Binance) and PSX prices work with **no keys**. For US fundamentals/prices
+and forex, add free keys to `.env` (`FMP_API_KEY`, `TWELVE_DATA_API_KEY`).
+
+Celery Beat refreshes quotes/prices automatically, or trigger a run manually:
+
+```bash
+# Enqueue jobs (they run in the Celery worker, never in the web process):
+curl -X POST "http://localhost:8000/api/v1/admin/ingest/quotes"
+curl -X POST "http://localhost:8000/api/v1/admin/ingest/universe?providers=binance"
+curl -X POST "http://localhost:8000/api/v1/admin/ingest/daily?region=global"
+```
+
+After a quote refresh, the screener's `price`/`change_pct` columns populate with
+real data. Scores stay `null` until the analytics engines land (Phases 3–6).
 
 To run migrations manually (they run automatically at container start):
 

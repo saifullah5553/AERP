@@ -11,6 +11,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     UniqueConstraint,
 )
@@ -19,6 +20,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
 from app.models.enums import Timeframe
 from app.models.market import Security
+
+# BigInteger autoincrements on PostgreSQL but not on SQLite (only INTEGER rowid
+# does). This variant keeps 64-bit ids in production and testable ids in SQLite.
+BigIntPK = BigInteger().with_variant(Integer, "sqlite")
 
 
 class DailyPrice(Base, TimestampMixin):
@@ -30,7 +35,7 @@ class DailyPrice(Base, TimestampMixin):
         Index("ix_daily_prices_security_date", "security_id", "date"),
     )
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True)
     security_id: Mapped[int] = mapped_column(
         ForeignKey("securities.id", ondelete="CASCADE"), nullable=False
     )
@@ -58,7 +63,7 @@ class IntradayPrice(Base):
         Index("ix_intraday_security_tf_ts", "security_id", "timeframe", "ts"),
     )
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True)
     security_id: Mapped[int] = mapped_column(
         ForeignKey("securities.id", ondelete="CASCADE"), nullable=False
     )
