@@ -124,6 +124,14 @@ def cmd_ingest_psx_insider(args: argparse.Namespace) -> None:
         log.info("ingest-psx-insider: %s", ingest_psx_insider(db))
 
 
+def cmd_ingest_news(args: argparse.Namespace) -> None:
+    from app.db.session import session_scope
+    from app.ingestion.news import GoogleNewsClient, ingest_news
+
+    with session_scope() as db:
+        log.info("ingest-news: %s", ingest_news(db, GoogleNewsClient(), limit=args.limit))
+
+
 def cmd_compute(args: argparse.Namespace) -> None:
     """Run every analytics engine in dependency order."""
     from app.db.session import session_scope
@@ -184,6 +192,7 @@ def build_parser() -> argparse.ArgumentParser:
     add("ingest-fundamentals", cmd_ingest_fundamentals, region=True, limit=True)
     add("ingest-insider", cmd_ingest_insider, limit=True)
     add("ingest-psx-insider", cmd_ingest_psx_insider)
+    add("ingest-news", cmd_ingest_news, limit=True)
     add("compute", cmd_compute, limit=True)
     add("all", cmd_all)
     return parser

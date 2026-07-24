@@ -80,6 +80,13 @@ def trigger_ingest_psx_insider() -> EnqueuedTask:
     return _enqueue(ingest_psx_insider_task)
 
 
+@router.post("/news", response_model=EnqueuedTask, summary="Ingest news (Google News)")
+def trigger_ingest_news(limit: int | None = None) -> EnqueuedTask:
+    from app.tasks.ingestion import ingest_news_task
+
+    return _enqueue(ingest_news_task, limit=limit)
+
+
 @router.post("/compute-insider", response_model=EnqueuedTask, summary="Compute insider scores")
 def trigger_compute_insider(limit: int | None = None) -> EnqueuedTask:
     from app.tasks.ingestion import compute_insider_task

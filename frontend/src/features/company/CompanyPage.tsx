@@ -207,6 +207,7 @@ export default function CompanyPage() {
           <InsiderCard summary={data.insider_summary} />
           <ScoreHistoryChart history={data.score_history} />
           <PeersTable peers={data.peers} />
+          <NewsCard news={data.news} />
         </div>
       </div>
     </div>
@@ -278,6 +279,43 @@ function InsiderCard({ summary }: { summary: Row | null }) {
           {buy} insider{buy === 1 ? "" : "s"} buying · {sell} selling
         </div>
       )}
+    </div>
+  );
+}
+
+function NewsCard({ news }: { news: Row[] }) {
+  if (!news || news.length === 0) {
+    return null;
+  }
+  return (
+    <div className="rounded border border-base-600 bg-base-800">
+      <div className="border-b border-base-600 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+        Latest News
+      </div>
+      <div className="divide-y divide-base-700/40">
+        {news.slice(0, 6).map((n, i) => {
+          const title = typeof n.title === "string" ? n.title : "";
+          const url = typeof n.url === "string" ? n.url : undefined;
+          const source = typeof n.source === "string" ? n.source : "";
+          const when = typeof n.published_at === "string" ? n.published_at.slice(0, 10) : "";
+          return (
+            <a
+              key={i}
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="block px-4 py-2 hover:bg-base-700/40"
+            >
+              <div className="text-sm text-slate-200">{title}</div>
+              <div className="mt-0.5 text-[11px] text-slate-500">
+                {source}
+                {source && when ? " · " : ""}
+                {when}
+              </div>
+            </a>
+          );
+        })}
+      </div>
     </div>
   );
 }

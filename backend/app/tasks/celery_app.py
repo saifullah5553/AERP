@@ -92,6 +92,10 @@ celery_app.conf.beat_schedule = {
         "task": "aerp.ingest.psx_insider",
         "schedule": crontab(hour=2, minute=15),  # re-load the PSX insider CSV
     },
+    "ingest-news": {
+        "task": "aerp.ingest.news",
+        "schedule": crontab(hour="*/6"),  # refresh news every 6 hours
+    },
     "compute-insider": {
         "task": "aerp.engine.compute_insider",
         "schedule": crontab(hour=4, minute=45),  # after insider ingest

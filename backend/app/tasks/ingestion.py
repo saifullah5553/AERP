@@ -66,6 +66,15 @@ def ingest_insider_task(limit: int | None = None) -> dict:
         return ingest_insider(db, EdgarClient(), limit=limit)
 
 
+@celery_app.task(name="aerp.ingest.news")
+def ingest_news_task(limit: int | None = None) -> dict:
+    """Fetch recent Google News headlines per security (keyless)."""
+    from app.ingestion.news import GoogleNewsClient, ingest_news
+
+    with session_scope() as db:
+        return ingest_news(db, GoogleNewsClient(), limit=limit)
+
+
 @celery_app.task(name="aerp.ingest.psx_insider")
 def ingest_psx_insider_task() -> dict:
     """Load PSX insider/director transactions from the configured CSV."""
