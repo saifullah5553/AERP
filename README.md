@@ -83,6 +83,16 @@ Yahoo format), **Binance** (real-time crypto), and the **PSX portal** scrape.
 Paid providers (FMP/TwelveData/EODHD) exist as optional drop-ins but are not
 wired in, so nothing needs a key.
 
+**Fundamentals differ by asset class:**
+- **Equities** (US/India/GCC) → statements via yfinance.
+- **PSX** → financial statements from stockanalysis.com CSVs in `AERP_PSX_CSV_DIR`
+  (refresh with `scripts/scrape_psx.py`), scored by the same engine; a PSX-portal
+  site scrape fills partial metrics as fallback.
+- **Forex** → country macro strength (GDP growth, inflation, real rates,
+  unemployment, current account) from the World Bank (keyless); the base−quote
+  differential becomes the pair's fundamental score.
+- **Crypto & commodities** → no fundamentals by design (technical-only composite).
+
 Celery Beat refreshes quotes/prices automatically, or trigger a run manually:
 
 ```bash

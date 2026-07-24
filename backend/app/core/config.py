@@ -36,6 +36,11 @@ class Settings(BaseSettings):
 
     seed_on_startup: bool = Field(default=True, alias="AERP_SEED_ON_STARTUP")
 
+    # Folder of PSX financial CSVs (from the stockanalysis.com scraper) to ingest
+    # as fundamentals. Files are named <TICKER>_{Income_Statement,Balance_Sheet,
+    # Cash_Flow,Ratios}.csv.
+    psx_csv_dir: str = Field(default="data/psx_csv", alias="AERP_PSX_CSV_DIR")
+
     # ── Auth ──────────────────────────────────────────────────
     jwt_algorithm: str = Field(default="HS256", alias="AERP_JWT_ALGORITHM")
     access_token_expire_minutes: int = Field(

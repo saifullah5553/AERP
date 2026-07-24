@@ -24,12 +24,20 @@ Yahoo Finance format, so `yfinance` is the universal provider.
 
 | Market | Prices | Fundamentals | Source |
 |--------|--------|--------------|--------|
-| US (NYSE/NASDAQ/AMEX) | ✅ | ✅ | yfinance |
-| India (NSE/BSE) | ✅ | ✅ | yfinance (`.NS`/`.BO`) |
+| US (NYSE/NASDAQ/AMEX) | ✅ | ✅ statements | yfinance |
+| India (NSE/BSE) | ✅ | ✅ statements | yfinance (`.NS`/`.BO`) |
 | GCC (Tadawul/DFM/ADX) | ✅ (Tadawul best) | ⚠️ patchy | yfinance (`.SR` etc.) |
-| Forex / Commodities | ✅ | N/A | yfinance (`=X`/`=F`) |
-| Crypto | ✅ real-time | N/A | Binance (yfinance fallback) |
-| PSX (Pakistan) | ✅ | ⚠️ prices only | PSX portal (yfinance fallback) |
+| **PSX (Pakistan)** | ✅ | ✅ **statements from CSV** | PSX portal + stockanalysis.com CSVs (site fallback) |
+| **Forex** | ✅ | ✅ **macro** (GDP/CPI/rates) | yfinance + World Bank (keyless) |
+| Commodities | ✅ | none (by design) | yfinance (`=F`) |
+| Crypto | ✅ real-time | none (by design) | Binance (yfinance fallback) |
+
+**Fundamentals by asset class:** equities (incl. PSX) → financial statements →
+ratios/Piotroski/Altman → 0–100 score. **Forex** → country macro strength
+differential (base vs quote) → 0–100 score. **Crypto & commodities** → no
+fundamentals (technical-only composite). PSX statements come from the
+stockanalysis.com CSV folder (`AERP_PSX_CSV_DIR`); refresh it with
+`scripts/scrape_psx.py` (optional, needs Playwright).
 
 Caveats of free data: Yahoo is unofficial and may rate-limit datacenter IPs, and
 statement row-labels can shift; every call is guarded and yields nothing (never a

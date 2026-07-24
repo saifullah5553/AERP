@@ -56,6 +56,10 @@ celery_app.conf.beat_schedule = {
         "task": "aerp.ingest.fundamentals",
         "schedule": crontab(hour=3, minute=0),  # nightly statement refresh
     },
+    "ingest-psx-csv": {
+        "task": "aerp.ingest.psx_csv",
+        "schedule": crontab(hour=3, minute=20),  # re-scan the PSX CSV folder
+    },
     "compute-fundamentals": {
         "task": "aerp.engine.compute_fundamentals",
         "schedule": crontab(hour=4, minute=0),  # recompute scores after ingest

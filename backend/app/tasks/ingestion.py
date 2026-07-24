@@ -107,3 +107,23 @@ def compute_forex_fundamentals_task(limit: int | None = None) -> dict:
 
     with session_scope() as db:
         return compute_all(db, limit=limit)
+
+
+@celery_app.task(name="aerp.ingest.psx_csv")
+def ingest_psx_csv_task() -> dict:
+    """Ingest PSX fundamentals from the stockanalysis.com CSV folder."""
+    from app.ingestion.psx_csv import ingest_psx_csv
+
+    with session_scope() as db:
+        return ingest_psx_csv(db)
+
+
+@celery_app.task(name="aerp.ingest.psx_site")
+def ingest_psx_site_task() -> dict:
+    """Fallback: scrape partial PSX fundamentals from the portal for securities."""
+    import httpx
+
+    from app.ingestion.psx_site import ingest_psx_site_metrics
+
+    with session_scope() as db, httpx.Client(timeout=15.0) as client:
+        return ingest_psx_site_metrics(db, client)

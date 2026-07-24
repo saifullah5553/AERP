@@ -103,6 +103,20 @@ def trigger_compute_forex(limit: int | None = None) -> EnqueuedTask:
     return _enqueue(compute_forex_fundamentals_task, limit=limit)
 
 
+@router.post("/psx-csv", response_model=EnqueuedTask, summary="Ingest PSX CSV fundamentals")
+def trigger_ingest_psx_csv() -> EnqueuedTask:
+    from app.tasks.ingestion import ingest_psx_csv_task
+
+    return _enqueue(ingest_psx_csv_task)
+
+
+@router.post("/psx-site", response_model=EnqueuedTask, summary="PSX site fallback metrics")
+def trigger_ingest_psx_site() -> EnqueuedTask:
+    from app.tasks.ingestion import ingest_psx_site_task
+
+    return _enqueue(ingest_psx_site_task)
+
+
 @router.post("/compute-composite", response_model=EnqueuedTask, summary="Compute composite")
 def trigger_compute_composite(limit: int | None = None) -> EnqueuedTask:
     from app.tasks.ingestion import compute_composite_task
