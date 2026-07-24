@@ -1,0 +1,54 @@
+name: Deploy Pages
+
+# Builds the React frontend in STATIC mode (no backend) and publishes it to
+# GitHub Pages at https://<user>.github.io/AERP/. The app serves the real data
+# snapshot committed under frontend/public/data (regenerate with
+# `python -m app.cli export-static`).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/deploy-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install
+      - name: Build (static demo, /AERP/ base)
+        run: npm run build
+        env:
+          VITE_BASE: /AERP/
+          VITE_API_BASE: ""
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

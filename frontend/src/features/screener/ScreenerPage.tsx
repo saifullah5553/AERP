@@ -2,7 +2,7 @@ import type { GridApi } from "ag-grid-community";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { api } from "@/lib/api";
+import { api, IS_STATIC } from "@/lib/api";
 import { exportScreenerCsv } from "@/lib/exportCsv";
 import { openQuoteStream } from "@/lib/liveQuotes";
 import {
@@ -86,6 +86,11 @@ export default function ScreenerPage() {
           {total !== null && (
             <span className="rounded bg-base-700 px-2 py-0.5 text-xs text-slate-300">
               {total.toLocaleString()} securities
+            </span>
+          )}
+          {IS_STATIC && (
+            <span className="rounded bg-amber-900/60 px-2 py-0.5 text-xs font-medium text-amber-300">
+              Static demo snapshot
             </span>
           )}
         </div>

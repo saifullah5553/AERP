@@ -5,6 +5,8 @@ import { defineConfig } from "vite";
 // In dev, proxy /api to the FastAPI backend so the browser makes same-origin
 // requests (no CORS) and no API base URL needs to be configured.
 export default defineConfig({
+  // VITE_BASE lets the GitHub Pages build serve from the /AERP/ subpath.
+  base: process.env.VITE_BASE || "/",
   plugins: [react()],
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },

@@ -18,6 +18,8 @@ export interface LiveOptions {
 }
 
 export function openQuoteStream(opts: LiveOptions): () => void {
+  // No live stream without a backend (static Pages demo).
+  if (BASE === "") return () => {};
   const params = opts.symbols?.length ? `?symbols=${encodeURIComponent(opts.symbols.join(","))}` : "";
   const es = new EventSource(`${BASE}/api/v1/stream/quotes${params}`);
 

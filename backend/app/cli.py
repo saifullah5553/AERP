@@ -151,6 +151,48 @@ def cmd_compute(args: argparse.Namespace) -> None:
         log.info("composite: %s", composite_all(db, limit=args.limit))
 
 
+def cmd_export_static(args: argparse.Namespace) -> None:
+    """Export the computed data as static JSON for a backend-less Pages demo."""
+    import json
+    from datetime import UTC, datetime
+    from pathlib import Path
+
+    from app.db.session import session_scope
+    from app.services.company import get_company
+    from app.services.screener import ScreenerFilters, query_screener
+
+    out = Path(args.out or "../frontend/public/data")
+    (out / "company").mkdir(parents=True, exist_ok=True)
+
+    with session_scope() as db:
+        # Only securities with a real composite score make the demo meaningful.
+        rows, total = query_screener(
+            db, ScreenerFilters(min_composite=0, sort_by="composite_score"), 0, 5000
+        )
+        (out / "screener.json").write_text(
+            json.dumps([r.model_dump(mode="json") for r in rows]), encoding="utf-8"
+        )
+        exported = 0
+        for r in rows:
+            detail = get_company(db, r.provider_symbol)
+            if detail is None:
+                continue
+            (out / "company" / f"{r.provider_symbol}.json").write_text(
+                json.dumps(detail.model_dump(mode="json")), encoding="utf-8"
+            )
+            exported += 1
+        (out / "meta.json").write_text(
+            json.dumps({
+                "generated_at": datetime.now(UTC).isoformat(),
+                "securities": total,
+                "companies": exported,
+                "mode": "static-demo",
+            }),
+            encoding="utf-8",
+        )
+    log.info("export-static: %d screener rows, %d company files → %s", total, exported, out)
+
+
 def cmd_all(args: argparse.Namespace) -> None:
     """Full local pipeline: schema → seed → ingest everything → compute."""
     cmd_init_db(args)
@@ -194,6 +236,9 @@ def build_parser() -> argparse.ArgumentParser:
     add("ingest-psx-insider", cmd_ingest_psx_insider)
     add("ingest-news", cmd_ingest_news, limit=True)
     add("compute", cmd_compute, limit=True)
+    export = sub.add_parser("export-static")
+    export.add_argument("--out", default=None, help="output dir (default ../frontend/public/data)")
+    export.set_defaults(func=cmd_export_static)
     add("all", cmd_all)
     return parser
 
