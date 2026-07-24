@@ -52,9 +52,28 @@ python -m app.cli all        # schema → seed → ingest (PSX CSV, macro, quote
                              # prices, fundamentals) → compute every engine
 ```
 
-Individual steps: `init-db`, `seed`, `ingest-psx`, `ingest-macro`, `ingest-quotes`,
-`backfill`, `ingest-fundamentals`, `compute`. (Live prices/fundamentals via yfinance
-need a normal IP — datacenter IPs get rate-limited by Yahoo.)
+Individual steps: `init-db`, `seed`, `load-universe`, `load-us-universe`,
+`ingest-psx`, `ingest-macro`, `ingest-psx-insider`, `ingest-insider`, `ingest-news`,
+`ingest-quotes`, `backfill`, `ingest-fundamentals`, `compute`. (Live prices/
+fundamentals via yfinance need a normal IP — datacenter IPs get rate-limited by
+Yahoo.)
+
+### Free data sources (all keyless)
+
+| Data | Source |
+|------|--------|
+| Prices — US/India/GCC/forex/commodities | yfinance |
+| Prices — crypto | Binance |
+| Prices — PSX | PSX portal (`dps.psx.com.pk`) |
+| US universe (~7k tickers + CIK) | SEC `company_tickers_exchange.json` |
+| Fundamentals — US/India/GCC | yfinance |
+| Fundamentals — PSX | stockanalysis.com CSVs (`scripts/scrape_psx.py`) |
+| Fundamentals — forex (macro) | World Bank Indicators API |
+| Insider — US | SEC EDGAR Form 4 |
+| Insider — PSX | Portfolio360 (`scripts/scrape_psx_insider.py`) |
+| News | Google News RSS |
+
+A full real-data run loads **7,500+ securities** (US + PSX) and scores them.
 
 ## Frontend (Phase 7)
 
