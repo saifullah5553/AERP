@@ -204,7 +204,7 @@ export default function CompanyPage() {
             </div>
             <p className="text-sm leading-relaxed text-slate-300">{data.ai_summary}</p>
           </div>
-          <InsiderCard summary={data.insider_summary} />
+          <InsiderCard summary={data.insider_summary} transactions={data.insider} />
           <ScoreHistoryChart history={data.score_history} />
           <PeersTable peers={data.peers} />
           <NewsCard news={data.news} />
@@ -251,13 +251,18 @@ const INSIDER_COLOR: Record<string, string> = {
   no_activity: "#64748b",
 };
 
-function InsiderCard({ summary }: { summary: Row | null }) {
+function InsiderCard({ summary, transactions }: { summary: Row | null; transactions: Row[] }) {
   const activity = typeof summary?.activity === "string" ? summary.activity : "no_activity";
   const score = typeof summary?.score === "number" ? summary.score : null;
   const buy = typeof summary?.buy_count === "number" ? summary.buy_count : 0;
   const sell = typeof summary?.sell_count === "number" ? summary.sell_count : 0;
   const window = typeof summary?.window_days === "number" ? summary.window_days : 60;
   const color = INSIDER_COLOR[activity] ?? "#94a3b8";
+  const recent = (transactions ?? []).slice(0, 6);
+
+  if (activity === "no_activity" && recent.length === 0) {
+    return null;
+  }
 
   return (
     <div className="rounded border border-base-600 bg-base-800 p-4">
@@ -277,6 +282,24 @@ function InsiderCard({ summary }: { summary: Row | null }) {
       {(buy > 0 || sell > 0) && (
         <div className="mt-1 text-xs text-slate-400">
           {buy} insider{buy === 1 ? "" : "s"} buying · {sell} selling
+        </div>
+      )}
+      {recent.length > 0 && (
+        <div className="mt-3 space-y-1 border-t border-base-700/50 pt-2">
+          {recent.map((t, i) => {
+            const type = String(t.transaction_type ?? "");
+            const isBuy = type.toLowerCase() === "buy";
+            return (
+              <div key={i} className="flex items-center justify-between text-xs">
+                <span className="truncate text-slate-400" title={String(t.insider_name ?? "")}>
+                  {String(t.insider_name ?? "—").slice(0, 22)}
+                </span>
+                <span className="num" style={{ color: isBuy ? "#22c55e" : "#ef4444" }}>
+                  {isBuy ? "BUY" : "SELL"} {fmtCompact(typeof t.shares === "number" ? t.shares : null)}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
