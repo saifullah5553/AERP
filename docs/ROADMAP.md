@@ -14,8 +14,8 @@ surfaces "insufficient data" — it never fabricates.
 | 6 | **Composite scoring + signals** — 35% fundamental / 35% technical / 10% momentum / 10% quality / 10% risk blended into an explainable 0–100 composite, with buy/sell signals + rationale; fills `composite_score`, `signal` in the screener. | ✅ Done |
 | 7 | **Frontend screener** — React + TS + Vite + Tailwind + AG Grid (infinite row model → server pagination), dark institutional theme, server sort/filter, column pinning, CSV export (full filtered set), saved views. | ✅ Done |
 | 8 | **Company page** — `/company/{symbol}` API aggregating profile, quote, scores+breakdown, statements, ratios, technicals, active patterns, score history, peers, dividends, estimates + a rule-based AI summary; React page with TradingView chart, score cards, statements/technicals/patterns/valuation tabs, composite-history sparkline, peers. | ✅ Done |
-| 9 | **Live prices** — SSE/WebSocket push from Redis pub/sub. | ⏳ Next |
-| 10 | **Auth, rate limiting, tests, CI/CD, Render deploy.** | ◻ Planned |
+| 9 | **Live prices** — SSE endpoint streaming the Redis `quotes` pub/sub channel (heartbeats, optional symbol filter); browser EventSource updates loaded grid rows in place (cell flash + LIVE badge) and the company header. | ✅ Done |
+| 10 | **Auth, rate limiting, tests, CI/CD, Render deploy.** | ⏳ Next |
 
 ## Data strategy (current decision: free/freemium mix)
 

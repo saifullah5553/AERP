@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { api } from "@/lib/api";
 import { fmtChangePct, fmtCompact, fmtNumber, fmtPercent, titleize } from "@/lib/format";
+import { openQuoteStream } from "@/lib/liveQuotes";
 import type { CompanyDetail, Row } from "@/types/company";
 import PeersTable from "./PeersTable";
 import ScoreCards from "./ScoreCards";
@@ -94,6 +95,22 @@ export default function CompanyPage() {
         if (!ctrl.signal.aborted) setError(e instanceof Error ? e.message : "Failed to load");
       });
     return () => ctrl.abort();
+  }, [symbol]);
+
+  // Live price updates for this security's header.
+  useEffect(() => {
+    if (!symbol) return;
+    return openQuoteStream({
+      symbols: [symbol],
+      onQuote: (q) => {
+        if (q.symbol !== symbol) return;
+        setData((prev) =>
+          prev
+            ? { ...prev, quote: { ...(prev.quote ?? {}), price: q.price, change_pct: q.change_pct } }
+            : prev,
+        );
+      },
+    });
   }, [symbol]);
 
   const changePct = useMemo(() => {

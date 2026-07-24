@@ -129,6 +129,14 @@ curl -X POST "http://localhost:8000/api/v1/admin/compute-composite"
 10% risk) and `signal` now populate — each with a stored, explainable breakdown of
 every component and its contribution.
 
+### Live prices (Phase 9)
+
+The `refresh_quotes` ingestion task publishes each tick to the Redis `quotes`
+channel. The API exposes it as Server-Sent Events at
+`GET /api/v1/stream/quotes` (optional `?symbols=AAPL,BTC-USD` filter). The frontend
+opens an `EventSource` and updates loaded grid rows in place (with a cell flash and
+a **LIVE** badge) and the company header — no page reload.
+
 To run migrations manually (they run automatically at container start):
 
 ```bash

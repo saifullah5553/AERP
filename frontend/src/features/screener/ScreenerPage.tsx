@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 
 import { api } from "@/lib/api";
 import { exportScreenerCsv } from "@/lib/exportCsv";
+import { openQuoteStream } from "@/lib/liveQuotes";
 import {
   deleteView,
   loadViews,
@@ -25,6 +26,8 @@ export default function ScreenerPage() {
   const gridApiRef = useRef<GridApi<ScreenerRow> | null>(null);
   const navigate = useNavigate();
 
+  const [live, setLive] = useState(false);
+
   useEffect(() => {
     const ctrl = new AbortController();
     api
@@ -32,6 +35,24 @@ export default function ScreenerPage() {
       .then(() => setOnline(true))
       .catch(() => setOnline(false));
     return () => ctrl.abort();
+  }, []);
+
+  // Live prices: update loaded grid rows in place as ticks arrive.
+  useEffect(() => {
+    return openQuoteStream({
+      onOpen: () => setLive(true),
+      onError: () => setLive(false),
+      onQuote: (q) => {
+        const gridApi = gridApiRef.current;
+        if (!gridApi) return;
+        gridApi.forEachNode((node) => {
+          if (node.data?.provider_symbol !== q.symbol) return;
+          if (q.price !== null) node.setDataValue("price", q.price);
+          if (q.change_pct !== null) node.setDataValue("change_pct", q.change_pct);
+          gridApi.flashCells({ rowNodes: [node], columns: ["price", "change_pct"] });
+        });
+      },
+    });
   }, []);
 
   const handleSaveView = useCallback(() => {
@@ -69,6 +90,12 @@ export default function ScreenerPage() {
           )}
         </div>
         <div className="flex items-center gap-3 text-xs">
+          {live && (
+            <span className="flex items-center gap-1.5 font-semibold text-up">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-up" />
+              LIVE
+            </span>
+          )}
           <span className="flex items-center gap-1.5 text-slate-400">
             <span
               className={`h-2 w-2 rounded-full ${
