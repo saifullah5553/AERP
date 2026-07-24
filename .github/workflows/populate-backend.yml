@@ -1,0 +1,60 @@
+name: Populate Live Backend
+
+# For the fully-live (free) path: runs the pipeline against a real Postgres
+# (Neon free tier) so a deployed backend (Render free web service) serves live data.
+# Does nothing until you add the DATABASE_URL secret. See docs/DEPLOY-FREE.md.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 */6 * * *" # every 6 hours, offset from the demo refresh
+
+concurrency:
+  group: populate-backend
+  cancel-in-progress: false
+
+jobs:
+  populate:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      AERP_PSX_CSV_DIR: ../data/psx_csv
+      AERP_PSX_INSIDER_CSV: ../data/psx_insider.csv
+      AERP_SEED_ON_STARTUP: "false"
+    steps:
+      - name: Check for DATABASE_URL secret
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::notice::Set the DATABASE_URL repo secret (Neon) to enable the live backend."
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
+
+      - if: env.SKIP != '1'
+        uses: actions/checkout@v4
+      - if: env.SKIP != '1'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - if: env.SKIP != '1'
+        run: pip install -r backend/requirements.txt
+
+      - if: env.SKIP != '1'
+        name: Unpack PSX CSV inputs
+        run: |
+          mkdir -p data/psx_csv
+          tar xzf data/psx_csv.tar.gz -C data
+
+      - if: env.SKIP != '1'
+        name: Migrate + ingest + compute (live DB)
+        working-directory: backend
+        run: |
+          alembic upgrade head
+          python -m app.cli seed
+          python -m app.cli load-us-universe || true
+          python -m app.cli ingest-psx || true
+          python -m app.cli ingest-macro || true
+          python -m app.cli ingest-psx-insider || true
+          python -m app.cli ingest-insider --limit 150 || true
+          python -m app.cli ingest-news --limit 60 || true
+          python -m app.cli compute || true

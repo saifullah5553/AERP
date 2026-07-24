@@ -1,0 +1,66 @@
+name: Refresh Demo Data
+
+# The free "worker/beat": runs the whole pipeline on a schedule (GitHub Actions is
+# free for public repos), regenerates the static data snapshot, and commits it —
+# which triggers Deploy Pages to republish. No server, no database, no account.
+on:
+  schedule:
+    - cron: "0 */6 * * *" # every 6 hours
+  workflow_dispatch:
+  push:
+    paths: [".github/workflows/refresh-data.yml"] # self-test on changes
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: sqlite+pysqlite:///./aerp.db
+      AERP_PSX_CSV_DIR: ../data/psx_csv
+      AERP_PSX_INSIDER_CSV: ../data/psx_insider.csv
+      AERP_SEED_ON_STARTUP: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - run: pip install -r backend/requirements.txt
+
+      - name: Unpack PSX CSV inputs
+        run: |
+          mkdir -p data/psx_csv
+          tar xzf data/psx_csv.tar.gz -C data
+
+      - name: Run pipeline + export snapshot
+        working-directory: backend
+        run: |
+          python -m app.cli init-db
+          python -m app.cli seed
+          python -m app.cli ingest-psx || true
+          python -m app.cli ingest-macro || true
+          python -m app.cli ingest-psx-insider || true
+          python -m app.cli ingest-news --limit 40 || true
+          python -m app.cli compute || true
+          python -m app.cli export-static
+
+      - name: Commit refreshed snapshot (triggers Deploy Pages)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add frontend/public/data
+          if git diff --cached --quiet; then
+            echo "No data changes."
+          else
+            git commit -m "chore: refresh demo data snapshot"
+            git push
+          fi

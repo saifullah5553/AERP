@@ -33,11 +33,13 @@ jobs:
         with:
           node-version: "20"
       - run: npm install
-      - name: Build (static demo, /AERP/ base)
+      - name: Build for Pages (/AERP/ base)
         run: npm run build
         env:
           VITE_BASE: /AERP/
-          VITE_API_BASE: ""
+          # Empty → static demo snapshot. Set the repo variable VITE_API_BASE to a
+          # deployed backend URL to serve a fully-live site instead.
+          VITE_API_BASE: ${{ vars.VITE_API_BASE }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
