@@ -3,7 +3,7 @@ import type { ScreenerQuery, ScreenerRow } from "@/types/api";
 
 const EXPORT_COLUMNS: (keyof ScreenerRow)[] = [
   "symbol", "name", "market_code", "sector", "industry", "price", "change_pct",
-  "volume", "market_cap", "pe_ttm", "roe", "debt_to_equity", "revenue_growth",
+  "volume", "pe_ttm", "roe", "debt_to_equity", "revenue_growth",
   "eps_growth", "dividend_yield", "technical_score", "fundamental_score",
   "composite_score", "top_pattern", "signal",
 ];

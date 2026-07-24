@@ -1,6 +1,6 @@
 import type { ColDef } from "ag-grid-community";
 
-import { fmtCompact, fmtInt, fmtNumber, fmtPercent, titleize } from "@/lib/format";
+import { fmtInt, fmtNumber, fmtPercent, titleize } from "@/lib/format";
 import type { ScreenerRow } from "@/types/api";
 import { ChangeCell, PatternCell, ScoreCell, SignalCell } from "./cells";
 
@@ -47,7 +47,6 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
       cellRenderer: ChangeCell,
     },
     num("volume", "Volume", { width: 120, valueFormatter: (p) => fmtInt(p.value) }),
-    num("market_cap", "Mkt Cap", { width: 120, valueFormatter: (p) => fmtCompact(p.value) }),
 
     num("pe_ttm", "P/E", { width: 90, valueFormatter: (p) => fmtNumber(p.value) }),
     num("roe", "ROE", { width: 90, valueFormatter: (p) => fmtPercent(p.value) }),

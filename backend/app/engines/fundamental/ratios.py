@@ -165,7 +165,13 @@ def compute_ratios(
         mcap = market.resolved_market_cap()
         net_income = f(inc.net_income)
         revenue = f(inc.revenue)
-        r.pe_ratio = safe_div(mcap, net_income) if net_income and net_income > 0 else None
+        # P/E from current price ÷ TTM EPS (most reliable — no share count needed).
+        # Fall back to market-cap / net-income only when EPS or price is missing.
+        eps_ttm = f(inc.eps)
+        if market.price is not None and eps_ttm and eps_ttm > 0:
+            r.pe_ratio = market.price / eps_ttm
+        elif net_income and net_income > 0:
+            r.pe_ratio = safe_div(mcap, net_income)
         r.price_to_sales = safe_div(mcap, revenue)
         if bal is not None:
             equity = f(bal.total_equity)
