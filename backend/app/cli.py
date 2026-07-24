@@ -100,12 +100,29 @@ def cmd_load_universe(args: argparse.Namespace) -> None:
         log.info("load-universe: %s", load_universe(db, ProviderRegistry(), providers))
 
 
+def cmd_load_us_universe(args: argparse.Namespace) -> None:
+    from app.db.session import session_scope
+    from app.ingestion.us_universe import SECClient, ingest_us_universe
+
+    with session_scope() as db:
+        log.info("load-us-universe: %s", ingest_us_universe(db, SECClient(), limit=args.limit))
+
+
+def cmd_ingest_insider(args: argparse.Namespace) -> None:
+    from app.db.session import session_scope
+    from app.ingestion.insider import EdgarClient, ingest_insider
+
+    with session_scope() as db:
+        log.info("ingest-insider: %s", ingest_insider(db, EdgarClient(), limit=args.limit))
+
+
 def cmd_compute(args: argparse.Namespace) -> None:
     """Run every analytics engine in dependency order."""
     from app.db.session import session_scope
     from app.engines.composite.engine import compute_all as composite_all
     from app.engines.forex.engine import compute_all as forex_all
     from app.engines.fundamental.engine import compute_all as fundamental_all
+    from app.engines.insider.engine import compute_all as insider_all
     from app.engines.patterns.engine import compute_all as patterns_all
     from app.engines.technical.engine import compute_all as technical_all
 
@@ -114,6 +131,7 @@ def cmd_compute(args: argparse.Namespace) -> None:
         log.info("forex: %s", forex_all(db, limit=args.limit))
         log.info("technical: %s", technical_all(db, limit=args.limit))
         log.info("patterns: %s", patterns_all(db, limit=args.limit))
+        log.info("insider: %s", insider_all(db, limit=args.limit))
         log.info("composite: %s", composite_all(db, limit=args.limit))
 
 
@@ -122,6 +140,7 @@ def cmd_all(args: argparse.Namespace) -> None:
     cmd_init_db(args)
     cmd_seed(args)
     cmd_load_universe(argparse.Namespace(providers="binance,psx"))
+    cmd_load_us_universe(argparse.Namespace(limit=None))
     cmd_ingest_psx(args)
     cmd_ingest_macro(args)
     cmd_ingest_quotes(argparse.Namespace(region=None, limit=None))
@@ -148,11 +167,13 @@ def build_parser() -> argparse.ArgumentParser:
     add("init-db", cmd_init_db)
     add("seed", cmd_seed)
     add("load-universe", cmd_load_universe, providers=True)
+    add("load-us-universe", cmd_load_us_universe, limit=True)
     add("ingest-psx", cmd_ingest_psx)
     add("ingest-macro", cmd_ingest_macro)
     add("ingest-quotes", cmd_ingest_quotes, region=True, limit=True)
     add("backfill", cmd_backfill, region=True, limit=True)
     add("ingest-fundamentals", cmd_ingest_fundamentals, region=True, limit=True)
+    add("ingest-insider", cmd_ingest_insider, limit=True)
     add("compute", cmd_compute, limit=True)
     add("all", cmd_all)
     return parser

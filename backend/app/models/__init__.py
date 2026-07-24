@@ -5,7 +5,12 @@ populated — required for Alembic autogeneration and ``create_all``.
 """
 
 from app.models.base import Base, TimestampMixin
-from app.models.corporate import CorporateAction, Dividend, InsiderTransaction
+from app.models.corporate import (
+    CorporateAction,
+    Dividend,
+    InsiderSummary,
+    InsiderTransaction,
+)
 from app.models.fundamentals import (
     AnalystEstimate,
     BalanceSheet,
@@ -48,6 +53,7 @@ __all__ = [
     "CorporateAction",
     "Dividend",
     "InsiderTransaction",
+    "InsiderSummary",
     "NewsArticle",
     "EconomicEvent",
     "MacroIndicator",

@@ -48,6 +48,33 @@ def load_universe_task(providers: list[str] | None = None) -> dict:
         return load_universe(db, ProviderRegistry(), provider_names=providers)
 
 
+@celery_app.task(name="aerp.ingest.us_universe")
+def load_us_universe_task(limit: int | None = None) -> dict:
+    """Load the US equity universe from the SEC (keyless)."""
+    from app.ingestion.us_universe import SECClient, ingest_us_universe
+
+    with session_scope() as db:
+        return ingest_us_universe(db, SECClient(), limit=limit)
+
+
+@celery_app.task(name="aerp.ingest.insider")
+def ingest_insider_task(limit: int | None = None) -> dict:
+    """Ingest SEC Form 4 insider transactions for US securities with a CIK."""
+    from app.ingestion.insider import EdgarClient, ingest_insider
+
+    with session_scope() as db:
+        return ingest_insider(db, EdgarClient(), limit=limit)
+
+
+@celery_app.task(name="aerp.engine.compute_insider")
+def compute_insider_task(limit: int | None = None) -> dict:
+    """Compute the trailing-window insider buy/sell score per security."""
+    from app.engines.insider.engine import compute_all
+
+    with session_scope() as db:
+        return compute_all(db, limit=limit)
+
+
 @celery_app.task(name="aerp.ingest.fundamentals")
 def ingest_fundamentals_task(region: str | None = None, limit: int | None = None) -> dict:
     reg = MarketRegion(region) if region else None

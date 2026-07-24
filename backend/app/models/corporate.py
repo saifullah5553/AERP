@@ -78,3 +78,28 @@ class InsiderTransaction(Base, TimestampMixin):
     shares: Mapped[float | None] = mapped_column(Numeric(24, 2))
     price: Mapped[float | None] = mapped_column(Numeric(20, 6))
     value: Mapped[float | None] = mapped_column(Numeric(24, 2))
+
+
+class InsiderSummary(Base, TimestampMixin):
+    """Rolling insider-activity summary per security (output of the insider engine).
+
+    One row per security. ``activity`` is a plain-language label derived from the
+    value-weighted buy/sell balance over the trailing window; ``score`` is 0–100
+    (100 = heavy net buying, 0 = heavy net selling), or NULL when no open-market
+    insider trades occurred in the window.
+    """
+
+    __tablename__ = "insider_summaries"
+
+    security_id: Mapped[int] = mapped_column(
+        ForeignKey("securities.id", ondelete="CASCADE"), primary_key=True
+    )
+    as_of: Mapped[date] = mapped_column(Date, nullable=False)
+    window_days: Mapped[int] = mapped_column(Integer, default=60, nullable=False)
+    buy_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    sell_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    buy_value: Mapped[float | None] = mapped_column(Numeric(24, 2))
+    sell_value: Mapped[float | None] = mapped_column(Numeric(24, 2))
+    net_value: Mapped[float | None] = mapped_column(Numeric(24, 2))
+    score: Mapped[float | None] = mapped_column(Numeric(6, 2))
+    activity: Mapped[str] = mapped_column(String(20), default="no_activity", nullable=False)

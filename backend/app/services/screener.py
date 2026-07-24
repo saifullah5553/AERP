@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
+from app.models.corporate import InsiderSummary
 from app.models.enums import AssetClass, MarketRegion
 from app.models.fundamentals import FundamentalSnapshot
 from app.models.market import Market, Security
@@ -130,9 +131,12 @@ def _base_select() -> Select:
             Signal.signal_type.label("signal"),
             Signal.label.label("signal_label"),
             top_pattern.c.name.label("top_pattern"),
+            InsiderSummary.score.label("insider_score"),
+            InsiderSummary.activity.label("insider_activity"),
         )
         .join(Market, Security.market_id == Market.id)
         .outerjoin(top_pattern, top_pattern.c.security_id == Security.id)
+        .outerjoin(InsiderSummary, InsiderSummary.security_id == Security.id)
         .outerjoin(Quote, Quote.security_id == Security.id)
         .outerjoin(FundamentalSnapshot, FundamentalSnapshot.security_id == Security.id)
         .outerjoin(
@@ -228,6 +232,8 @@ def query_screener(
             signal=r["signal"],
             signal_label=r["signal_label"],
             top_pattern=r["top_pattern"],
+            insider_score=_f(r["insider_score"]),
+            insider_activity=r["insider_activity"],
             scored_on=r["scored_on"],
         )
         for r in rows

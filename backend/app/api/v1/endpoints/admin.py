@@ -59,6 +59,27 @@ def trigger_load_universe(providers: list[str] | None = None) -> EnqueuedTask:
     return _enqueue(load_universe_task, providers=providers)
 
 
+@router.post("/us-universe", response_model=EnqueuedTask, summary="Load US universe (SEC)")
+def trigger_load_us_universe(limit: int | None = None) -> EnqueuedTask:
+    from app.tasks.ingestion import load_us_universe_task
+
+    return _enqueue(load_us_universe_task, limit=limit)
+
+
+@router.post("/insider", response_model=EnqueuedTask, summary="Ingest insider (SEC Form 4)")
+def trigger_ingest_insider(limit: int | None = None) -> EnqueuedTask:
+    from app.tasks.ingestion import ingest_insider_task
+
+    return _enqueue(ingest_insider_task, limit=limit)
+
+
+@router.post("/compute-insider", response_model=EnqueuedTask, summary="Compute insider scores")
+def trigger_compute_insider(limit: int | None = None) -> EnqueuedTask:
+    from app.tasks.ingestion import compute_insider_task
+
+    return _enqueue(compute_insider_task, limit=limit)
+
+
 @router.post("/fundamentals", response_model=EnqueuedTask, summary="Ingest statements now")
 def trigger_ingest_fundamentals(
     region: str | None = None, limit: int | None = None

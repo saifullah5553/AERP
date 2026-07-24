@@ -49,5 +49,6 @@ class CompanyDetail(BaseModel):
     peers: list[PeerOut]
     news: list[dict[str, Any]]
     insider: list[dict[str, Any]]
+    insider_summary: dict[str, Any] | None
 
     ai_summary: str

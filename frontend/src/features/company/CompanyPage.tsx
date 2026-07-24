@@ -204,6 +204,7 @@ export default function CompanyPage() {
             </div>
             <p className="text-sm leading-relaxed text-slate-300">{data.ai_summary}</p>
           </div>
+          <InsiderCard summary={data.insider_summary} />
           <ScoreHistoryChart history={data.score_history} />
           <PeersTable peers={data.peers} />
         </div>
@@ -236,6 +237,47 @@ function PatternsList({ patterns }: { patterns: Row[] }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+const INSIDER_COLOR: Record<string, string> = {
+  strong_buying: "#22c55e",
+  buying: "#4ade80",
+  neutral: "#94a3b8",
+  selling: "#f87171",
+  strong_selling: "#ef4444",
+  no_activity: "#64748b",
+};
+
+function InsiderCard({ summary }: { summary: Row | null }) {
+  const activity = typeof summary?.activity === "string" ? summary.activity : "no_activity";
+  const score = typeof summary?.score === "number" ? summary.score : null;
+  const buy = typeof summary?.buy_count === "number" ? summary.buy_count : 0;
+  const sell = typeof summary?.sell_count === "number" ? summary.sell_count : 0;
+  const window = typeof summary?.window_days === "number" ? summary.window_days : 60;
+  const color = INSIDER_COLOR[activity] ?? "#94a3b8";
+
+  return (
+    <div className="rounded border border-base-600 bg-base-800 p-4">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          Insider Activity ({window}d)
+        </span>
+        {score !== null && (
+          <span className="num text-sm font-semibold" style={{ color }}>
+            {score.toFixed(0)}/100
+          </span>
+        )}
+      </div>
+      <div className="text-sm font-medium" style={{ color }}>
+        {titleize(activity)}
+      </div>
+      {(buy > 0 || sell > 0) && (
+        <div className="mt-1 text-xs text-slate-400">
+          {buy} insider{buy === 1 ? "" : "s"} buying · {sell} selling
+        </div>
+      )}
     </div>
   );
 }

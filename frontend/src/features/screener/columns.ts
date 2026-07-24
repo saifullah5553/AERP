@@ -87,6 +87,20 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
       valueFormatter: (p) => titleize(p.value),
     },
     {
+      field: "insider_score",
+      headerName: "Insider",
+      width: 90,
+      sortable: false,
+      cellRenderer: ScoreCell,
+    },
+    {
+      field: "insider_activity",
+      headerName: "Insider Act.",
+      width: 120,
+      sortable: false,
+      valueFormatter: (p) => titleize(p.value),
+    },
+    {
       field: "signal",
       headerName: "Signal",
       width: 130,

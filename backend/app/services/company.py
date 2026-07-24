@@ -15,7 +15,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.corporate import Dividend, InsiderTransaction
+from app.models.corporate import Dividend, InsiderSummary, InsiderTransaction
 from app.models.enums import AssetClass, StatementPeriod
 from app.models.fundamentals import (
     AnalystEstimate,
@@ -195,6 +195,8 @@ def get_company(db: Session, provider_symbol: str) -> CompanyDetail | None:
     ratios_dict = orm_to_dict(ratios) if ratios else None
     signal_dict = orm_to_dict(latest_signal) if latest_signal else None
     top_pattern = patterns[0].name if patterns else None
+    insider_row = db.get(InsiderSummary, security.id)
+    insider_dict = orm_to_dict(insider_row) if insider_row is not None else None
 
     security_dict = orm_to_dict(security)
     security_dict["market_code"] = market.code if market else None
@@ -234,7 +236,9 @@ def get_company(db: Session, provider_symbol: str) -> CompanyDetail | None:
         peers=_peers(db, security),
         news=[orm_to_dict(n) for n in news],
         insider=[orm_to_dict(i) for i in insider],
+        insider_summary=insider_dict,
         ai_summary=build_summary(
-            security.name or security.symbol, scores_dict, ratios_dict, signal_dict, top_pattern
+            security.name or security.symbol, scores_dict, ratios_dict, signal_dict,
+            top_pattern, insider_dict,
         ),
     )

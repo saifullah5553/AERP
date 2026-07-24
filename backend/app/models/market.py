@@ -75,6 +75,7 @@ class Security(Base, TimestampMixin):
     country: Mapped[str | None] = mapped_column(String(2))
     isin: Mapped[str | None] = mapped_column(String(12), index=True)
     figi: Mapped[str | None] = mapped_column(String(12))
+    cik: Mapped[str | None] = mapped_column(String(10), index=True)  # SEC EDGAR id
 
     # Fast-read cached snapshot (kept in sync by ingestion; DB stays source of truth).
     market_cap: Mapped[float | None] = mapped_column(Numeric(24, 2))

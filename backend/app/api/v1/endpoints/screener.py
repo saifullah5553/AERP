@@ -35,6 +35,9 @@ COLUMNS: list[ScreenerColumn] = [
     ScreenerColumn(field="fundamental_score", header="Fundamental", type="score"),
     ScreenerColumn(field="composite_score", header="Composite", type="score"),
     ScreenerColumn(field="top_pattern", header="Pattern", type="string"),
+    ScreenerColumn(field="insider_score", header="Insider", type="score",
+                   description="60-day insider buy/sell score (100=buying, 0=selling)"),
+    ScreenerColumn(field="insider_activity", header="Insider Act.", type="string"),
     ScreenerColumn(field="signal", header="Signal", type="enum"),
 ]
 

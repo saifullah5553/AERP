@@ -48,6 +48,8 @@ export interface ScreenerRow {
   signal: SignalType | null;
   signal_label: string | null;
   top_pattern: string | null;
+  insider_score: number | null;
+  insider_activity: string | null;
   scored_on: string | null;
 }
 

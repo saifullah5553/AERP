@@ -37,5 +37,6 @@ export interface CompanyDetail {
   peers: Peer[];
   news: Row[];
   insider: Row[];
+  insider_summary: Row | null;
   ai_summary: string;
 }

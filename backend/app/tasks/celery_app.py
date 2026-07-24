@@ -50,7 +50,11 @@ celery_app.conf.beat_schedule = {
     },
     "load-universe": {
         "task": "aerp.ingest.load_universe",
-        "schedule": crontab(hour=1, minute=0),  # nightly discovery
+        "schedule": crontab(hour=1, minute=0),  # nightly discovery (crypto/psx)
+    },
+    "load-us-universe": {
+        "task": "aerp.ingest.us_universe",
+        "schedule": crontab(day_of_week=0, hour=1, minute=30),  # weekly SEC refresh
     },
     "ingest-fundamentals": {
         "task": "aerp.ingest.fundamentals",
@@ -79,6 +83,14 @@ celery_app.conf.beat_schedule = {
     "compute-forex-fundamentals": {
         "task": "aerp.engine.compute_forex_fundamentals",
         "schedule": crontab(hour=4, minute=30),  # after macro ingest
+    },
+    "ingest-insider": {
+        "task": "aerp.ingest.insider",
+        "schedule": crontab(hour=2, minute=0),  # SEC Form 4 for US securities
+    },
+    "compute-insider": {
+        "task": "aerp.engine.compute_insider",
+        "schedule": crontab(hour=4, minute=45),  # after insider ingest
     },
     "compute-composite": {
         "task": "aerp.engine.compute_composite",

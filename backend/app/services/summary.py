@@ -35,6 +35,7 @@ def build_summary(
     ratios: dict[str, Any] | None,
     signal: dict[str, Any] | None,
     top_pattern: str | None,
+    insider: dict[str, Any] | None = None,
 ) -> str:
     parts: list[str] = []
     comp = (scores or {}).get("composite")
@@ -76,6 +77,16 @@ def build_summary(
     if top_pattern:
         pretty = top_pattern.replace("_", " ")
         parts.append(f"The most prominent active chart pattern is a {pretty}.")
+
+    if insider and insider.get("activity") and insider["activity"] != "no_activity":
+        activity = str(insider["activity"]).replace("_", " ")
+        window = insider.get("window_days", 60)
+        net = insider.get("net_value")
+        net_txt = ""
+        if isinstance(net, int | float) and net:
+            direction = "net buying" if net > 0 else "net selling"
+            net_txt = f" ({direction} ~{abs(net) / 1e6:.1f}M)"
+        parts.append(f"Insider activity over the last {window} days: {activity}{net_txt}.")
 
     if signal and signal.get("label"):
         conf = signal.get("confidence")
