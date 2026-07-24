@@ -119,6 +119,15 @@ _TD_TIMESERIES = {
 }
 
 
+# World Bank macro data: US deliberately stronger than the Euro area.
+_WORLD_BANK = {
+    "US": {"NY.GDP.MKTP.KD.ZG": 3.0, "FR.INR.RINR": 2.0, "FP.CPI.TOTL.ZG": 2.5,
+           "SL.UEM.TOTL.ZS": 4.0, "BN.CAB.XOKA.GD.ZS": -3.0},
+    "EMU": {"NY.GDP.MKTP.KD.ZG": 0.8, "FR.INR.RINR": 0.5, "FP.CPI.TOTL.ZG": 2.2,
+            "SL.UEM.TOTL.ZS": 6.5, "BN.CAB.XOKA.GD.ZS": 2.0},
+}
+
+
 def _json(payload) -> httpx.Response:
     return httpx.Response(200, content=json.dumps(payload), headers={"content-type": "application/json"})
 
@@ -159,6 +168,19 @@ def _handler(request: httpx.Request) -> httpx.Response:
             return _json(_TD_QUOTE)
         if path == "/time_series":
             return _json(_TD_TIMESERIES)
+
+    if host == "api.worldbank.org":
+        parts = path.strip("/").split("/")  # v2/country/US/indicator/<code>
+        if len(parts) >= 5 and parts[1] == "country" and parts[3] == "indicator":
+            country, code = parts[2], parts[4]
+            value = _WORLD_BANK.get(country, {}).get(code)
+            if value is None:
+                return _json([{"page": 1}, []])
+            records = [
+                {"countryiso3code": country, "date": "2024", "value": value},
+                {"countryiso3code": country, "date": "2023", "value": value},
+            ]
+            return _json([{"page": 1, "total": 2}, records])
 
     return httpx.Response(404, text=f"unmocked: {host}{path}")
 

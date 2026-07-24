@@ -68,8 +68,16 @@ celery_app.conf.beat_schedule = {
         "task": "aerp.engine.detect_patterns",
         "schedule": crontab(hour=23, minute=20),  # after technical compute
     },
+    "ingest-macro": {
+        "task": "aerp.ingest.macro",
+        "schedule": crontab(hour=2, minute=30),  # weekly-ish cadence is fine; keep daily
+    },
+    "compute-forex-fundamentals": {
+        "task": "aerp.engine.compute_forex_fundamentals",
+        "schedule": crontab(hour=4, minute=30),  # after macro ingest
+    },
     "compute-composite": {
         "task": "aerp.engine.compute_composite",
-        "schedule": crontab(hour=5, minute=0),  # after fundamentals + technical land
+        "schedule": crontab(hour=5, minute=0),  # after all fundamentals + technical land
     },
 }

@@ -14,6 +14,7 @@ from app.models.fundamentals import (
     FundamentalSnapshot,
     IncomeStatement,
 )
+from app.models.macro import MacroIndicator
 from app.models.market import Market, Security
 from app.models.market_intel import EconomicEvent, NewsArticle
 from app.models.prices import DailyPrice, IntradayPrice
@@ -49,6 +50,7 @@ __all__ = [
     "InsiderTransaction",
     "NewsArticle",
     "EconomicEvent",
+    "MacroIndicator",
     "Score",
     "Signal",
     "User",

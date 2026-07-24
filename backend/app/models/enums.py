@@ -85,3 +85,13 @@ class InsiderTransactionType(str, enum.Enum):
     SELL = "sell"
     GRANT = "grant"
     EXERCISE = "exercise"
+
+
+class MacroIndicatorType(str, enum.Enum):
+    """Country-level economic indicators used as forex "fundamentals"."""
+
+    GDP_GROWTH = "gdp_growth"              # annual %
+    CPI_INFLATION = "cpi_inflation"        # annual %
+    REAL_INTEREST_RATE = "real_interest_rate"  # %
+    UNEMPLOYMENT = "unemployment"          # % of labour force
+    CURRENT_ACCOUNT = "current_account"    # % of GDP

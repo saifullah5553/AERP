@@ -89,6 +89,20 @@ def trigger_detect_patterns(limit: int | None = None) -> EnqueuedTask:
     return _enqueue(detect_patterns_task, limit=limit)
 
 
+@router.post("/macro", response_model=EnqueuedTask, summary="Ingest macro data")
+def trigger_ingest_macro() -> EnqueuedTask:
+    from app.tasks.ingestion import ingest_macro_task
+
+    return _enqueue(ingest_macro_task)
+
+
+@router.post("/compute-forex", response_model=EnqueuedTask, summary="Score forex pairs")
+def trigger_compute_forex(limit: int | None = None) -> EnqueuedTask:
+    from app.tasks.ingestion import compute_forex_fundamentals_task
+
+    return _enqueue(compute_forex_fundamentals_task, limit=limit)
+
+
 @router.post("/compute-composite", response_model=EnqueuedTask, summary="Compute composite")
 def trigger_compute_composite(limit: int | None = None) -> EnqueuedTask:
     from app.tasks.ingestion import compute_composite_task

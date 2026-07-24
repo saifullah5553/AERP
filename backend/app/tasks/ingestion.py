@@ -89,3 +89,21 @@ def compute_composite_task(limit: int | None = None) -> dict:
 
     with session_scope() as db:
         return compute_all(db, limit=limit)
+
+
+@celery_app.task(name="aerp.ingest.macro")
+def ingest_macro_task() -> dict:
+    """Fetch country macro indicators (World Bank, keyless) for forex countries."""
+    from app.ingestion.macro import WorldBankClient, ingest_macro
+
+    with session_scope() as db:
+        return ingest_macro(db, WorldBankClient())
+
+
+@celery_app.task(name="aerp.engine.compute_forex_fundamentals")
+def compute_forex_fundamentals_task(limit: int | None = None) -> dict:
+    """Score forex pairs from stored macro indicators (writes fundamental score)."""
+    from app.engines.forex.engine import compute_all
+
+    with session_scope() as db:
+        return compute_all(db, limit=limit)
