@@ -80,3 +80,10 @@ def trigger_detect_patterns(limit: int | None = None) -> EnqueuedTask:
     from app.tasks.ingestion import detect_patterns_task
 
     return _enqueue(detect_patterns_task, limit=limit)
+
+
+@router.post("/compute-composite", response_model=EnqueuedTask, summary="Compute composite")
+def trigger_compute_composite(limit: int | None = None) -> EnqueuedTask:
+    from app.tasks.ingestion import compute_composite_task
+
+    return _enqueue(compute_composite_task, limit=limit)

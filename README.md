@@ -98,8 +98,19 @@ curl -X POST "http://localhost:8000/api/v1/admin/ingest/daily?region=us"
 curl -X POST "http://localhost:8000/api/v1/admin/compute-technical"
 ```
 
-`technical_score` then populates. The `composite_score` stays `null` until the
-composite engine lands (Phase 6).
+`technical_score` then populates.
+
+### Composite score & signals (Phase 6)
+
+Blend everything into the final composite and derive buy/sell signals:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/admin/compute-composite"
+```
+
+`composite_score` (35% fundamental / 35% technical / 10% momentum / 10% quality /
+10% risk) and `signal` now populate — each with a stored, explainable breakdown of
+every component and its contribution.
 
 To run migrations manually (they run automatically at container start):
 

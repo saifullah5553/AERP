@@ -80,3 +80,12 @@ def detect_patterns_task(limit: int | None = None) -> dict:
 
     with session_scope() as db:
         return compute_all(db, limit=limit)
+
+
+@celery_app.task(name="aerp.engine.compute_composite")
+def compute_composite_task(limit: int | None = None) -> dict:
+    """Blend fundamental/technical/momentum/quality/risk into composite + signals."""
+    from app.engines.composite.engine import compute_all
+
+    with session_scope() as db:
+        return compute_all(db, limit=limit)

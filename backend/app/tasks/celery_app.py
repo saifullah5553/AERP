@@ -68,4 +68,8 @@ celery_app.conf.beat_schedule = {
         "task": "aerp.engine.detect_patterns",
         "schedule": crontab(hour=23, minute=20),  # after technical compute
     },
+    "compute-composite": {
+        "task": "aerp.engine.compute_composite",
+        "schedule": crontab(hour=5, minute=0),  # after fundamentals + technical land
+    },
 }
