@@ -51,6 +51,18 @@ def cmd_ingest_psx(args: argparse.Namespace) -> None:
         log.info("ingest-psx: %s", ingest_psx_csv(db))
 
 
+def cmd_ingest_psx_market(args: argparse.Namespace) -> None:
+    from app.db.session import session_scope
+    from app.ingestion.psx_market import ingest_psx_market
+
+    with session_scope() as db:
+        ingest_psx_market(
+            db,
+            with_history=not getattr(args, "no_history", False),
+            history_limit=args.limit,
+        )
+
+
 def cmd_ingest_macro(args: argparse.Namespace) -> None:
     from app.db.session import session_scope
     from app.ingestion.macro import WorldBankClient, ingest_macro
@@ -200,6 +212,7 @@ def cmd_all(args: argparse.Namespace) -> None:
     cmd_load_universe(argparse.Namespace(providers="binance,psx"))
     cmd_load_us_universe(argparse.Namespace(limit=None))
     cmd_ingest_psx(args)
+    cmd_ingest_psx_market(argparse.Namespace(limit=None, no_history=False))
     cmd_ingest_macro(args)
     cmd_ingest_psx_insider(args)
     cmd_ingest_quotes(argparse.Namespace(region=None, limit=None))
@@ -228,6 +241,8 @@ def build_parser() -> argparse.ArgumentParser:
     add("load-universe", cmd_load_universe, providers=True)
     add("load-us-universe", cmd_load_us_universe, limit=True)
     add("ingest-psx", cmd_ingest_psx)
+    psxm = add("ingest-psx-market", cmd_ingest_psx_market, limit=True)
+    psxm.add_argument("--no-history", action="store_true", help="quotes+names only")
     add("ingest-macro", cmd_ingest_macro)
     add("ingest-quotes", cmd_ingest_quotes, region=True, limit=True)
     add("backfill", cmd_backfill, region=True, limit=True)

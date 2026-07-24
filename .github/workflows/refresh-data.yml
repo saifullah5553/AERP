@@ -52,6 +52,7 @@ jobs:
           python -m app.cli init-db
           python -m app.cli seed
           python -m app.cli ingest-psx || true
+          python -m app.cli ingest-psx-market || true
           python -m app.cli ingest-macro || true
           python -m app.cli ingest-psx-insider || true
           python -m app.cli ingest-news --limit 40 || true

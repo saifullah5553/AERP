@@ -53,6 +53,7 @@ jobs:
           python -m app.cli seed
           python -m app.cli load-us-universe || true
           python -m app.cli ingest-psx || true
+          python -m app.cli ingest-psx-market || true
           python -m app.cli ingest-macro || true
           python -m app.cli ingest-psx-insider || true
           python -m app.cli ingest-insider --limit 150 || true
