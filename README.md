@@ -33,11 +33,28 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full design and
 ```
 aerp/
 ├── backend/     # FastAPI · SQLAlchemy 2 · Celery · Alembic
-├── frontend/    # React 18 · TypeScript · Vite · Tailwind · AG Grid  (Phase 7)
+├── frontend/    # React 18 · TypeScript · Vite · Tailwind · AG Grid
 ├── infra/       # docker-compose, Render blueprint
 ├── docs/        # architecture, roadmap
 └── .github/     # CI + frontend deploy
 ```
+
+## Frontend (Phase 7)
+
+The screener is a professional AG Grid data table (dark institutional theme) using
+the infinite row model backed by the API's server-side pagination/sort/filter —
+so it scales to the full universe. Column pinning, full-filtered-set CSV export,
+and localStorage saved views are included.
+
+```bash
+cd frontend
+cp .env.example .env      # leave VITE_API_BASE empty for local dev
+npm install
+npm run dev               # http://localhost:5173 (proxies /api → :8000)
+```
+
+Run the backend (`docker compose -f infra/docker-compose.yml up`) alongside it,
+then trigger ingestion + the engines (see below) to populate the grid.
 
 ## Quick start (Phase 1 — backend foundation)
 

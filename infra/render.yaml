@@ -81,6 +81,23 @@ services:
       - key: EODHD_API_KEY
         sync: false
 
+  # ── Frontend (static SPA) ───────────────────────────────────
+  # GitHub Pages can also serve this; here it's a Render static site so the whole
+  # stack deploys from one blueprint. Set VITE_API_BASE to the API's URL.
+  - type: web
+    name: aerp-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_BASE
+        sync: false   # e.g. https://aerp-api.onrender.com
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
   # ── Celery Beat scheduler ───────────────────────────────────
   - type: worker
     name: aerp-beat

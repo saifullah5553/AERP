@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* AG Grid theme (imported in ScreenerGrid via JS) is tuned here to the
+   institutional palette. */
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: #0a0e14;
+  color: #e2e8f0;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Institutional AG Grid quartz-dark overrides. */
+.ag-theme-quartz-dark {
+  --ag-background-color: #0f172a;
+  --ag-odd-row-background-color: #0c1424;
+  --ag-header-background-color: #0a0e14;
+  --ag-header-foreground-color: #94a3b8;
+  --ag-foreground-color: #e2e8f0;
+  --ag-border-color: #1e293b;
+  --ag-row-border-color: #16203a;
+  --ag-row-hover-color: #16233f;
+  --ag-selected-row-background-color: #1e293b;
+  --ag-font-size: 13px;
+  --ag-font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --ag-header-column-separator-display: block;
+  --ag-header-column-separator-color: #1e293b;
+  --ag-accent-color: #38bdf8;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
