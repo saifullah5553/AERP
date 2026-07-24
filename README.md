@@ -73,7 +73,21 @@ curl -X POST "http://localhost:8000/api/v1/admin/ingest/daily?region=global"
 ```
 
 After a quote refresh, the screener's `price`/`change_pct` columns populate with
-real data. Scores stay `null` until the analytics engines land (Phases 3–6).
+real data.
+
+### Fundamentals & scores (Phase 3)
+
+With an `FMP_API_KEY` set, ingest statements and compute the fundamental score
+(every score carries a stored, auditable breakdown — no hardcoding):
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/admin/ingest/fundamentals?region=us"
+curl -X POST "http://localhost:8000/api/v1/admin/compute-fundamentals"
+```
+
+The screener's `fundamental_score`, `pe_ttm`, `roe`, `revenue_growth`, etc. then
+populate. The `composite_score` stays `null` until the technical + composite
+engines land (Phases 4–6).
 
 To run migrations manually (they run automatically at container start):
 

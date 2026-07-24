@@ -73,6 +73,35 @@ _FMP_STOCK_LIST = [
     {"symbol": "BRK.B", "name": "Berkshire B", "exchangeShortName": "NYSE", "type": "stock"},
 ]
 
+_FMP_INCOME = [
+    {"date": "2025-12-31", "reportedCurrency": "USD", "revenue": 1200, "costOfRevenue": 700,
+     "grossProfit": 500, "operatingExpenses": 180, "operatingIncome": 320, "ebitda": 380,
+     "interestExpense": 25, "incomeBeforeTax": 295, "incomeTaxExpense": 59, "netIncome": 236,
+     "eps": 2.36, "epsdiluted": 2.30, "weightedAverageShsOut": 100},
+    {"date": "2024-12-31", "reportedCurrency": "USD", "revenue": 1000, "costOfRevenue": 600,
+     "grossProfit": 400, "operatingExpenses": 150, "operatingIncome": 250, "ebitda": 300,
+     "interestExpense": 20, "incomeBeforeTax": 230, "incomeTaxExpense": 46, "netIncome": 184,
+     "eps": 1.84, "epsdiluted": 1.80, "weightedAverageShsOut": 100},
+]
+
+_FMP_BALANCE = [
+    {"date": "2025-12-31", "reportedCurrency": "USD", "cashAndCashEquivalents": 200,
+     "inventory": 210, "totalCurrentAssets": 900, "totalAssets": 2200,
+     "totalCurrentLiabilities": 420, "longTermDebt": 380, "totalDebt": 480,
+     "totalLiabilities": 1050, "retainedEarnings": 750, "totalStockholdersEquity": 1150},
+    {"date": "2024-12-31", "reportedCurrency": "USD", "cashAndCashEquivalents": 150,
+     "inventory": 200, "totalCurrentAssets": 800, "totalAssets": 2000,
+     "totalCurrentLiabilities": 400, "longTermDebt": 400, "totalDebt": 500,
+     "totalLiabilities": 1000, "retainedEarnings": 600, "totalStockholdersEquity": 1000},
+]
+
+_FMP_CASHFLOW = [
+    {"date": "2025-12-31", "reportedCurrency": "USD", "operatingCashFlow": 300,
+     "capitalExpenditure": -90, "freeCashFlow": 210, "dividendsPaid": -60},
+    {"date": "2024-12-31", "reportedCurrency": "USD", "operatingCashFlow": 250,
+     "capitalExpenditure": -80, "freeCashFlow": 170, "dividendsPaid": -50},
+]
+
 _TD_QUOTE = {
     "symbol": "EUR/USD", "name": "Euro US Dollar", "close": "1.0850",
     "previous_close": "1.0830", "change": "0.0020", "percent_change": "0.1846",
@@ -118,6 +147,12 @@ def _handler(request: httpx.Request) -> httpx.Response:
             return _json(_FMP_HISTORY)
         if path == "/api/v3/stock/list":
             return _json(_FMP_STOCK_LIST)
+        if path.startswith("/api/v3/income-statement/"):
+            return _json(_FMP_INCOME)
+        if path.startswith("/api/v3/balance-sheet-statement/"):
+            return _json(_FMP_BALANCE)
+        if path.startswith("/api/v3/cash-flow-statement/"):
+            return _json(_FMP_CASHFLOW)
 
     if host == "api.twelvedata.com":
         if path == "/quote":

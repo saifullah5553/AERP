@@ -16,13 +16,42 @@ from app.ingestion.providers.base import (
     OHLCVBar,
     QuoteDTO,
     SecurityProfile,
+    StatementDTO,
 )
-from app.models.enums import AssetClass, MarketRegion
+from app.models.enums import AssetClass, MarketRegion, StatementPeriod
 
 log = get_logger(__name__)
 
 BASE_URL = "https://financialmodelingprep.com/api/v3"
 US_EXCHANGES = {"NASDAQ", "NYSE", "AMEX"}
+
+# FMP JSON key → our ORM column, per statement type.
+_INCOME_MAP = {
+    "revenue": "revenue", "costOfRevenue": "cost_of_revenue", "grossProfit": "gross_profit",
+    "operatingExpenses": "operating_expenses", "operatingIncome": "operating_income",
+    "ebitda": "ebitda", "interestExpense": "interest_expense",
+    "incomeBeforeTax": "income_before_tax", "incomeTaxExpense": "income_tax_expense",
+    "netIncome": "net_income", "eps": "eps", "epsdiluted": "eps_diluted",
+    "weightedAverageShsOut": "weighted_shares",
+}
+_BALANCE_MAP = {
+    "cashAndCashEquivalents": "cash_and_equivalents",
+    "shortTermInvestments": "short_term_investments",
+    "netReceivables": "receivables", "inventory": "inventory",
+    "totalCurrentAssets": "current_assets", "propertyPlantEquipmentNet": "property_plant_equipment",
+    "goodwillAndIntangibleAssets": "goodwill_intangibles", "totalAssets": "total_assets",
+    "accountPayables": "accounts_payable", "shortTermDebt": "short_term_debt",
+    "totalCurrentLiabilities": "current_liabilities", "longTermDebt": "long_term_debt",
+    "totalDebt": "total_debt", "totalLiabilities": "total_liabilities",
+    "retainedEarnings": "retained_earnings", "totalStockholdersEquity": "total_equity",
+}
+_CASHFLOW_MAP = {
+    "operatingCashFlow": "operating_cash_flow", "capitalExpenditure": "capital_expenditure",
+    "freeCashFlow": "free_cash_flow", "netCashUsedForInvestingActivites": "investing_cash_flow",
+    "netCashUsedProvidedByFinancingActivities": "financing_cash_flow",
+    "dividendsPaid": "dividends_paid", "commonStockRepurchased": "stock_repurchase",
+    "netChangeInCash": "net_change_in_cash",
+}
 
 
 def _to_fmp(provider_symbol: str) -> str:
@@ -151,6 +180,55 @@ class FMPProvider(MarketDataProvider):
                 )
             )
         return profiles
+
+
+    def get_statements(
+        self, provider_symbol: str, period: StatementPeriod, limit: int = 5
+    ) -> list[StatementDTO]:
+        if not self.available:
+            return []
+        fsym = _to_fmp(provider_symbol)
+        fmp_period = "quarter" if period == StatementPeriod.QUARTER else "annual"
+        endpoints = {
+            "income": ("income-statement", _INCOME_MAP),
+            "balance": ("balance-sheet-statement", _BALANCE_MAP),
+            "cashflow": ("cash-flow-statement", _CASHFLOW_MAP),
+        }
+        out: list[StatementDTO] = []
+        for stmt_type, (path, mapping) in endpoints.items():
+            try:
+                resp = self._http().get(
+                    f"{BASE_URL}/{path}/{fsym}",
+                    params=self._params({"period": fmp_period, "limit": limit}),
+                )
+                resp.raise_for_status()
+                rows = resp.json()
+            except Exception as exc:
+                log.warning("FMP %s failed for %s: %s", stmt_type, provider_symbol, exc)
+                continue
+            for row in rows if isinstance(rows, list) else []:
+                raw_date = row.get("date")
+                if not raw_date:
+                    continue
+                values = {col: _f(row.get(key)) for key, col in mapping.items()}
+                if stmt_type == "income":
+                    # EBIT ≈ pre-tax income + interest expense; fall back to op. income.
+                    ibt = _f(row.get("incomeBeforeTax"))
+                    interest = _f(row.get("interestExpense"))
+                    if ibt is not None and interest is not None:
+                        values["ebit"] = ibt + interest
+                    else:
+                        values["ebit"] = _f(row.get("operatingIncome"))
+                out.append(
+                    StatementDTO(
+                        statement_type=stmt_type,
+                        fiscal_date=date.fromisoformat(raw_date[:10]),
+                        period=period,
+                        reported_currency=row.get("reportedCurrency"),
+                        values=values,
+                    )
+                )
+        return out
 
 
 def _f(value) -> float | None:

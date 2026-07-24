@@ -20,6 +20,7 @@ from app.ingestion.providers.base import (
     OHLCVBar,
     QuoteDTO,
     SecurityProfile,
+    StatementDTO,
 )
 from app.ingestion.providers.binance import BinanceProvider
 from app.ingestion.providers.fmp import FMPProvider
@@ -116,6 +117,27 @@ class ProviderRegistry:
                 continue
             if bars:
                 return bars
+        return []
+
+    # ── Financial statements ─────────────────────────────────
+    def get_statements(self, ref: SecurityRef, limit: int = 5) -> list[StatementDTO]:
+        from app.models.enums import StatementPeriod
+
+        for name in self.order_for(ref.asset_class, ref.region):
+            provider = self._providers.get(name)
+            if provider is None or not provider.available:
+                continue
+            try:
+                stmts = provider.get_statements(
+                    ref.provider_symbol, StatementPeriod.ANNUAL, limit
+                )
+            except NotImplementedError:
+                continue
+            except Exception as exc:  # pragma: no cover - defensive
+                log.warning("Provider %s get_statements raised: %s", name, exc)
+                continue
+            if stmts:
+                return stmts
         return []
 
     # ── Universe discovery ───────────────────────────────────

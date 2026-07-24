@@ -12,10 +12,17 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
-from app.ingestion.providers.base import OHLCVBar, QuoteDTO, SecurityProfile
+from app.ingestion.providers.base import OHLCVBar, QuoteDTO, SecurityProfile, StatementDTO
+from app.models.fundamentals import BalanceSheet, CashFlowStatement, IncomeStatement
 from app.models.market import Market, Security
 from app.models.prices import DailyPrice
 from app.models.quote import Quote
+
+_STATEMENT_MODELS = {
+    "income": IncomeStatement,
+    "balance": BalanceSheet,
+    "cashflow": CashFlowStatement,
+}
 
 log = get_logger(__name__)
 
@@ -124,6 +131,33 @@ def upsert_security(
     if profile.market_cap is not None:
         security.market_cap = profile.market_cap
     return security, False
+
+
+def upsert_statements(db: Session, security_id: int, statements: list[StatementDTO]) -> int:
+    """Insert or update financial statements keyed by (type, period, fiscal_date)."""
+    written = 0
+    for dto in statements:
+        model = _STATEMENT_MODELS.get(dto.statement_type)
+        if model is None:
+            continue
+        row = db.scalar(
+            select(model).where(
+                model.security_id == security_id,
+                model.period == dto.period,
+                model.fiscal_date == dto.fiscal_date,
+            )
+        )
+        if row is None:
+            row = model(
+                security_id=security_id, period=dto.period, fiscal_date=dto.fiscal_date
+            )
+            db.add(row)
+        row.reported_currency = dto.reported_currency
+        for col, value in dto.values.items():
+            if hasattr(row, col):
+                setattr(row, col, value)
+        written += 1
+    return written
 
 
 def markets_by_code(db: Session) -> dict[str, Market]:

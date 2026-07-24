@@ -8,7 +8,7 @@ from app.ingestion.providers.binance import BinanceProvider
 from app.ingestion.providers.fmp import FMPProvider
 from app.ingestion.providers.psx import PSXProvider, parse_psx_html
 from app.ingestion.providers.twelvedata import TwelveDataProvider
-from app.models.enums import AssetClass, MarketRegion
+from app.models.enums import AssetClass, MarketRegion, StatementPeriod
 
 from tests.mock_http import PSX_HTML, mock_client
 
@@ -90,6 +90,22 @@ def test_fmp_universe_filters_us_only(monkeypatch: pytest.MonkeyPatch) -> None:
     symbols = {s.symbol for s in uni}
     # OTC excluded; BRK.B excluded (dot suffix); NASDAQ+NYSE kept.
     assert symbols == {"AAPL", "MSFT", "IBM"}
+
+
+def test_fmp_statements(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "fmp_api_key", "test-key")
+    p = FMPProvider(mock_client())
+    stmts = p.get_statements("AAPL", StatementPeriod.ANNUAL, limit=5)
+    incomes = [s for s in stmts if s.statement_type == "income"]
+    balances = [s for s in stmts if s.statement_type == "balance"]
+    cashflows = [s for s in stmts if s.statement_type == "cashflow"]
+    assert len(incomes) == 2 and len(balances) == 2 and len(cashflows) == 2
+
+    latest = max(incomes, key=lambda s: s.fiscal_date)
+    assert latest.values["revenue"] == 1200.0
+    assert latest.values["net_income"] == 236.0
+    # EBIT derived from pre-tax income + interest expense (295 + 25).
+    assert latest.values["ebit"] == 320.0
 
 
 # ── Twelve Data (keyed) ───────────────────────────────────────

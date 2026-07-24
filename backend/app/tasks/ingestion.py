@@ -8,7 +8,12 @@ from __future__ import annotations
 
 from app.core.logging import get_logger
 from app.db.session import session_scope
-from app.ingestion.pipeline import backfill_daily, load_universe, refresh_quotes
+from app.ingestion.pipeline import (
+    backfill_daily,
+    ingest_fundamentals,
+    load_universe,
+    refresh_quotes,
+)
 from app.ingestion.registry import ProviderRegistry
 from app.models.enums import MarketRegion
 from app.tasks.celery_app import celery_app
@@ -41,3 +46,19 @@ def backfill_daily_task(
 def load_universe_task(providers: list[str] | None = None) -> dict:
     with session_scope() as db:
         return load_universe(db, ProviderRegistry(), provider_names=providers)
+
+
+@celery_app.task(name="aerp.ingest.fundamentals")
+def ingest_fundamentals_task(region: str | None = None, limit: int | None = None) -> dict:
+    reg = MarketRegion(region) if region else None
+    with session_scope() as db:
+        return ingest_fundamentals(db, ProviderRegistry(), region=reg, limit=limit)
+
+
+@celery_app.task(name="aerp.engine.compute_fundamentals")
+def compute_fundamentals_task(limit: int | None = None) -> dict:
+    """Compute ratios + fundamental scores from already-ingested statements."""
+    from app.engines.fundamental.engine import compute_all
+
+    with session_scope() as db:
+        return compute_all(db, limit=limit)

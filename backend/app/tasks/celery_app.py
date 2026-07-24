@@ -52,4 +52,12 @@ celery_app.conf.beat_schedule = {
         "task": "aerp.ingest.load_universe",
         "schedule": crontab(hour=1, minute=0),  # nightly discovery
     },
+    "ingest-fundamentals": {
+        "task": "aerp.ingest.fundamentals",
+        "schedule": crontab(hour=3, minute=0),  # nightly statement refresh
+    },
+    "compute-fundamentals": {
+        "task": "aerp.engine.compute_fundamentals",
+        "schedule": crontab(hour=4, minute=0),  # recompute scores after ingest
+    },
 }

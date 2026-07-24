@@ -50,3 +50,19 @@ def trigger_load_universe(providers: list[str] | None = None) -> EnqueuedTask:
     from app.tasks.ingestion import load_universe_task
 
     return _enqueue(load_universe_task, providers=providers)
+
+
+@router.post("/fundamentals", response_model=EnqueuedTask, summary="Ingest statements now")
+def trigger_ingest_fundamentals(
+    region: str | None = None, limit: int | None = None
+) -> EnqueuedTask:
+    from app.tasks.ingestion import ingest_fundamentals_task
+
+    return _enqueue(ingest_fundamentals_task, region=region, limit=limit)
+
+
+@router.post("/compute-fundamentals", response_model=EnqueuedTask, summary="Compute scores")
+def trigger_compute_fundamentals(limit: int | None = None) -> EnqueuedTask:
+    from app.tasks.ingestion import compute_fundamentals_task
+
+    return _enqueue(compute_fundamentals_task, limit=limit)

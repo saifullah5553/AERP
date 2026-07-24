@@ -21,8 +21,9 @@ from app.ingestion.repository import (
     upsert_daily_bars,
     upsert_quote,
     upsert_security,
+    upsert_statements,
 )
-from app.models.enums import MarketRegion
+from app.models.enums import AssetClass, MarketRegion
 from app.models.market import Market, Security
 
 log = get_logger(__name__)
@@ -110,6 +111,34 @@ def backfill_daily(
         db.commit()  # commit per security so a later failure keeps earlier work
     log.info("backfill_daily: %d bars written across %d securities", total, len(refs))
     return total
+
+
+def ingest_fundamentals(
+    db: Session,
+    registry: ProviderRegistry,
+    region: MarketRegion | None = None,
+    limit: int | None = None,
+) -> dict[str, int]:
+    """Fetch and store financial statements for active equities."""
+    refs, id_by_symbol = _active_security_refs(db, region, limit)
+    equities = [r for r in refs if r.asset_class == AssetClass.EQUITY]
+    covered = 0
+    statements_written = 0
+    for ref in equities:
+        stmts = registry.get_statements(ref)
+        if not stmts:
+            continue
+        security_id = id_by_symbol[ref.provider_symbol]
+        statements_written += upsert_statements(db, security_id, stmts)
+        covered += 1
+        db.commit()
+    result = {
+        "equities": len(equities),
+        "covered": covered,
+        "statements_written": statements_written,
+    }
+    log.info("ingest_fundamentals: %s", result)
+    return result
 
 
 def load_universe(
