@@ -62,3 +62,12 @@ def compute_fundamentals_task(limit: int | None = None) -> dict:
 
     with session_scope() as db:
         return compute_all(db, limit=limit)
+
+
+@celery_app.task(name="aerp.engine.compute_technical")
+def compute_technical_task(limit: int | None = None) -> dict:
+    """Compute indicators + technical scores from already-ingested prices."""
+    from app.engines.technical.engine import compute_all
+
+    with session_scope() as db:
+        return compute_all(db, limit=limit)

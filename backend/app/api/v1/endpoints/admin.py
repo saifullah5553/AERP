@@ -66,3 +66,10 @@ def trigger_compute_fundamentals(limit: int | None = None) -> EnqueuedTask:
     from app.tasks.ingestion import compute_fundamentals_task
 
     return _enqueue(compute_fundamentals_task, limit=limit)
+
+
+@router.post("/compute-technical", response_model=EnqueuedTask, summary="Compute technical")
+def trigger_compute_technical(limit: int | None = None) -> EnqueuedTask:
+    from app.tasks.ingestion import compute_technical_task
+
+    return _enqueue(compute_technical_task, limit=limit)

@@ -9,8 +9,8 @@ surfaces "insufficient data" — it never fabricates.
 | 1 | **Backend foundation** — normalized DB schema, migrations, config, Docker Compose (Postgres/Redis), FastAPI skeleton, market + security seed, read-only screener endpoint. | ✅ Done |
 | 2 | **Ingestion engine** — provider abstraction with fallback chain (per-market routing across FMP / TwelveData / Binance / PSX), Celery tasks + Beat schedule, universe loader, quote + daily-OHLC ingestion, admin trigger endpoints. Kills fake data; populates the real universe. | ✅ Done |
 | 3 | **Fundamental engine** — 25+ ratios, Piotroski F-Score, Altman Z-Score, and an explainable weighted 0–100 score from stored statements (persisted to `financial_ratios`, `fundamental_snapshots`, `scores`). | ✅ Done |
-| 4 | **Technical engine** — EMA/SMA/MACD/RSI/ADX/ATR/SuperTrend/Ichimoku/VWAP/OBV/MFI/Bollinger/Keltner/Donchian/RS + 0–100 score from OHLC. | ⏳ Next |
-| 5 | **Pattern detection** — candlestick, classic chart, and harmonic patterns with confidence scores from real pivots. | ◻ Planned |
+| 4 | **Technical engine** — pure-NumPy EMA/SMA/MACD/RSI/ADX/ATR/SuperTrend/Ichimoku/VWAP/OBV/MFI/Bollinger/Keltner/Donchian + momentum/volatility/breakout + explainable 0–100 score, persisted to `technical_indicators` and `scores`. | ✅ Done |
+| 5 | **Pattern detection** — candlestick, classic chart, and harmonic patterns with confidence scores from real pivots. | ⏳ Next |
 | 6 | **Composite scoring + signals** — 35% fundamental / 35% technical / 10% momentum / 10% quality / 10% risk, fully explainable. | ◻ Planned |
 | 7 | **Frontend screener** — React + AG Grid data table (sort/filter/group/pin/export/saved views), dark institutional theme. | ◻ Planned |
 | 8 | **Company page** — TradingView chart, statements, peers, historical scores, analyst estimates, news, AI summary. | ◻ Planned |

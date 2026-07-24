@@ -86,8 +86,20 @@ curl -X POST "http://localhost:8000/api/v1/admin/compute-fundamentals"
 ```
 
 The screener's `fundamental_score`, `pe_ttm`, `roe`, `revenue_growth`, etc. then
-populate. The `composite_score` stays `null` until the technical + composite
-engines land (Phases 4–6).
+populate.
+
+### Technical scores (Phase 4)
+
+After daily prices are ingested, compute indicators + the technical score
+(explainable, from real OHLCV — no hardcoded ratings):
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/admin/ingest/daily?region=us"
+curl -X POST "http://localhost:8000/api/v1/admin/compute-technical"
+```
+
+`technical_score` then populates. The `composite_score` stays `null` until the
+composite engine lands (Phase 6).
 
 To run migrations manually (they run automatically at container start):
 

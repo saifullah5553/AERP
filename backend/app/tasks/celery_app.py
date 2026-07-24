@@ -60,4 +60,8 @@ celery_app.conf.beat_schedule = {
         "task": "aerp.engine.compute_fundamentals",
         "schedule": crontab(hour=4, minute=0),  # recompute scores after ingest
     },
+    "compute-technical": {
+        "task": "aerp.engine.compute_technical",
+        "schedule": crontab(hour=23, minute=0),  # after daily-price backfill
+    },
 }
