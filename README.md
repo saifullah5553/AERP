@@ -15,7 +15,7 @@ Frontend (React/TS/AG Grid/TradingView)  ──►  FastAPI (read-only, from DB/
                         Redis (cache + pub/sub) ───┤
                                                    ▲
 Celery Beat ─► Celery Workers ─► Ingestion ─► PostgreSQL
-                 (providers: FMP · Binance · PSX · TwelveData · <paid>)
+                 (free providers: yfinance · Binance · PSX)
 ```
 
 - **Web requests never call a data provider.** The API only reads Postgres/Redis.
@@ -75,10 +75,13 @@ Then:
 The stack seeds reference markets and a small set of real securities on first
 boot so the API returns data immediately.
 
-### Ingestion (Phase 2)
+### Ingestion (Phase 2) — 100% free, no API keys
 
-Crypto (Binance) and PSX prices work with **no keys**. For US fundamentals/prices
-and forex, add free keys to `.env` (`FMP_API_KEY`, `TWELVE_DATA_API_KEY`).
+All markets use free, keyless sources: **yfinance** (US/India/GCC equities +
+fundamentals, forex, commodities, crypto — the platform's symbols are already in
+Yahoo format), **Binance** (real-time crypto), and the **PSX portal** scrape.
+Paid providers (FMP/TwelveData/EODHD) exist as optional drop-ins but are not
+wired in, so nothing needs a key.
 
 Celery Beat refreshes quotes/prices automatically, or trigger a run manually:
 
@@ -94,7 +97,7 @@ real data.
 
 ### Fundamentals & scores (Phase 3)
 
-With an `FMP_API_KEY` set, ingest statements and compute the fundamental score
+Ingest statements (keyless, via yfinance) and compute the fundamental score
 (every score carries a stored, auditable breakdown — no hardcoding):
 
 ```bash

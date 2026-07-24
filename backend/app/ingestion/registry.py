@@ -23,26 +23,29 @@ from app.ingestion.providers.base import (
     StatementDTO,
 )
 from app.ingestion.providers.binance import BinanceProvider
-from app.ingestion.providers.fmp import FMPProvider
 from app.ingestion.providers.psx import PSXProvider
-from app.ingestion.providers.twelvedata import TwelveDataProvider
+from app.ingestion.providers.yahoo import YahooFetcher, YahooProvider
 from app.models.enums import AssetClass, MarketRegion
 
 log = get_logger(__name__)
 
-# Ordered provider names per routing key. Key is asset_class, except equities are
-# further keyed by region because coverage differs sharply by market.
+# Ordered provider names per routing key — FREE SOURCES ONLY (no API keys):
+#   yahoo   → universal (quotes, daily, fundamentals) via yfinance
+#   binance → crypto (real-time, preferred for crypto)
+#   psx     → Pakistan Stock Exchange portal scrape
+# Paid providers (FMP/TwelveData/EODHD) exist as optional drop-ins but are NOT
+# wired here, so the running system needs no keys.
 ROUTING: dict[object, list[str]] = {
-    AssetClass.CRYPTO: ["binance"],
-    AssetClass.FOREX: ["twelvedata", "fmp"],
-    AssetClass.COMMODITY: ["twelvedata", "fmp"],
-    AssetClass.INDEX: ["twelvedata", "fmp"],
-    AssetClass.ETF: ["fmp", "twelvedata"],
-    (AssetClass.EQUITY, MarketRegion.US): ["fmp", "twelvedata"],
-    (AssetClass.EQUITY, MarketRegion.PSX): ["psx"],
-    (AssetClass.EQUITY, MarketRegion.INDIA): ["twelvedata", "fmp"],
-    (AssetClass.EQUITY, MarketRegion.GCC): ["twelvedata", "fmp"],
-    (AssetClass.EQUITY, MarketRegion.GLOBAL): ["fmp", "twelvedata"],
+    AssetClass.CRYPTO: ["binance", "yahoo"],
+    AssetClass.FOREX: ["yahoo"],
+    AssetClass.COMMODITY: ["yahoo"],
+    AssetClass.INDEX: ["yahoo"],
+    AssetClass.ETF: ["yahoo"],
+    (AssetClass.EQUITY, MarketRegion.US): ["yahoo"],
+    (AssetClass.EQUITY, MarketRegion.PSX): ["psx", "yahoo"],
+    (AssetClass.EQUITY, MarketRegion.INDIA): ["yahoo"],
+    (AssetClass.EQUITY, MarketRegion.GCC): ["yahoo"],
+    (AssetClass.EQUITY, MarketRegion.GLOBAL): ["yahoo"],
 }
 
 
@@ -56,13 +59,17 @@ class SecurityRef:
 
 
 class ProviderRegistry:
-    def __init__(self, client: httpx.Client | None = None) -> None:
-        # A shared client is optional; tests inject a mock-transport client.
+    def __init__(
+        self,
+        client: httpx.Client | None = None,
+        yahoo_fetcher: YahooFetcher | None = None,
+    ) -> None:
+        # A shared httpx client is optional (tests inject a mock transport); the
+        # yahoo_fetcher lets tests supply canned data instead of hitting Yahoo.
         self._providers: dict[str, MarketDataProvider] = {
+            "yahoo": YahooProvider(fetcher=yahoo_fetcher),
             "binance": BinanceProvider(client),
             "psx": PSXProvider(client),
-            "fmp": FMPProvider(client),
-            "twelvedata": TwelveDataProvider(client),
         }
 
     def provider(self, name: str) -> MarketDataProvider | None:
@@ -70,8 +77,8 @@ class ProviderRegistry:
 
     def order_for(self, asset_class: AssetClass, region: MarketRegion) -> list[str]:
         if asset_class == AssetClass.EQUITY:
-            return ROUTING.get((asset_class, region), ["fmp", "twelvedata"])
-        return ROUTING.get(asset_class, [])
+            return ROUTING.get((asset_class, region), ["yahoo"])
+        return ROUTING.get(asset_class, ["yahoo"])
 
     # ── Quotes ───────────────────────────────────────────────
     def get_quotes(self, refs: list[SecurityRef]) -> dict[str, QuoteDTO]:

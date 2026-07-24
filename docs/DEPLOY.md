@@ -28,8 +28,8 @@ Steps:
 3. Set the `sync: false` secrets in the dashboard:
    - `AERP_CORS_ORIGINS` = the deployed frontend URL
    - `AERP_ADMIN_EMAIL` / `AERP_ADMIN_PASSWORD` = first superuser (enables `/admin/ingest/*`)
-   - `FMP_API_KEY`, `TWELVE_DATA_API_KEY` (and `EODHD_API_KEY` if used)
    - Frontend `VITE_API_BASE` = the API service URL
+   - (Data providers need no keys — ingestion is free/keyless via yfinance + Binance + PSX.)
 4. Deploy. On first boot the API runs migrations, seeds reference data, and creates
    the superuser.
 

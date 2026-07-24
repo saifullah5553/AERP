@@ -17,18 +17,24 @@ surfaces "insufficient data" — it never fabricates.
 | 9 | **Live prices** — SSE endpoint streaming the Redis `quotes` pub/sub channel (heartbeats, optional symbol filter); browser EventSource updates loaded grid rows in place (cell flash + LIVE badge) and the company header. | ✅ Done |
 | 10 | **Auth, rate limiting, CI/CD, deploy** — JWT register/login/me, superuser-protected admin endpoints, per-user watchlists, Redis fixed-window rate limiting (fail-open), first-superuser bootstrap, backend + frontend CI, and the finalized Render/Docker blueprint. | ✅ Done |
 
-## Data strategy (current decision: free/freemium mix)
+## Data strategy — FREE, KEYLESS (no API keys required)
 
-| Market | Prices | Fundamentals |
-|--------|--------|--------------|
-| US (NYSE/NASDAQ/AMEX) | FMP free / TwelveData | FMP free (good) |
-| Crypto | Binance public API | N/A (on-chain metrics later) |
-| PSX (Pakistan) | PSX portal (`dps.psx.com.pk`) | Scrape / paid provider needed |
-| India (NSE/BSE) | TwelveData / provider | **Thin on free tier** |
-| GCC (Tadawul/DFM/ADX) | Provider needed | **Thin on free tier** |
-| Forex / Commodities | TwelveData / FMP | N/A |
+The default routing uses only free sources. The platform's symbols are already in
+Yahoo Finance format, so `yfinance` is the universal provider.
 
-The provider layer is pluggable (`app/ingestion/providers/base.py`). A single paid
-provider such as **EODHD** (~$20–80/mo) can be dropped in to fill every gap above
-without touching the engines or API — it just becomes the primary in the fallback
-chain.
+| Market | Prices | Fundamentals | Source |
+|--------|--------|--------------|--------|
+| US (NYSE/NASDAQ/AMEX) | ✅ | ✅ | yfinance |
+| India (NSE/BSE) | ✅ | ✅ | yfinance (`.NS`/`.BO`) |
+| GCC (Tadawul/DFM/ADX) | ✅ (Tadawul best) | ⚠️ patchy | yfinance (`.SR` etc.) |
+| Forex / Commodities | ✅ | N/A | yfinance (`=X`/`=F`) |
+| Crypto | ✅ real-time | N/A | Binance (yfinance fallback) |
+| PSX (Pakistan) | ✅ | ⚠️ prices only | PSX portal (yfinance fallback) |
+
+Caveats of free data: Yahoo is unofficial and may rate-limit datacenter IPs, and
+statement row-labels can shift; every call is guarded and yields nothing (never a
+fake) on failure. Some GCC/PSX fundamentals are thin.
+
+The provider layer stays pluggable (`app/ingestion/providers/base.py`). Paid
+providers (FMP, TwelveData, EODHD) remain in the codebase as **optional drop-ins**
+but are **not wired into the default routing**, so no keys are needed to run.
