@@ -73,3 +73,10 @@ def trigger_compute_technical(limit: int | None = None) -> EnqueuedTask:
     from app.tasks.ingestion import compute_technical_task
 
     return _enqueue(compute_technical_task, limit=limit)
+
+
+@router.post("/detect-patterns", response_model=EnqueuedTask, summary="Detect patterns")
+def trigger_detect_patterns(limit: int | None = None) -> EnqueuedTask:
+    from app.tasks.ingestion import detect_patterns_task
+
+    return _enqueue(detect_patterns_task, limit=limit)

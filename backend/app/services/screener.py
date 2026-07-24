@@ -18,6 +18,7 @@ from app.models.fundamentals import FundamentalSnapshot
 from app.models.market import Market, Security
 from app.models.quote import Quote
 from app.models.scoring import Score, Signal
+from app.models.technical import PatternDetection
 from app.schemas.screener import ScreenerRow
 
 # Whitelist of sortable fields → SQL expressions. Anything else is rejected.
@@ -71,8 +72,33 @@ def _latest_subqueries():
     return latest_score, latest_signal
 
 
+def _top_pattern_subquery():
+    """Highest-confidence active pattern per security (rn == 1)."""
+    ranked = (
+        select(
+            PatternDetection.security_id.label("security_id"),
+            PatternDetection.name.label("name"),
+            func.row_number()
+            .over(
+                partition_by=PatternDetection.security_id,
+                order_by=[
+                    PatternDetection.confidence.desc(),
+                    PatternDetection.detected_on.desc(),
+                ],
+            )
+            .label("rn"),
+        )
+        .where(PatternDetection.is_active.is_(True))
+        .subquery("ranked_patterns")
+    )
+    return select(ranked.c.security_id, ranked.c.name).where(ranked.c.rn == 1).subquery(
+        "top_pattern"
+    )
+
+
 def _base_select() -> Select:
     latest_score, latest_signal = _latest_subqueries()
+    top_pattern = _top_pattern_subquery()
 
     return (
         select(
@@ -103,8 +129,10 @@ def _base_select() -> Select:
             Score.as_of.label("scored_on"),
             Signal.signal_type.label("signal"),
             Signal.label.label("signal_label"),
+            top_pattern.c.name.label("top_pattern"),
         )
         .join(Market, Security.market_id == Market.id)
+        .outerjoin(top_pattern, top_pattern.c.security_id == Security.id)
         .outerjoin(Quote, Quote.security_id == Security.id)
         .outerjoin(FundamentalSnapshot, FundamentalSnapshot.security_id == Security.id)
         .outerjoin(
@@ -199,7 +227,7 @@ def query_screener(
             composite_score=_f(r["composite_score"]),
             signal=r["signal"],
             signal_label=r["signal_label"],
-            top_pattern=None,  # populated in Phase 5 (pattern engine)
+            top_pattern=r["top_pattern"],
             scored_on=r["scored_on"],
         )
         for r in rows

@@ -64,4 +64,8 @@ celery_app.conf.beat_schedule = {
         "task": "aerp.engine.compute_technical",
         "schedule": crontab(hour=23, minute=0),  # after daily-price backfill
     },
+    "detect-patterns": {
+        "task": "aerp.engine.detect_patterns",
+        "schedule": crontab(hour=23, minute=20),  # after technical compute
+    },
 }

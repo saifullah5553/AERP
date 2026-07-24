@@ -71,3 +71,12 @@ def compute_technical_task(limit: int | None = None) -> dict:
 
     with session_scope() as db:
         return compute_all(db, limit=limit)
+
+
+@celery_app.task(name="aerp.engine.detect_patterns")
+def detect_patterns_task(limit: int | None = None) -> dict:
+    """Detect chart/candlestick/harmonic patterns from already-ingested prices."""
+    from app.engines.patterns.engine import compute_all
+
+    with session_scope() as db:
+        return compute_all(db, limit=limit)
