@@ -36,6 +36,9 @@ frontend/.env.*
 .DS_Store
 Thumbs.db
 
+# ---- Local Claude Code settings (machine-specific) ----
+.claude/settings.local.json
+
 # ---- Data / Logs ----
 *.log
 *.sqlite3
