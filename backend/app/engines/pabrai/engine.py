@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
 from app.engines.benchmark.engine import score_metric
-from app.models.enums import StatementPeriod
+from app.models.enums import AssetClass, StatementPeriod
 from app.models.fundamentals import (
     CashFlowStatement,
     FinancialRatios,
@@ -105,20 +105,24 @@ def _simplicity(sector: str | None, industry: str | None) -> float:
 
 
 def _derived_metrics(r: FinancialRatios | None) -> dict[str, float | None]:
-    """Metric map in benchmark units from a ratios row (+ valuation yields)."""
+    """Metric map in benchmark units from a ratios row (+ valuation yields).
+
+    Uses getattr so it tolerates ratio columns that aren't persisted (e.g. fcf_margin).
+    """
     if r is None:
         return {}
-    pe = _f(r.pe_ratio)
-    ev = _f(r.ev_to_ebitda)
+    g = lambda name: _f(getattr(r, name, None))  # noqa: E731 - terse local accessor
+    pe = g("pe_ratio")
+    ev = g("ev_to_ebitda")
     m = {
-        "roe": _f(r.roe), "roic": _f(r.roic), "net_margin": _f(r.net_margin),
-        "operating_margin": _f(r.operating_margin), "gross_margin": _f(r.gross_margin),
-        "debt_to_equity": _f(r.debt_to_equity), "interest_coverage": _f(r.interest_coverage),
-        "current_ratio": _f(r.current_ratio), "revenue_cagr": _f(r.revenue_cagr_3y),
-        "eps_cagr": _f(r.eps_cagr_3y), "fcf_margin": _f(r.fcf_margin),
+        "roe": g("roe"), "roic": g("roic"), "net_margin": g("net_margin"),
+        "operating_margin": g("operating_margin"), "gross_margin": g("gross_margin"),
+        "debt_to_equity": g("debt_to_equity"), "interest_coverage": g("interest_coverage"),
+        "current_ratio": g("current_ratio"), "revenue_cagr": g("revenue_cagr_3y"),
+        "eps_cagr": g("eps_cagr_3y"), "fcf_margin": g("fcf_margin"),
         "pe": pe if pe and pe > 0 else None, "ev_ebitda": ev if ev and ev > 0 else None,
-        "pb": _f(r.price_to_book), "peg": _f(r.peg_ratio),
-        "dividend_yield": _f(r.dividend_yield),
+        "pb": g("price_to_book"), "peg": g("peg_ratio"),
+        "dividend_yield": g("dividend_yield"),
     }
     m["earnings_yield"] = (1.0 / pe) if pe and pe > 0 else None
     return m
@@ -186,6 +190,9 @@ def category_for(score: float) -> str:
 
 
 def compute_for_security(db: Session, security: Security, ctx: _Ctx) -> tuple[float | None, dict]:
+    # Only businesses get a business-quality score — not indices/ETFs/forex/etc.
+    if security.asset_class != AssetClass.EQUITY:
+        return None, {"items": [], "coverage": 0.0}
     ratios = _annual(db, FinancialRatios, security.id)
     incomes = _annual(db, IncomeStatement, security.id)
     cashflows = _annual(db, CashFlowStatement, security.id)
@@ -434,11 +441,13 @@ def compute_for_security(db: Session, security: Security, ctx: _Ctx) -> tuple[fl
 
     # ── Coverage-weighted overall ────────────────────────────────────────────
     avail = [it for it in items if it.available and it.score is not None]
-    if not avail:
-        return None, {"items": [asdict(it) for it in items], "coverage": 0.0}
     total_w = sum(it.weight for it in avail)
-    overall = sum(it.score * it.weight for it in avail) / total_w * 100.0
     coverage = total_w / sum(WEIGHTS.values())
+    # Need enough real financial coverage to score honestly (not just the qualitative
+    # 'understandable business' proxy).
+    if coverage < 0.4:
+        return None, {"items": [asdict(it) for it in items], "coverage": round(coverage, 2)}
+    overall = sum(it.score * it.weight for it in avail) / total_w * 100.0
     breakdown = {
         "overall": round(overall, 1),
         "category": category_for(overall),
