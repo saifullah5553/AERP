@@ -119,19 +119,24 @@ class YahooProvider(MarketDataProvider):
         bars: list[OHLCVBar] = []
         for r in rows:
             try:
-                bars.append(
-                    OHLCVBar(
-                        date=date.fromisoformat(r["date"]),
-                        open=_f(r.get("open")),
-                        high=_f(r.get("high")),
-                        low=_f(r.get("low")),
-                        close=float(r["close"]),
-                        adj_close=_f(r.get("adj_close")),
-                        volume=_i(r.get("volume")),
-                    )
-                )
+                close = float(r["close"])
             except (KeyError, TypeError, ValueError):
                 continue
+            # Yahoo returns today's in-progress bar with a NaN close; skip it so
+            # it never corrupts the indicator series.
+            if _is_nan(close):
+                continue
+            bars.append(
+                OHLCVBar(
+                    date=date.fromisoformat(r["date"]),
+                    open=_f(r.get("open")),
+                    high=_f(r.get("high")),
+                    low=_f(r.get("low")),
+                    close=close,
+                    adj_close=_f(r.get("adj_close")),
+                    volume=_i(r.get("volume")),
+                )
+            )
         return bars
 
     def get_statements(
@@ -263,9 +268,10 @@ def _is_nan(v: Any) -> bool:
 
 def _f(value: Any) -> float | None:
     try:
-        return float(value)
+        out = float(value)
     except (TypeError, ValueError):
         return None
+    return None if _is_nan(out) else out
 
 
 def _i(value: Any) -> int | None:

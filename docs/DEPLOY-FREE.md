@@ -28,6 +28,28 @@ python -m app.cli export-static     # writes frontend/public/data
 Limitation: it's a periodic snapshot, so no real-time SSE/live-price tick and no
 per-request interactivity. For that, use Option B.
 
+### US data (Yahoo/yfinance) is refreshed locally, not in CI
+
+PSX data comes from `dps.psx.com.pk` (Pakistani host, works from GitHub's runners).
+US data comes from Yahoo (`yfinance`), which **rate-limits datacenter IPs** — so the
+6-hourly CI refresh can't fetch it. Instead:
+
+- US uses a **curated large-cap allowlist** (`app/ingestion/us_universe.py:US_LARGE_CAPS`),
+  loaded with `load-us-universe --curated`.
+- Refresh US **locally** (residential IP) whenever you want current US prices:
+
+  ```bash
+  cd backend
+  DATABASE_URL="sqlite+pysqlite:///./aerp.db" AERP_PSX_CSV_DIR=../data/psx_csv \
+  AERP_PSX_INSIDER_CSV=../data/psx_insider.csv python -m app.cli all
+  python -m app.cli export-static --no-merge   # clean rebuild of frontend/public/data
+  git add frontend/public/data && git commit -m "refresh snapshot" && git push
+  ```
+
+- `export-static` **merges by default**: the CI refresh updates PSX rows while
+  **preserving** the US rows from the last committed snapshot (so CI never wipes US).
+  Use `--no-merge` for a full clean rebuild locally.
+
 ## Option B — Fully-live backend (free tier, ~15 min setup)
 
 Free building blocks:

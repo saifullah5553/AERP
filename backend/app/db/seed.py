@@ -58,7 +58,8 @@ SECURITIES: list[tuple] = [
     # Pakistan — PSX
     ("PSX", "LUCK", "Lucky Cement Limited", AssetClass.EQUITY, "Materials", "Cement"),
     ("PSX", "SYS", "Systems Limited", AssetClass.EQUITY, "Technology", "IT Services"),
-    ("PSX", "ENGRO", "Engro Corporation Limited", AssetClass.EQUITY, "Materials", "Conglomerate"),
+    # ENGRO Corporation rebranded to Engro Holdings (ticker ENGROH); the CSV
+    # fundamentals are under ENGROH, so seeding ENGRO created a dataless duplicate.
     ("PSX", "HUBC", "Hub Power Company Limited", AssetClass.EQUITY, "Utilities", "Independent Power Producer"),
     ("PSX", "OGDC", "Oil & Gas Development Company", AssetClass.EQUITY, "Energy", "Oil & Gas E&P"),
     ("PSX", "PPL", "Pakistan Petroleum Limited", AssetClass.EQUITY, "Energy", "Oil & Gas E&P"),

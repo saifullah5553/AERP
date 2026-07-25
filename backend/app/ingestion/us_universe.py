@@ -29,6 +29,32 @@ DEFAULT_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 # SEC exchange label → our market code (majors only).
 EXCHANGE_MAP = {"Nasdaq": "NASDAQ", "NYSE": "NYSE"}
 
+# Curated US large-cap universe. Prices/fundamentals for US come from Yahoo, which
+# rate-limits datacenter IPs — so we ingest a meaningful large-cap set rather than
+# all ~7,000 tickers (which would be mostly dataless in the free snapshot). Names
+# and exchanges still come from SEC (keyless). Yahoo symbols == plain US tickers.
+US_LARGE_CAPS: tuple[str, ...] = (
+    # Mega-cap tech / comms
+    "AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "NVDA", "META", "TSLA", "AVGO", "ORCL",
+    "ADBE", "CRM", "CSCO", "ACN", "AMD", "INTC", "QCOM", "TXN", "IBM", "NOW",
+    "INTU", "AMAT", "MU", "ADI", "LRCX", "KLAC", "SNPS", "CDNS", "PANW", "NFLX",
+    "DIS", "CMCSA", "T", "VZ", "TMUS",
+    # Financials
+    "BRK-B", "JPM", "BAC", "WFC", "GS", "MS", "C", "SCHW", "AXP", "BLK",
+    "SPGI", "V", "MA", "PYPL", "COF", "USB", "PNC",
+    # Healthcare
+    "UNH", "JNJ", "LLY", "PFE", "MRK", "ABBV", "TMO", "ABT", "DHR", "BMY",
+    "AMGN", "MDT", "GILD", "CVS", "ISRG", "VRTX", "REGN", "ZTS",
+    # Consumer
+    "WMT", "PG", "KO", "PEP", "COST", "MCD", "NKE", "SBUX", "HD", "LOW",
+    "TGT", "BKNG", "CMG", "MDLZ", "CL", "MO", "PM",
+    # Industrials / energy / materials
+    "XOM", "CVX", "COP", "SLB", "EOG", "CAT", "BA", "HON", "GE", "UPS",
+    "RTX", "LMT", "DE", "MMM", "UNP", "LIN", "FCX", "NEM",
+    # Utilities / real estate / other
+    "NEE", "DUK", "SO", "PLD", "AMT", "EQIX", "CCI",
+)
+
 
 @dataclass(slots=True)
 class SECEntry:
@@ -75,17 +101,34 @@ class SECClient:
 
 
 def ingest_us_universe(
-    db: Session, client: SECClient, limit: int | None = None
+    db: Session,
+    client: SECClient,
+    limit: int | None = None,
+    symbols: list[str] | None = None,
 ) -> dict[str, int]:
+    """Load US securities (name/exchange/CIK) from SEC.
+
+    ``symbols`` restricts the load to a curated allowlist (e.g. ``US_LARGE_CAPS``);
+    allowlisted tickers bypass the alnum filter so names like ``BRK-B`` load. Any
+    allowlisted ticker missing from SEC is created with a minimal profile so the
+    curated set is always fully present.
+    """
     entries = client.fetch()
     markets = markets_by_code(db)
+    allow = {s.upper() for s in symbols} if symbols else None
+    seen: set[str] = set()
     created = 0
     considered = 0
     for entry in entries:
         code = EXCHANGE_MAP.get(entry.exchange or "")
         ticker = entry.ticker.upper().strip()
-        # Skip non-major exchanges and preferred/warrant/unit tickers (dots, dashes).
-        if code is None or not ticker.isalnum():
+        if code is None:
+            continue
+        if allow is not None:
+            if ticker not in allow:
+                continue
+        elif not ticker.isalnum():
+            # Skip preferred/warrant/unit tickers (dots, dashes) in the full load.
             continue
         market = markets.get(code)
         if market is None:
@@ -101,10 +144,27 @@ def ingest_us_universe(
         security, was_created = upsert_security(db, market, profile)
         if entry.cik and not security.cik:
             security.cik = f"{entry.cik:010d}"  # EDGAR uses 10-digit zero-padded CIK
+        seen.add(ticker)
         created += int(was_created)
         considered += 1
         if limit is not None and considered >= limit:
             break
+
+    # Ensure any curated ticker absent from SEC still exists (default to NYSE).
+    if allow is not None:
+        nyse = markets.get("NYSE") or markets.get("NASDAQ")
+        for ticker in sorted(allow - seen):
+            if nyse is None:
+                break
+            _, was_created = upsert_security(
+                db,
+                nyse,
+                SecurityProfile(
+                    symbol=ticker, name=ticker, asset_class=AssetClass.EQUITY,
+                    exchange=nyse.code, currency="USD", country="US",
+                ),
+            )
+            created += int(was_created)
     db.commit()
     result = {"discovered": len(entries), "created": created}
     log.info("ingest_us_universe: %s", result)

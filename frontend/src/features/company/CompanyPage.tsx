@@ -13,7 +13,6 @@ import StatementsTable, {
   CASHFLOW_FIELDS,
   INCOME_FIELDS,
 } from "./StatementsTable";
-import TradingViewChart from "./TradingViewChart";
 
 const SIGNAL_COLOR: Record<string, string> = {
   strong_buy: "#22c55e",
@@ -171,8 +170,6 @@ export default function CompanyPage() {
       {/* Body */}
       <div className="grid gap-4 p-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
-          <TradingViewChart symbol={data.tradingview_symbol} />
-
           <div className="rounded border border-base-600 bg-base-800">
             <div className="flex flex-wrap border-b border-base-600">
               {TABS.map((t) => (

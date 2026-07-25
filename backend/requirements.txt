@@ -25,7 +25,8 @@ python-multipart==0.0.20
 httpx==0.28.1
 
 # ── Free market data (keyless) ────────────────────────────────
-yfinance==0.2.51
+# 1.5.x handles Yahoo's current cookie/crumb auth; 0.2.x returns empty responses.
+yfinance==1.5.2
 
 # ── Numeric (engines, Phase 3+) ───────────────────────────────
 numpy==2.2.1

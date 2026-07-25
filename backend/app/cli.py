@@ -114,10 +114,14 @@ def cmd_load_universe(args: argparse.Namespace) -> None:
 
 def cmd_load_us_universe(args: argparse.Namespace) -> None:
     from app.db.session import session_scope
-    from app.ingestion.us_universe import SECClient, ingest_us_universe
+    from app.ingestion.us_universe import US_LARGE_CAPS, SECClient, ingest_us_universe
 
+    symbols = list(US_LARGE_CAPS) if getattr(args, "curated", False) else None
     with session_scope() as db:
-        log.info("load-us-universe: %s", ingest_us_universe(db, SECClient(), limit=args.limit))
+        log.info(
+            "load-us-universe: %s",
+            ingest_us_universe(db, SECClient(), limit=args.limit, symbols=symbols),
+        )
 
 
 def cmd_ingest_insider(args: argparse.Namespace) -> None:
@@ -175,15 +179,37 @@ def cmd_export_static(args: argparse.Namespace) -> None:
 
     out = Path(args.out or "../frontend/public/data")
     (out / "company").mkdir(parents=True, exist_ok=True)
+    merge = not getattr(args, "no_merge", False)
 
     with session_scope() as db:
         # Only securities with a real composite score make the demo meaningful.
         rows, total = query_screener(
             db, ScreenerFilters(min_composite=0, sort_by="composite_score"), 0, 5000
         )
-        (out / "screener.json").write_text(
-            json.dumps([r.model_dump(mode="json") for r in rows]), encoding="utf-8"
+        fresh = [r.model_dump(mode="json") for r in rows]
+
+        # Merge with any existing snapshot, keyed by provider_symbol: rows this run
+        # produced win; rows only in the old snapshot are preserved. This lets the
+        # free CI refresh (PSX-only, since Yahoo 429s on datacenter IPs) update PSX
+        # without wiping US rows that were populated locally from a residential IP.
+        screener_path = out / "screener.json"
+        if merge and screener_path.exists():
+            try:
+                old = json.loads(screener_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                old = []
+            by_symbol = {r.get("provider_symbol"): r for r in old}
+            for r in fresh:
+                by_symbol[r.get("provider_symbol")] = r
+            merged = list(by_symbol.values())
+        else:
+            merged = fresh
+        merged.sort(
+            key=lambda r: (r.get("composite_score") is not None, r.get("composite_score") or 0),
+            reverse=True,
         )
+        screener_path.write_text(json.dumps(merged), encoding="utf-8")
+
         exported = 0
         for r in rows:
             detail = get_company(db, r.provider_symbol)
@@ -193,16 +219,21 @@ def cmd_export_static(args: argparse.Namespace) -> None:
                 json.dumps(detail.model_dump(mode="json")), encoding="utf-8"
             )
             exported += 1
+        # Company files for securities only in the old snapshot are left in place.
+        company_files = len(list((out / "company").glob("*.json")))
         (out / "meta.json").write_text(
             json.dumps({
                 "generated_at": datetime.now(UTC).isoformat(),
-                "securities": total,
-                "companies": exported,
+                "securities": len(merged),
+                "companies": company_files,
                 "mode": "static-demo",
             }),
             encoding="utf-8",
         )
-    log.info("export-static: %d screener rows, %d company files → %s", total, exported, out)
+    log.info(
+        "export-static: %d rows this run, %d total after merge, %d company files → %s",
+        total, len(merged), company_files, out,
+    )
 
 
 def cmd_all(args: argparse.Namespace) -> None:
@@ -210,7 +241,7 @@ def cmd_all(args: argparse.Namespace) -> None:
     cmd_init_db(args)
     cmd_seed(args)
     cmd_load_universe(argparse.Namespace(providers="binance,psx"))
-    cmd_load_us_universe(argparse.Namespace(limit=None))
+    cmd_load_us_universe(argparse.Namespace(limit=None, curated=True))
     cmd_ingest_psx(args)
     cmd_ingest_psx_market(argparse.Namespace(limit=None, no_history=False))
     cmd_ingest_macro(args)
@@ -239,7 +270,8 @@ def build_parser() -> argparse.ArgumentParser:
     add("init-db", cmd_init_db)
     add("seed", cmd_seed)
     add("load-universe", cmd_load_universe, providers=True)
-    add("load-us-universe", cmd_load_us_universe, limit=True)
+    usu = add("load-us-universe", cmd_load_us_universe, limit=True)
+    usu.add_argument("--curated", action="store_true", help="only the large-cap allowlist")
     add("ingest-psx", cmd_ingest_psx)
     psxm = add("ingest-psx-market", cmd_ingest_psx_market, limit=True)
     psxm.add_argument("--no-history", action="store_true", help="quotes+names only")
@@ -253,6 +285,7 @@ def build_parser() -> argparse.ArgumentParser:
     add("compute", cmd_compute, limit=True)
     export = sub.add_parser("export-static")
     export.add_argument("--out", default=None, help="output dir (default ../frontend/public/data)")
+    export.add_argument("--no-merge", action="store_true", help="overwrite; no merge")
     export.set_defaults(func=cmd_export_static)
     add("all", cmd_all)
     return parser
