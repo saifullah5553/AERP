@@ -78,6 +78,14 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
       cellRenderer: ScoreCell,
     },
     {
+      field: "pabrai_score",
+      headerName: "Pabrai",
+      headerTooltip: "Mohnish Pabrai business-quality + value checklist (0–100)",
+      width: 100,
+      sortable: true,
+      cellRenderer: ScoreCell,
+    },
+    {
       field: "top_candlestick",
       headerName: "Candlestick",
       width: 150,

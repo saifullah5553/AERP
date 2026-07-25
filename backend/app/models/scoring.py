@@ -63,8 +63,14 @@ class Score(Base, TimestampMixin):
     risk: Mapped[float | None] = mapped_column(Numeric(6, 2))
     composite: Mapped[float | None] = mapped_column(Numeric(6, 2))
 
+    # Independent business-quality/value model (Mohnish Pabrai checklist), 0..100.
+    # Does not feed the composite — surfaced alongside it.
+    pabrai: Mapped[float | None] = mapped_column(Numeric(6, 2))
+
     # {"fundamental": {"inputs": {...}, "weight": 0.35, "contribution": ...}, ...}
     breakdown: Mapped[dict[str, Any] | None] = mapped_column(JSONType)
+    # Per-item Pabrai checklist detail for the company page.
+    pabrai_breakdown: Mapped[dict[str, Any] | None] = mapped_column(JSONType)
 
     security: Mapped[Security] = relationship(back_populates="scores")
 

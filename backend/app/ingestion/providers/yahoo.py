@@ -39,7 +39,9 @@ class YahooFetcher(Protocol):
 
     def quotes(self, symbols: list[str]) -> dict[str, dict[str, Any]]: ...
     def daily(self, symbol: str, start: date | None) -> list[dict[str, Any]]: ...
-    def statements(self, symbol: str) -> dict[str, list[dict[str, Any]]]: ...
+    def statements(
+        self, symbol: str, quarterly: bool = False
+    ) -> dict[str, list[dict[str, Any]]]: ...
 
 
 # Yahoo statement row labels → our ORM statement columns. Used only by the real
@@ -142,10 +144,11 @@ class YahooProvider(MarketDataProvider):
     def get_statements(
         self, provider_symbol: str, period: StatementPeriod, limit: int = 5
     ) -> list[StatementDTO]:
-        if period != StatementPeriod.ANNUAL:
-            return []  # only annual statements from Yahoo for now
+        if period not in (StatementPeriod.ANNUAL, StatementPeriod.QUARTER):
+            return []  # Yahoo provides annual and quarterly statements
+        quarterly = period == StatementPeriod.QUARTER
         try:
-            data = self._fetcher.statements(provider_symbol)
+            data = self._fetcher.statements(provider_symbol, quarterly=quarterly)
         except Exception as exc:  # pragma: no cover - network dependent
             log.warning("Yahoo statements failed for %s: %s", provider_symbol, exc)
             return []
@@ -159,7 +162,7 @@ class YahooProvider(MarketDataProvider):
                     StatementDTO(
                         statement_type=stype,
                         fiscal_date=date.fromisoformat(raw_date),
-                        period=StatementPeriod.ANNUAL,
+                        period=period,
                         reported_currency=row.get("reported_currency"),
                         values={k: _f(v) for k, v in row.get("values", {}).items()},
                     )
@@ -225,13 +228,18 @@ class YFinanceFetcher:
             )
         return rows
 
-    def statements(self, symbol: str) -> dict[str, list[dict[str, Any]]]:
+    def statements(
+        self, symbol: str, quarterly: bool = False
+    ) -> dict[str, list[dict[str, Any]]]:
         yf = self._lib()
         ticker = yf.Ticker(symbol)
+        inc = "quarterly_income_stmt" if quarterly else "income_stmt"
+        bal = "quarterly_balance_sheet" if quarterly else "balance_sheet"
+        cf = "quarterly_cashflow" if quarterly else "cashflow"
         return {
-            "income": _frame_to_rows(getattr(ticker, "income_stmt", None), Y_INCOME),
-            "balance": _frame_to_rows(getattr(ticker, "balance_sheet", None), Y_BALANCE),
-            "cashflow": _frame_to_rows(getattr(ticker, "cashflow", None), Y_CASHFLOW),
+            "income": _frame_to_rows(getattr(ticker, inc, None), Y_INCOME),
+            "balance": _frame_to_rows(getattr(ticker, bal, None), Y_BALANCE),
+            "cashflow": _frame_to_rows(getattr(ticker, cf, None), Y_CASHFLOW),
         }
 
 

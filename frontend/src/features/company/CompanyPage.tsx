@@ -283,6 +283,7 @@ export default function CompanyPage() {
       {/* Body */}
       <div className="grid gap-4 p-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
+          <PabraiSection scores={data.scores} />
           <FundamentalSection detail={data} derived={derived} />
           <TechnicalSection tech={derived.tech} patternSignal={derived.patternSignal} />
           <RiskSection risks={derived.risks} />
@@ -425,6 +426,92 @@ function RiskSection({ risks }: { risks: RiskItem[] }) {
             <Pill text={r.level} color={LEVEL_TONE[r.level]} />
           </div>
         ))}
+      </div>
+    </Card>
+  );
+}
+
+// ── Mohnish Pabrai checklist ─────────────────────────────────────────────────
+interface PabraiItem {
+  key: string; name: string; weight: number; score: number | null;
+  metric: string; benchmark: string; reason: string;
+  positives: string[]; negatives: string[]; available: boolean;
+}
+interface PabraiBreakdown {
+  overall: number; category: string; coverage: number; items: PabraiItem[];
+}
+
+function scoreTone(pct: number): string {
+  return pct >= 0.7 ? "#22c55e" : pct >= 0.45 ? "#eab308" : "#f87171";
+}
+
+function PabraiSection({ scores }: { scores: Row | null }) {
+  const bd = scores?.pabrai_breakdown as unknown as PabraiBreakdown | null | undefined;
+  if (!bd || typeof bd !== "object" || !Array.isArray(bd.items)) return null;
+  const overall = num(scores?.pabrai) ?? bd.overall ?? null;
+  if (overall == null) return null;
+  const stars = Math.round((overall / 100) * 5);
+  const tone = scoreTone(overall / 100);
+
+  return (
+    <Card
+      title="Mohnish Pabrai Checklist"
+      right={
+        <span className="text-xs text-slate-400">
+          Coverage {Math.round((bd.coverage ?? 0) * 100)}%
+        </span>
+      }
+    >
+      <div className="flex items-center gap-4 border-b border-base-700/50 px-4 py-3">
+        <div className="flex flex-col items-center">
+          <span className="num text-3xl font-black" style={{ color: tone }}>{Math.round(overall)}</span>
+          <span className="text-[10px] uppercase tracking-wide text-slate-500">/ 100</span>
+        </div>
+        <div>
+          <div className="text-sm font-semibold text-slate-200">{bd.category}</div>
+          <div className="text-sm" style={{ color: tone }}>
+            {"★".repeat(stars)}<span className="text-slate-600">{"★".repeat(5 - stars)}</span>
+          </div>
+          <div className="mt-0.5 text-[11px] text-slate-500">
+            Business-quality + value alignment · benchmarked by market, sector & own history
+          </div>
+        </div>
+      </div>
+      <div className="divide-y divide-base-700/40">
+        {bd.items.map((it) => {
+          const pctScore = it.score ?? 0;
+          const pts = it.available && it.score != null ? it.score * it.weight : null;
+          const t = scoreTone(pctScore);
+          return (
+            <details key={it.key} className="px-4 py-2">
+              <summary className="flex cursor-pointer items-center justify-between gap-2 list-none">
+                <span className="flex items-center gap-2">
+                  <span style={{ color: it.available && pctScore >= 0.6 ? "#22c55e" : it.available ? "#eab308" : "#64748b" }}>
+                    {!it.available ? "○" : pctScore >= 0.6 ? "✓" : "✗"}
+                  </span>
+                  <span className="text-sm text-slate-200">{it.name}</span>
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="h-1.5 w-24 overflow-hidden rounded bg-base-700">
+                    <span className="block h-full" style={{ width: `${Math.round(pctScore * 100)}%`, background: t }} />
+                  </span>
+                  <span className="num w-12 text-right text-xs" style={{ color: t }}>
+                    {pts == null ? "—" : `${pts.toFixed(1)}/${it.weight}`}
+                  </span>
+                </span>
+              </summary>
+              <div className="mt-2 space-y-1 pl-6 text-[11px] text-slate-400">
+                <div>
+                  <span className="text-slate-300">{it.metric}</span>
+                  {it.benchmark ? <span className="text-slate-500"> · vs {it.benchmark}</span> : null}
+                </div>
+                <div>{it.reason}</div>
+                {it.positives.map((p, i) => <div key={`p${i}`} style={{ color: "#22c55e" }}>+ {p}</div>)}
+                {it.negatives.map((nn, i) => <div key={`n${i}`} style={{ color: "#f87171" }}>− {nn}</div>)}
+              </div>
+            </details>
+          );
+        })}
       </div>
     </Card>
   );

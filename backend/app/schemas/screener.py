@@ -46,6 +46,7 @@ class ScreenerRow(BaseModel):
     fundamental_score: float | None
     technical_score: float | None
     composite_score: float | None
+    pabrai_score: float | None
     signal: SignalType | None
     signal_label: str | None
     top_pattern: str | None

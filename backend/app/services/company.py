@@ -74,13 +74,18 @@ def _tradingview_symbol(market_code: str, symbol: str, asset_class: AssetClass) 
 
 
 def _annual(db: Session, model, security_id: int, limit: int = 5) -> list[dict]:
-    rows = db.scalars(
-        select(model)
-        .where(model.security_id == security_id, model.period == StatementPeriod.ANNUAL)
-        .order_by(model.fiscal_date.desc())
-        .limit(limit)
-    ).all()
-    return [orm_to_dict(r) for r in rows]
+    """Statements for display: trailing-twelve-month (current + annual-comparable)
+    when available, else annual (e.g. PSX from CSV), else raw quarterly."""
+    for period in (StatementPeriod.TTM, StatementPeriod.ANNUAL, StatementPeriod.QUARTER):
+        rows = db.scalars(
+            select(model)
+            .where(model.security_id == security_id, model.period == period)
+            .order_by(model.fiscal_date.desc())
+            .limit(limit)
+        ).all()
+        if rows:
+            return [orm_to_dict(r) for r in rows]
+    return []
 
 
 def _peers(db: Session, security: Security, limit: int = 8) -> list[PeerOut]:

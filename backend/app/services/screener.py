@@ -39,6 +39,7 @@ SORT_FIELDS = {
     "fundamental_score": Score.fundamental,
     "technical_score": Score.technical,
     "composite_score": Score.composite,
+    "pabrai_score": Score.pabrai,
 }
 
 
@@ -134,6 +135,7 @@ def _base_select() -> Select:
             Score.fundamental.label("fundamental_score"),
             Score.technical.label("technical_score"),
             Score.composite.label("composite_score"),
+            Score.pabrai.label("pabrai_score"),
             Score.as_of.label("scored_on"),
             Signal.signal_type.label("signal"),
             Signal.label.label("signal_label"),
@@ -240,6 +242,7 @@ def query_screener(
             fundamental_score=_f(r["fundamental_score"]),
             technical_score=_f(r["technical_score"]),
             composite_score=_f(r["composite_score"]),
+            pabrai_score=_f(r["pabrai_score"]),
             signal=r["signal"],
             signal_label=r["signal_label"],
             top_pattern=r["top_pattern"],

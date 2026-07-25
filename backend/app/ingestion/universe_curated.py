@@ -181,6 +181,25 @@ COMMODITIES: tuple[tuple[str, str, str], ...] = (
     ("LE", "Live Cattle", "Agriculture"),
 )
 
+# ── Market indices (Yahoo ``^`` symbols; technical-only, no fundamentals) ────
+INDICES: tuple[tuple[str, str], ...] = (
+    ("^GSPC", "S&P 500"), ("^IXIC", "NASDAQ Composite"), ("^DJI", "Dow Jones Industrial Average"),
+    ("^RUT", "Russell 2000"), ("^NSEI", "NIFTY 50"), ("^BSESN", "BSE SENSEX"),
+    ("^AXJO", "S&P/ASX 200"), ("^FTSE", "FTSE 100"), ("^N225", "Nikkei 225"),
+    ("^HSI", "Hang Seng"), ("^GDAXI", "DAX"), ("^TASI.SR", "Tadawul All Share (TASI)"),
+)
+
+# ── ETFs (Yahoo plain symbols; technical-only) ──────────────────────────────
+ETFS: tuple[tuple[str, str, str], ...] = (
+    ("SPY", "SPDR S&P 500 ETF", "US Equity"), ("QQQ", "Invesco QQQ (Nasdaq 100)", "US Equity"),
+    ("DIA", "SPDR Dow Jones ETF", "US Equity"), ("IWM", "iShares Russell 2000", "US Equity"),
+    ("VTI", "Vanguard Total Market", "US Equity"), ("VOO", "Vanguard S&P 500", "US Equity"),
+    ("ARKK", "ARK Innovation", "Thematic"), ("XLK", "Technology Select SPDR", "Sector"),
+    ("XLF", "Financial Select SPDR", "Sector"), ("XLE", "Energy Select SPDR", "Sector"),
+    ("GLD", "SPDR Gold Shares", "Commodity"), ("SLV", "iShares Silver Trust", "Commodity"),
+    ("EEM", "iShares Emerging Markets", "Global Equity"), ("EFA", "iShares EAFE", "Global Equity"),
+)
+
 # ── Crypto (Yahoo ``-USD``) ─────────────────────────────────────────────────
 CRYPTO: tuple[tuple[str, str], ...] = (
     ("BTC", "Bitcoin"), ("ETH", "Ethereum"), ("BNB", "BNB"), ("SOL", "Solana"),
@@ -217,7 +236,8 @@ def forex_name(pair: str) -> str:
 def load_curated_universe(db: Session) -> dict[str, int]:
     """Create/enrich every curated security across all free-data markets."""
     m = markets_by_code(db)
-    n = {"india": 0, "gcc": 0, "australia": 0, "forex": 0, "commodity": 0, "crypto": 0}
+    n = {"india": 0, "gcc": 0, "australia": 0, "forex": 0, "commodity": 0,
+         "crypto": 0, "index": 0, "etf": 0}
 
     # US is loaded separately via SEC (us_universe.py) for accurate exchange/CIK.
     for code, table, key in (("NSE", INDIA_NSE, "india"), ("TADAWUL", GCC_TADAWUL, "gcc"),
@@ -242,6 +262,16 @@ def load_curated_universe(db: Session) -> dict[str, int]:
     if crypto is not None:
         for sym, name in CRYPTO:
             n["crypto"] += _add(db, crypto, sym, name, AssetClass.CRYPTO)
+
+    index = m.get("INDEX")
+    if index is not None:
+        for sym, name in INDICES:
+            n["index"] += _add(db, index, sym, name, AssetClass.INDEX)
+
+    etf = m.get("ETF")
+    if etf is not None:
+        for sym, name, sector in ETFS:
+            n["etf"] += _add(db, etf, sym, name, AssetClass.ETF, sector)
 
     db.commit()
     log.info("load_curated_universe: %s", n)

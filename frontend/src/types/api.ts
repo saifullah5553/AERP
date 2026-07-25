@@ -56,6 +56,7 @@ export interface ScreenerRow {
   fundamental_score: number | null;
   technical_score: number | null;
   composite_score: number | null;
+  pabrai_score: number | null;
   signal: SignalType | null;
   signal_label: string | null;
   top_pattern: string | null;

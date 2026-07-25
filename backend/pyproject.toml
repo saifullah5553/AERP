@@ -16,6 +16,8 @@ ignore = ["B008"]  # FastAPI Depends() in defaults is idiomatic
 [tool.ruff.lint.per-file-ignores]
 # Seed rows are wide, aligned data tables — readability beats an 100-col wrap.
 "app/db/seed.py" = ["E501"]
+# Benchmark profiles are wide, aligned threshold tables.
+"app/engines/benchmark/profiles.py" = ["E501"]
 # Env vars must be set before app imports; that forces E402/I001 by design.
 "tests/conftest.py" = ["E402", "I001"]
 # Test fixtures include wide, aligned data tables.

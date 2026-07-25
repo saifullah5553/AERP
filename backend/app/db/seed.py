@@ -34,6 +34,8 @@ MARKETS: list[tuple] = [
     ("FOREX", "Foreign Exchange", MarketRegion.GLOBAL, None, "USD", "UTC", "=X"),
     ("CRYPTO", "Crypto Spot", MarketRegion.GLOBAL, None, "USD", "UTC", "-USD"),
     ("COMMODITY", "Commodity Futures", MarketRegion.GLOBAL, None, "USD", "UTC", "=F"),
+    ("INDEX", "Global Indices", MarketRegion.GLOBAL, None, "USD", "UTC", ""),
+    ("ETF", "Exchange-Traded Funds", MarketRegion.US, "US", "USD", "America/New_York", ""),
 ]
 
 # ── Securities ────────────────────────────────────────────────

@@ -124,12 +124,24 @@ def ingest_fundamentals(
     equities = [r for r in refs if r.asset_class == AssetClass.EQUITY]
     covered = 0
     statements_written = 0
+    from app.models.enums import StatementPeriod
+
     for ref in equities:
         stmts = registry.get_statements(ref)
         if not stmts:
             continue
         security_id = id_by_symbol[ref.provider_symbol]
         statements_written += upsert_statements(db, security_id, stmts)
+        # Also pull recent quarterly statements (for the latest-quarter display);
+        # the fundamental engine still scores on the annual periods above.
+        quarterly = registry.get_statements(ref, limit=8, period=StatementPeriod.QUARTER)
+        if quarterly:
+            statements_written += upsert_statements(db, security_id, quarterly)
+            # Roll quarterly into trailing-twelve-month rows for current, annual-
+            # comparable figures.
+            from app.ingestion.ttm import build_ttm_for_security
+
+            build_ttm_for_security(db, security_id)
         covered += 1
         db.commit()
     result = {

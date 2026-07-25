@@ -127,17 +127,18 @@ class ProviderRegistry:
         return []
 
     # ── Financial statements ─────────────────────────────────
-    def get_statements(self, ref: SecurityRef, limit: int = 5) -> list[StatementDTO]:
+    def get_statements(
+        self, ref: SecurityRef, limit: int = 5, period=None
+    ) -> list[StatementDTO]:
         from app.models.enums import StatementPeriod
 
+        period = period or StatementPeriod.ANNUAL
         for name in self.order_for(ref.asset_class, ref.region):
             provider = self._providers.get(name)
             if provider is None or not provider.available:
                 continue
             try:
-                stmts = provider.get_statements(
-                    ref.provider_symbol, StatementPeriod.ANNUAL, limit
-                )
+                stmts = provider.get_statements(ref.provider_symbol, period, limit)
             except NotImplementedError:
                 continue
             except Exception as exc:  # pragma: no cover - defensive

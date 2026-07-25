@@ -197,6 +197,7 @@ def cmd_compute(args: argparse.Namespace) -> None:
     from app.engines.forex.engine import compute_all as forex_all
     from app.engines.fundamental.engine import compute_all as fundamental_all
     from app.engines.insider.engine import compute_all as insider_all
+    from app.engines.pabrai.engine import compute_all as pabrai_all
     from app.engines.patterns.engine import compute_all as patterns_all
     from app.engines.technical.engine import compute_all as technical_all
 
@@ -207,6 +208,8 @@ def cmd_compute(args: argparse.Namespace) -> None:
         log.info("patterns: %s", patterns_all(db, limit=args.limit))
         log.info("insider: %s", insider_all(db, limit=args.limit))
         log.info("composite: %s", composite_all(db, limit=args.limit))
+        # Independent Pabrai checklist score (runs after composite creates Score rows).
+        log.info("pabrai: %s", pabrai_all(db, limit=args.limit))
 
 
 def cmd_export_static(args: argparse.Namespace) -> None:

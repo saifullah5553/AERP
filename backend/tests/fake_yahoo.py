@@ -75,10 +75,12 @@ class FakeYahooFetcher:
         quotes: dict[str, dict[str, Any]] | None = None,
         daily: dict[str, list[dict[str, Any]]] | None = None,
         statements: dict[str, dict[str, list[dict[str, Any]]]] | None = None,
+        quarterly: dict[str, dict[str, list[dict[str, Any]]]] | None = None,
     ) -> None:
         self._quotes = _DEFAULT_QUOTES if quotes is None else quotes
         self._daily = _DEFAULT_DAILY if daily is None else daily
         self._statements = _DEFAULT_STATEMENTS if statements is None else statements
+        self._quarterly = quarterly or {}
 
     def quotes(self, symbols: list[str]) -> dict[str, dict[str, Any]]:
         return {s: self._quotes[s] for s in symbols if s in self._quotes}
@@ -86,5 +88,9 @@ class FakeYahooFetcher:
     def daily(self, symbol: str, start: date | None) -> list[dict[str, Any]]:
         return self._daily.get(symbol, [])
 
-    def statements(self, symbol: str) -> dict[str, list[dict[str, Any]]]:
+    def statements(
+        self, symbol: str, quarterly: bool = False
+    ) -> dict[str, list[dict[str, Any]]]:
+        if quarterly:
+            return self._quarterly.get(symbol, {"income": [], "balance": [], "cashflow": []})
         return self._statements.get(symbol, {"income": [], "balance": [], "cashflow": []})
