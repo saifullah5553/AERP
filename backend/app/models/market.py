@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
+    Date,
     Enum,
     ForeignKey,
     Index,
@@ -80,6 +82,15 @@ class Security(Base, TimestampMixin):
     # Fast-read cached snapshot (kept in sync by ingestion; DB stays source of truth).
     market_cap: Mapped[float | None] = mapped_column(Numeric(24, 2))
     shares_outstanding: Mapped[float | None] = mapped_column(Numeric(24, 2))
+
+    # Forward-looking analyst consensus (from Yahoo; nullable where uncovered).
+    next_earnings_date: Mapped[date | None] = mapped_column(Date)
+    eps_estimate_avg: Mapped[float | None] = mapped_column(Numeric(20, 6))
+    eps_estimate_num: Mapped[int | None] = mapped_column(Integer)  # analysts covering
+    eps_estimate_growth: Mapped[float | None] = mapped_column(Numeric(12, 6))
+    revenue_estimate_avg: Mapped[float | None] = mapped_column(Numeric(24, 2))
+    eps_revisions_up_30d: Mapped[int | None] = mapped_column(Integer)
+    eps_revisions_down_30d: Mapped[int | None] = mapped_column(Integer)
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 

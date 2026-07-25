@@ -318,6 +318,7 @@ export default function CompanyPage() {
               {data.ai_summary.replace(/\s*Current signal:[^.]*\.\s*/i, " ").trim()}
             </p>
           </Card>
+          <EstimatesSection sec={data.security as Row} />
           <ChecklistSection items={derived.checklist} />
           <InsiderCard summary={data.insider_summary} transactions={data.insider} />
           <PeersTable peers={data.peers} />
@@ -424,6 +425,49 @@ function RiskSection({ risks }: { risks: RiskItem[] }) {
             <Pill text={r.level} color={LEVEL_TONE[r.level]} />
           </div>
         ))}
+      </div>
+    </Card>
+  );
+}
+
+// ── Analyst estimates & next earnings ────────────────────────────────────────
+function EstimatesSection({ sec }: { sec: Row }) {
+  const nextDate = typeof sec.next_earnings_date === "string" ? sec.next_earnings_date.slice(0, 10) : null;
+  const epsAvg = num(sec.eps_estimate_avg);
+  const epsNum = num(sec.eps_estimate_num);
+  const epsGrowth = num(sec.eps_estimate_growth);
+  const revAvg = num(sec.revenue_estimate_avg);
+  const up = num(sec.eps_revisions_up_30d);
+  const down = num(sec.eps_revisions_down_30d);
+
+  if (!nextDate && epsAvg == null && revAvg == null && up == null) return null;
+
+  const revisionTone = up != null && down != null && up !== down ? (up > down ? "#22c55e" : "#ef4444") : "#94a3b8";
+  return (
+    <Card title="Analyst Estimates & Next Earnings">
+      <div className="px-4 py-2">
+        {nextDate && <StatRow label="Next Earnings Date" value={nextDate} tone="#e2e8f0" />}
+        {epsAvg != null && (
+          <StatRow
+            label={`Consensus EPS${epsNum != null ? ` (${epsNum} analysts)` : ""}`}
+            value={fmtNumber(epsAvg)}
+          />
+        )}
+        {epsGrowth != null && (
+          <StatRow
+            label="Est. EPS Growth"
+            value={fmtPercent(epsGrowth)}
+            tone={epsGrowth >= 0 ? "#22c55e" : "#ef4444"}
+          />
+        )}
+        {revAvg != null && <StatRow label="Consensus Revenue" value={fmtCompact(revAvg)} />}
+        {(up != null || down != null) && (
+          <StatRow
+            label="EPS Revisions (30d)"
+            value={`▲ ${up ?? 0}  ▼ ${down ?? 0}`}
+            tone={revisionTone}
+          />
+        )}
       </div>
     </Card>
   );
