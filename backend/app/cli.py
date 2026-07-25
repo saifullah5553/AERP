@@ -194,6 +194,7 @@ def cmd_export_static(args: argparse.Namespace) -> None:
     from app.db.session import session_scope
     from app.services.company import get_company
     from app.services.pulse import pulse_from_screener_dicts
+    from app.services.raw_materials import build_raw_materials
     from app.services.screener import ScreenerFilters, query_screener
 
     out = Path(args.out or "../frontend/public/data")
@@ -245,6 +246,11 @@ def cmd_export_static(args: argparse.Namespace) -> None:
             exported += 1
         # Company files for securities only in the old snapshot are left in place.
         company_files = len(list((out / "company").glob("*.json")))
+
+        # Raw-material cost-trend map (built from the commodity company files).
+        (out / "raw_materials.json").write_text(
+            json.dumps(build_raw_materials(out / "company")), encoding="utf-8"
+        )
         (out / "meta.json").write_text(
             json.dumps({
                 "generated_at": datetime.now(UTC).isoformat(),
