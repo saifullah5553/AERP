@@ -9,6 +9,7 @@ import {
   type Condition,
   investmentChecklist,
   investmentGrade,
+  isFinancial,
   type Level,
   latestCashFlow,
   marketCondition,
@@ -341,9 +342,13 @@ function FundamentalSection({
   derived: { fundStrength: string; cf: { fcf: number | null; trend: string }; netProfitGrowth: number | null };
 }) {
   const r = detail.ratios ?? {};
+  const sec = detail.security as Row;
+  const fin = isFinancial((sec.sector as string) ?? null, (sec.industry as string) ?? null);
   const strengthColor =
     derived.fundStrength === "Strong" ? "#22c55e" : derived.fundStrength === "Average" ? "#eab308" : "#f87171";
   const pct = (k: string) => (num(r[k]) == null ? "—" : fmtPercent(num(r[k]) as number));
+  // FCF is not a meaningful metric for banks/insurers/brokerages.
+  const fcfVal = fin ? "N/A (financials)" : derived.cf.fcf == null ? "—" : fmtCompact(derived.cf.fcf);
   const rows: [string, string, string?][] = [
     ["Revenue Growth (TTM)", pct("revenue_growth")],
     ["EPS Growth", pct("eps_growth")],
@@ -354,8 +359,8 @@ function FundamentalSection({
     ["ROIC", pct("roic")],
     ["Debt / Equity", num(r.debt_to_equity) == null ? "—" : fmtNumber(num(r.debt_to_equity))],
     ["Interest Coverage", num(r.interest_coverage) == null ? "—" : fmtNumber(num(r.interest_coverage))],
-    ["Free Cash Flow", derived.cf.fcf == null ? "—" : fmtCompact(derived.cf.fcf)],
-    ["Cash Flow Trend", derived.cf.trend],
+    ["Free Cash Flow", fcfVal],
+    ["Cash Flow Trend", fin ? "N/A (financials)" : derived.cf.trend],
   ];
   return (
     <Card

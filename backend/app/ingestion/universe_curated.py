@@ -206,7 +206,7 @@ CRYPTO: tuple[tuple[str, str], ...] = (
     ("XRP", "XRP"), ("ADA", "Cardano"), ("DOGE", "Dogecoin"), ("TRX", "TRON"),
     ("AVAX", "Avalanche"), ("LINK", "Chainlink"), ("DOT", "Polkadot"),
     ("MATIC", "Polygon"), ("LTC", "Litecoin"), ("BCH", "Bitcoin Cash"),
-    ("XLM", "Stellar"), ("ATOM", "Cosmos"), ("UNI", "Uniswap"),
+    ("XLM", "Stellar"), ("ATOM", "Cosmos"),
     ("ETC", "Ethereum Classic"), ("FIL", "Filecoin"), ("APT", "Aptos"),
 )
 

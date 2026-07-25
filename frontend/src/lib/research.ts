@@ -146,6 +146,13 @@ export function latestCashFlow(detail: CompanyDetail): { fcf: number | null; tre
   return { fcf, trend };
 }
 
+// Banks/insurers/brokerages: leverage, current ratio and free cash flow are not
+// comparable to industrials, so we treat those metrics sector-appropriately.
+const FINANCIAL_RE = /bank|insur|financ|modaraba|securities|brokerage|asset manage|\binvest/i;
+export function isFinancial(sector: string | null, industry: string | null): boolean {
+  return FINANCIAL_RE.test(`${sector ?? ""} ${industry ?? ""}`);
+}
+
 // ── Risk analysis ────────────────────────────────────────────────────────────
 export interface RiskItem {
   name: string;
@@ -160,10 +167,12 @@ export function riskAnalysis(
   ctx: { regionCondition?: Condition; commodity?: CommoditySummary },
 ): RiskItem[] {
   const r = detail.ratios ?? {};
+  const sec = detail.security as Row;
+  const fin = isFinancial((sec.sector as string) ?? null, (sec.industry as string) ?? null);
   const de = num(r.debt_to_equity);
   const pe = num(r.pe_ratio);
   const cr = num(r.current_ratio);
-  const currency = String((detail.security as Row).currency ?? "USD");
+  const currency = String(sec.currency ?? "USD");
 
   const band = (v: number | null, hi: number, mid: number, invert = false): Level => {
     if (v == null) return "Unknown";
@@ -183,14 +192,19 @@ export function riskAnalysis(
   const sectorLevel: Level =
     ctx.regionCondition === "Bearish" ? "High" : ctx.regionCondition === "Bullish" ? "Low" : "Medium";
 
-  return [
-    { name: "Debt Risk", level: band(de, 1.5, 0.75), note: de != null ? `D/E ${de.toFixed(2)}` : "No data" },
-    { name: "Valuation Risk", level: band(pe, 35, 20), note: pe != null ? `P/E ${pe.toFixed(1)}` : "No data" },
-    { name: "Liquidity Risk", level: band(cr, 1.5, 1.0, true), note: cr != null ? `Current ratio ${cr.toFixed(2)}` : "No data" },
-    { name: "Commodity Risk", level: commodityLevel, note: ctx.commodity?.hasInputs ? "Input-cost exposure" : "Low input-cost exposure" },
-    { name: "Sector Risk", level: sectorLevel, note: "From market condition" },
-    { name: "Currency Risk", level: CURRENCY_RISK[currency] ?? "Low", note: `Reporting currency ${currency}` },
-  ];
+  const items: RiskItem[] = [];
+  // Leverage & liquidity are only comparable for non-financials.
+  if (fin) {
+    items.push({ name: "Leverage Risk", level: "Unknown", note: "Not comparable for financials" });
+  } else {
+    items.push({ name: "Debt Risk", level: band(de, 1.5, 0.75), note: de != null ? `D/E ${de.toFixed(2)}` : "No data" });
+    items.push({ name: "Liquidity Risk", level: band(cr, 1.5, 1.0, true), note: cr != null ? `Current ratio ${cr.toFixed(2)}` : "No data" });
+  }
+  items.push({ name: "Valuation Risk", level: band(pe, 35, 20), note: pe != null ? `P/E ${pe.toFixed(1)}` : "No data" });
+  items.push({ name: "Commodity Risk", level: commodityLevel, note: ctx.commodity?.hasInputs ? "Input-cost exposure" : "Low input-cost exposure" });
+  items.push({ name: "Sector Risk", level: sectorLevel, note: "From market condition" });
+  items.push({ name: "Currency Risk", level: CURRENCY_RISK[currency] ?? "Low", note: `Reporting currency ${currency}` });
+  return items;
 }
 
 // ── Investment checklist ─────────────────────────────────────────────────────
@@ -210,16 +224,25 @@ export function investmentChecklist(
   ctx: { tech: TechnicalRead; regionCondition?: Condition; commodity?: CommoditySummary; fcf: number | null },
 ): CheckItem[] {
   const r = detail.ratios ?? {};
+  const sec = detail.security as Row;
+  const fin = isFinancial((sec.sector as string) ?? null, (sec.industry as string) ?? null);
   const revenue = num(r.revenue_growth);
   const eps = num(r.eps_growth);
   const roe = num(r.roe);
   const de = num(r.debt_to_equity);
+  const netMargin = num(r.net_margin);
   return [
     { label: "Revenue Growth", pass: revenue != null && revenue > 0 },
     { label: "Earnings Growth", pass: eps != null && eps > 0 },
     { label: "Strong ROE (>15%)", pass: roe != null && roe >= 0.15 },
-    { label: "Low Debt (D/E <0.6)", pass: de != null && de < 0.6 },
-    { label: "Positive Cash Flow", pass: ctx.fcf != null && ctx.fcf > 0 },
+    // Banks are structurally leveraged; use a bank-appropriate bar instead of <0.6.
+    fin
+      ? { label: "Prudent Leverage (bank)", pass: de != null && de < 3 }
+      : { label: "Low Debt (D/E <0.6)", pass: de != null && de < 0.6 },
+    // FCF is not meaningful for financials → use profitability as the cash proxy.
+    fin
+      ? { label: "Profitable", pass: netMargin != null && netMargin > 0 }
+      : { label: "Positive Cash Flow", pass: ctx.fcf != null && ctx.fcf > 0 },
     { label: "Technical Trend", pass: ctx.tech.trend === "Bullish" },
     { label: "Sector Strength", pass: ctx.regionCondition === "Bullish" },
     { label: "Raw Material Environment", pass: !!ctx.commodity && (!ctx.commodity.hasInputs || ctx.commodity.favorable) },
