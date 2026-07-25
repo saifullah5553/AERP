@@ -88,10 +88,8 @@ def build_summary(
             net_txt = f" ({direction} ~{abs(net) / 1e6:.1f}M)"
         parts.append(f"Insider activity over the last {window} days: {activity}{net_txt}.")
 
-    if signal and signal.get("label"):
-        conf = signal.get("confidence")
-        conf_txt = f" (confidence {conf:.0%})" if isinstance(conf, int | float) else ""
-        parts.append(f"Current signal: {signal['label']}{conf_txt}.")
+    # Note: no buy/sell/hold signal is included — this is a research summary, not a
+    # trade recommendation. Market condition is conveyed via the composite score.
 
     parts.append(
         "This summary is generated from computed metrics only; it is not investment advice."

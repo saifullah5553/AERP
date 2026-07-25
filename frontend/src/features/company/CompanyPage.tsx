@@ -325,7 +325,10 @@ export default function CompanyPage() {
 
         <div className="space-y-4">
           <Card title="AI Research Summary">
-            <p className="p-4 text-sm leading-relaxed text-slate-300">{data.ai_summary}</p>
+            <p className="p-4 text-sm leading-relaxed text-slate-300">
+              {/* Strip any legacy buy/sell/hold signal clause — research only. */}
+              {data.ai_summary.replace(/\s*Current signal:[^.]*\.\s*/i, " ").trim()}
+            </p>
           </Card>
           <ChecklistSection items={derived.checklist} />
           <InsiderCard summary={data.insider_summary} transactions={data.insider} />
