@@ -1,1 +1,5 @@
+<<<<<<< HEAD
 {"generated_at": "2026-07-25T07:45:36.296494+00:00", "securities": 454, "companies": 454, "mode": "static-demo"}
+=======
+{"generated_at": "2026-07-25T08:16:23.968759+00:00", "securities": 565, "companies": 566, "mode": "static-demo"}
+>>>>>>> 29a0786 (chore: regenerate snapshot with US large-caps (112) + PSX; remove ENGRO)
