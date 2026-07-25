@@ -133,9 +133,10 @@ export function patternRead(detail: CompanyDetail): string | null {
 
 // ── Fundamentals ─────────────────────────────────────────────────────────────
 export function latestCashFlow(detail: CompanyDetail): { fcf: number | null; trend: string } {
+  // Statements arrive newest-first (fiscal_date DESC), so the latest period is [0].
   const cf = detail.statements?.cashflow ?? [];
-  const latest = cf[cf.length - 1] as Row | undefined;
-  const prev = cf[cf.length - 2] as Row | undefined;
+  const latest = cf[0] as Row | undefined;
+  const prev = cf[1] as Row | undefined;
   const fcf = latest ? num(latest.free_cash_flow) ?? num(latest.operating_cash_flow) : null;
   const cur = latest ? num(latest.operating_cash_flow) : null;
   const old = prev ? num(prev.operating_cash_flow) : null;

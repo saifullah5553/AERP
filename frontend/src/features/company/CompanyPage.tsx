@@ -141,8 +141,9 @@ const TECHNICALS: [string, string, Fmt][] = [
 ];
 
 function growthOf(rows: Row[], key: string): number | null {
-  const a = num(rows[rows.length - 1]?.[key]);
-  const b = num(rows[rows.length - 2]?.[key]);
+  // Statements are newest-first: [0] latest, [1] prior period.
+  const a = num(rows[0]?.[key]);
+  const b = num(rows[1]?.[key]);
   if (a == null || b == null || b === 0) return null;
   return (a - b) / Math.abs(b);
 }
