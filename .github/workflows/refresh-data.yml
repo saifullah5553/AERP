@@ -55,6 +55,7 @@ jobs:
           python -m app.cli ingest-psx-market || true
           python -m app.cli ingest-macro || true
           python -m app.cli ingest-psx-insider || true
+          python -m app.cli ingest-psx-insider-api || true
           python -m app.cli ingest-news --limit 40 || true
           python -m app.cli compute || true
           python -m app.cli export-static

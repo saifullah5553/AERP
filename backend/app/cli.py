@@ -166,6 +166,14 @@ def cmd_ingest_yahoo_insider(args: argparse.Namespace) -> None:
         ingest_yahoo_insider(db, region=_region(args.region), limit=args.limit)
 
 
+def cmd_ingest_psx_insider_api(args: argparse.Namespace) -> None:
+    from app.db.session import session_scope
+    from app.ingestion.psx_insider_api import ingest_psx_insider_api
+
+    with session_scope() as db:
+        ingest_psx_insider_api(db, limit=args.limit or 500)
+
+
 def cmd_ingest_psx_insider(args: argparse.Namespace) -> None:
     from app.db.session import session_scope
     from app.ingestion.psx_insider import ingest_psx_insider
@@ -293,6 +301,7 @@ def cmd_all(args: argparse.Namespace) -> None:
     cmd_ingest_psx_market(argparse.Namespace(limit=None, no_history=False))
     cmd_ingest_macro(args)
     cmd_ingest_psx_insider(args)
+    cmd_ingest_psx_insider_api(argparse.Namespace(limit=500))
     cmd_ingest_yahoo_insider(argparse.Namespace(region=None, limit=None))
     cmd_ingest_estimates(argparse.Namespace(region=None, limit=None))
     cmd_ingest_quotes(argparse.Namespace(region=None, limit=None))
@@ -333,6 +342,7 @@ def build_parser() -> argparse.ArgumentParser:
     add("ingest-yahoo-insider", cmd_ingest_yahoo_insider, region=True, limit=True)
     add("ingest-estimates", cmd_ingest_estimates, region=True, limit=True)
     add("ingest-psx-insider", cmd_ingest_psx_insider)
+    add("ingest-psx-insider-api", cmd_ingest_psx_insider_api, limit=True)
     add("ingest-news", cmd_ingest_news, limit=True)
     add("compute", cmd_compute, limit=True)
     export = sub.add_parser("export-static")
