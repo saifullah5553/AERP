@@ -13,6 +13,7 @@ import {
 } from "@/lib/savedViews";
 import type { ScreenerQuery, ScreenerRow } from "@/types/api";
 import FilterBar from "./FilterBar";
+import PulseBar from "./PulseBar";
 import ScreenerGrid from "./ScreenerGrid";
 
 type Filters = Omit<ScreenerQuery, "page" | "page_size" | "sort_by" | "sort_dir">;
@@ -111,6 +112,8 @@ export default function ScreenerPage() {
           </span>
         </div>
       </header>
+
+      <PulseBar />
 
       <FilterBar filters={filters} onChange={setFilters} />
 

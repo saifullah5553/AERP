@@ -1,4 +1,4 @@
-import type { Page, ScreenerQuery, ScreenerRow } from "@/types/api";
+import type { MarketPulse, Page, ScreenerQuery, ScreenerRow } from "@/types/api";
 import type { CompanyDetail } from "@/types/company";
 
 const BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
@@ -75,6 +75,10 @@ export const api = {
     if (IS_STATIC)
       return getJson<CompanyDetail>(`${DATA_BASE}/company/${encodeURIComponent(providerSymbol)}.json`, signal);
     return getJson<CompanyDetail>(`${V1}/company/${encodeURIComponent(providerSymbol)}`, signal);
+  },
+  pulse(signal?: AbortSignal): Promise<MarketPulse[]> {
+    if (IS_STATIC) return getJson<MarketPulse[]>(`${DATA_BASE}/pulse.json`, signal);
+    return getJson<MarketPulse[]>(`${V1}/markets/pulse`, signal);
   },
   health(signal?: AbortSignal): Promise<unknown> {
     if (IS_STATIC) return Promise.resolve({ status: "static" });

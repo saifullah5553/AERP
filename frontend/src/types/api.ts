@@ -8,7 +8,18 @@ export type AssetClass =
   | "index"
   | "etf";
 
-export type MarketRegion = "psx" | "us" | "india" | "gcc" | "global";
+export type MarketRegion = "psx" | "us" | "india" | "gcc" | "australia" | "global";
+
+export interface MarketPulse {
+  region: MarketRegion;
+  label: string;
+  pulse: "bullish" | "bearish" | "neutral";
+  avg_composite: number;
+  count: number;
+  bullish: number;
+  bearish: number;
+  neutral: number;
+}
 
 export type SignalType =
   | "strong_buy"
@@ -48,6 +59,8 @@ export interface ScreenerRow {
   signal: SignalType | null;
   signal_label: string | null;
   top_pattern: string | null;
+  top_candlestick: string | null;
+  top_chart_pattern: string | null;
   insider_score: number | null;
   insider_activity: string | null;
   scored_on: string | null;

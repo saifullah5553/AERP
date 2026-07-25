@@ -14,7 +14,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from app.models.corporate import InsiderSummary
-from app.models.enums import AssetClass, MarketRegion
+from app.models.enums import AssetClass, MarketRegion, PatternCategory
 from app.models.fundamentals import FundamentalSnapshot
 from app.models.market import Market, Security
 from app.models.quote import Quote
@@ -73,8 +73,15 @@ def _latest_subqueries():
     return latest_score, latest_signal
 
 
-def _top_pattern_subquery():
-    """Highest-confidence active pattern per security (rn == 1)."""
+def _top_pattern_subquery(category=None, alias: str = "top_pattern"):
+    """Highest-confidence active pattern per security (rn == 1).
+
+    ``category`` optionally restricts to one PatternCategory (candlestick / chart)
+    so the screener can surface the top candle and the top chart pattern separately.
+    """
+    where = [PatternDetection.is_active.is_(True)]
+    if category is not None:
+        where.append(PatternDetection.category == category)
     ranked = (
         select(
             PatternDetection.security_id.label("security_id"),
@@ -89,17 +96,17 @@ def _top_pattern_subquery():
             )
             .label("rn"),
         )
-        .where(PatternDetection.is_active.is_(True))
-        .subquery("ranked_patterns")
+        .where(*where)
+        .subquery(f"ranked_{alias}")
     )
-    return select(ranked.c.security_id, ranked.c.name).where(ranked.c.rn == 1).subquery(
-        "top_pattern"
-    )
+    return select(ranked.c.security_id, ranked.c.name).where(ranked.c.rn == 1).subquery(alias)
 
 
 def _base_select() -> Select:
     latest_score, latest_signal = _latest_subqueries()
     top_pattern = _top_pattern_subquery()
+    top_candle = _top_pattern_subquery(PatternCategory.CANDLESTICK, "top_candle")
+    top_chart = _top_pattern_subquery(PatternCategory.CHART, "top_chart")
 
     return (
         select(
@@ -131,11 +138,15 @@ def _base_select() -> Select:
             Signal.signal_type.label("signal"),
             Signal.label.label("signal_label"),
             top_pattern.c.name.label("top_pattern"),
+            top_candle.c.name.label("top_candlestick"),
+            top_chart.c.name.label("top_chart_pattern"),
             InsiderSummary.score.label("insider_score"),
             InsiderSummary.activity.label("insider_activity"),
         )
         .join(Market, Security.market_id == Market.id)
         .outerjoin(top_pattern, top_pattern.c.security_id == Security.id)
+        .outerjoin(top_candle, top_candle.c.security_id == Security.id)
+        .outerjoin(top_chart, top_chart.c.security_id == Security.id)
         .outerjoin(InsiderSummary, InsiderSummary.security_id == Security.id)
         .outerjoin(Quote, Quote.security_id == Security.id)
         .outerjoin(FundamentalSnapshot, FundamentalSnapshot.security_id == Security.id)
@@ -232,6 +243,8 @@ def query_screener(
             signal=r["signal"],
             signal_label=r["signal_label"],
             top_pattern=r["top_pattern"],
+            top_candlestick=r["top_candlestick"],
+            top_chart_pattern=r["top_chart_pattern"],
             insider_score=_f(r["insider_score"]),
             insider_activity=r["insider_activity"],
             scored_on=r["scored_on"],

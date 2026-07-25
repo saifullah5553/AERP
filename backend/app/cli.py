@@ -114,14 +114,32 @@ def cmd_load_universe(args: argparse.Namespace) -> None:
 
 def cmd_load_us_universe(args: argparse.Namespace) -> None:
     from app.db.session import session_scope
-    from app.ingestion.us_universe import US_LARGE_CAPS, SECClient, ingest_us_universe
+    from app.ingestion.us_universe import (
+        US_LARGE_CAPS,
+        SECClient,
+        ingest_us_universe,
+        load_sp500,
+    )
 
-    symbols = list(US_LARGE_CAPS) if getattr(args, "curated", False) else None
+    symbols = sectors = None
+    if getattr(args, "curated", False):
+        sp = load_sp500()
+        sectors = {r["symbol"]: r["sector"] for r in sp if r.get("sector")}
+        symbols = sorted({r["symbol"] for r in sp} | set(US_LARGE_CAPS))
     with session_scope() as db:
         log.info(
             "load-us-universe: %s",
-            ingest_us_universe(db, SECClient(), limit=args.limit, symbols=symbols),
+            ingest_us_universe(db, SECClient(), limit=args.limit, symbols=symbols, sectors=sectors),
         )
+
+
+def cmd_load_markets(args: argparse.Namespace) -> None:
+    """Load curated India / GCC / Australia / forex / commodity / crypto universes."""
+    from app.db.session import session_scope
+    from app.ingestion.universe_curated import load_curated_universe
+
+    with session_scope() as db:
+        log.info("load-markets: %s", load_curated_universe(db))
 
 
 def cmd_ingest_insider(args: argparse.Namespace) -> None:
@@ -175,6 +193,7 @@ def cmd_export_static(args: argparse.Namespace) -> None:
 
     from app.db.session import session_scope
     from app.services.company import get_company
+    from app.services.pulse import pulse_from_screener_dicts
     from app.services.screener import ScreenerFilters, query_screener
 
     out = Path(args.out or "../frontend/public/data")
@@ -210,6 +229,11 @@ def cmd_export_static(args: argparse.Namespace) -> None:
         )
         screener_path.write_text(json.dumps(merged), encoding="utf-8")
 
+        # Market pulse from the merged (all-market) snapshot.
+        (out / "pulse.json").write_text(
+            json.dumps(pulse_from_screener_dicts(merged)), encoding="utf-8"
+        )
+
         exported = 0
         for r in rows:
             detail = get_company(db, r.provider_symbol)
@@ -242,6 +266,7 @@ def cmd_all(args: argparse.Namespace) -> None:
     cmd_seed(args)
     cmd_load_universe(argparse.Namespace(providers="binance,psx"))
     cmd_load_us_universe(argparse.Namespace(limit=None, curated=True))
+    cmd_load_markets(args)
     cmd_ingest_psx(args)
     cmd_ingest_psx_market(argparse.Namespace(limit=None, no_history=False))
     cmd_ingest_macro(args)
@@ -271,7 +296,8 @@ def build_parser() -> argparse.ArgumentParser:
     add("seed", cmd_seed)
     add("load-universe", cmd_load_universe, providers=True)
     usu = add("load-us-universe", cmd_load_us_universe, limit=True)
-    usu.add_argument("--curated", action="store_true", help="only the large-cap allowlist")
+    usu.add_argument("--curated", action="store_true", help="S&P 500 + large-cap allowlist")
+    add("load-markets", cmd_load_markets)
     add("ingest-psx", cmd_ingest_psx)
     psxm = add("ingest-psx-market", cmd_ingest_psx_market, limit=True)
     psxm.add_argument("--no-history", action="store_true", help="quotes+names only")

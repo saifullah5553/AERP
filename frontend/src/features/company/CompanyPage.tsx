@@ -211,30 +211,45 @@ export default function CompanyPage() {
   );
 }
 
+function PatternRow({ p }: { p: Row }) {
+  const dir = String(p.direction ?? "");
+  const color = dir === "bullish" ? "#22c55e" : dir === "bearish" ? "#ef4444" : "#94a3b8";
+  const conf = typeof p.confidence === "number" ? p.confidence : 0;
+  return (
+    <div className="flex items-center justify-between rounded border border-base-700 bg-base-900 px-3 py-2">
+      <div>
+        <span className="font-medium text-slate-200">{titleize(String(p.name))}</span>
+        <span className="ml-2 text-xs uppercase" style={{ color }}>{dir}</span>
+      </div>
+      <div className="flex items-center gap-4 text-xs text-slate-400">
+        {typeof p.target_price === "number" && <span>Target {fmtNumber(p.target_price)}</span>}
+        <span className="num">conf {(conf * 100).toFixed(0)}%</span>
+      </div>
+    </div>
+  );
+}
+
 function PatternsList({ patterns }: { patterns: Row[] }) {
   if (patterns.length === 0) {
     return <div className="p-4 text-sm text-slate-500">No active patterns detected.</div>;
   }
+  const candles = patterns.filter((p) => String(p.category) === "candlestick");
+  const charts = patterns.filter((p) => String(p.category) === "chart");
+  const others = patterns.filter(
+    (p) => String(p.category) !== "candlestick" && String(p.category) !== "chart",
+  );
+  const section = (title: string, rows: Row[]) =>
+    rows.length > 0 && (
+      <div className="space-y-2">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</h4>
+        {rows.map((p, i) => <PatternRow key={i} p={p} />)}
+      </div>
+    );
   return (
-    <div className="space-y-2 p-4">
-      {patterns.map((p, i) => {
-        const dir = String(p.direction ?? "");
-        const color = dir === "bullish" ? "#22c55e" : dir === "bearish" ? "#ef4444" : "#94a3b8";
-        const conf = typeof p.confidence === "number" ? p.confidence : 0;
-        return (
-          <div key={i} className="flex items-center justify-between rounded border border-base-700 bg-base-900 px-3 py-2">
-            <div>
-              <span className="font-medium text-slate-200">{titleize(String(p.name))}</span>
-              <span className="ml-2 text-xs uppercase" style={{ color }}>{dir}</span>
-              <span className="ml-2 text-[10px] text-slate-500">{String(p.category)}</span>
-            </div>
-            <div className="flex items-center gap-4 text-xs text-slate-400">
-              {typeof p.target_price === "number" && <span>Target {fmtNumber(p.target_price)}</span>}
-              <span className="num">conf {(conf * 100).toFixed(0)}%</span>
-            </div>
-          </div>
-        );
-      })}
+    <div className="space-y-4 p-4">
+      {section("Candlestick Patterns", candles)}
+      {section("Chart Patterns", charts)}
+      {section("Harmonic Patterns", others)}
     </div>
   );
 }

@@ -49,6 +49,8 @@ class ScreenerRow(BaseModel):
     signal: SignalType | None
     signal_label: str | None
     top_pattern: str | None
+    top_candlestick: str | None
+    top_chart_pattern: str | None
     insider_score: float | None
     insider_activity: str | None
     scored_on: date | None

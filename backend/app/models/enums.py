@@ -22,7 +22,8 @@ class MarketRegion(str, enum.Enum):
     PSX = "psx"          # Pakistan Stock Exchange
     US = "us"            # NYSE / NASDAQ / AMEX
     INDIA = "india"      # NSE / BSE
-    GCC = "gcc"          # Tadawul / DFM / ADX / etc.
+    GCC = "gcc"          # Tadawul (Saudi) + Qatar — free Yahoo data only
+    AUSTRALIA = "australia"  # ASX
     GLOBAL = "global"    # forex, commodities, crypto
 
 

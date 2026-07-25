@@ -9,7 +9,9 @@ no API key. HTTP goes through an injectable client for testing.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 
 import httpx
 from sqlalchemy.orm import Session
@@ -22,6 +24,17 @@ from app.models.enums import AssetClass
 log = get_logger(__name__)
 
 URL = "https://www.sec.gov/files/company_tickers_exchange.json"
+_SP500_PATH = Path(__file__).resolve().parent.parent / "data" / "sp500.json"
+
+
+def load_sp500() -> list[dict[str, str]]:
+    """S&P 500 constituents bundled at app/data/sp500.json (Yahoo-format tickers)."""
+    if not _SP500_PATH.exists():
+        return []
+    try:
+        return json.loads(_SP500_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
 # SEC asks for a descriptive User-Agent; requests without one are blocked.
 HEADERS = {"User-Agent": "AERP equity research (contact: admin@aerp.local)"}
 DEFAULT_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
@@ -105,6 +118,7 @@ def ingest_us_universe(
     client: SECClient,
     limit: int | None = None,
     symbols: list[str] | None = None,
+    sectors: dict[str, str] | None = None,
 ) -> dict[str, int]:
     """Load US securities (name/exchange/CIK) from SEC.
 
@@ -138,6 +152,7 @@ def ingest_us_universe(
             name=entry.name.title() if entry.name else ticker,
             asset_class=AssetClass.EQUITY,
             exchange=code,
+            sector=(sectors or {}).get(ticker),
             currency="USD",
             country="US",
         )

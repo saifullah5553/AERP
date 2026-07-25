@@ -10,7 +10,8 @@ const REGIONS: { value: MarketRegion | "all"; label: string }[] = [
   { value: "psx", label: "Pakistan" },
   { value: "india", label: "India" },
   { value: "gcc", label: "GCC" },
-  { value: "global", label: "Global" },
+  { value: "australia", label: "Australia" },
+  { value: "global", label: "Forex / Commodities / Crypto" },
 ];
 
 const ASSET_CLASSES: { value: AssetClass | ""; label: string }[] = [

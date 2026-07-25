@@ -28,15 +28,19 @@ python -m app.cli export-static     # writes frontend/public/data
 Limitation: it's a periodic snapshot, so no real-time SSE/live-price tick and no
 per-request interactivity. For that, use Option B.
 
-### US data (Yahoo/yfinance) is refreshed locally, not in CI
+### Global markets (Yahoo/yfinance) are refreshed locally, not in CI
 
 PSX data comes from `dps.psx.com.pk` (Pakistani host, works from GitHub's runners).
-US data comes from Yahoo (`yfinance`), which **rate-limits datacenter IPs** — so the
-6-hourly CI refresh can't fetch it. Instead:
+Everything else — **US, India (NSE), GCC (Saudi Tadawul + Qatar), Australia (ASX),
+forex, commodities, crypto** — comes from Yahoo (`yfinance`), which **rate-limits
+datacenter IPs**, so the 6-hourly CI refresh can't fetch it. Instead:
 
-- US uses a **curated large-cap allowlist** (`app/ingestion/us_universe.py:US_LARGE_CAPS`),
-  loaded with `load-us-universe --curated`.
-- Refresh US **locally** (residential IP) whenever you want current US prices:
+- US = full **S&P 500** (`app/data/sp500.json`) + a large-cap allowlist, via SEC +
+  Yahoo (`load-us-universe --curated`).
+- India / GCC / Australia / forex / commodities / crypto = curated lists in
+  `app/ingestion/universe_curated.py`, via `load-markets`.
+- Dubai (.DU) and Abu Dhabi (.AD) are excluded — Yahoo returns no data for them.
+- Refresh these **locally** (residential IP) whenever you want current prices:
 
   ```bash
   cd backend
@@ -47,8 +51,10 @@ US data comes from Yahoo (`yfinance`), which **rate-limits datacenter IPs** — 
   ```
 
 - `export-static` **merges by default**: the CI refresh updates PSX rows while
-  **preserving** the US rows from the last committed snapshot (so CI never wipes US).
-  Use `--no-merge` for a full clean rebuild locally.
+  **preserving** all Yahoo-sourced markets from the last committed snapshot (so CI
+  never wipes US/India/GCC/Australia/forex/commodities/crypto). Use `--no-merge` for
+  a full clean rebuild locally. It also writes `pulse.json` (per-market
+  bullish/bearish/neutral) computed from the merged, all-market snapshot.
 
 ## Option B — Fully-live backend (free tier, ~15 min setup)
 

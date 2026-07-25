@@ -78,8 +78,16 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
       cellRenderer: ScoreCell,
     },
     {
-      field: "top_pattern",
-      headerName: "Pattern",
+      field: "top_candlestick",
+      headerName: "Candlestick",
+      width: 150,
+      sortable: false,
+      cellRenderer: PatternCell,
+      valueFormatter: (p) => titleize(p.value),
+    },
+    {
+      field: "top_chart_pattern",
+      headerName: "Chart Pattern",
       width: 160,
       sortable: false,
       cellRenderer: PatternCell,

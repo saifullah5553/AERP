@@ -28,8 +28,9 @@ MARKETS: list[tuple] = [
     ("NSE", "National Stock Exchange of India", MarketRegion.INDIA, "IN", "INR", "Asia/Kolkata", ".NS"),
     ("BSE", "Bombay Stock Exchange", MarketRegion.INDIA, "IN", "INR", "Asia/Kolkata", ".BO"),
     ("TADAWUL", "Saudi Exchange (Tadawul)", MarketRegion.GCC, "SA", "SAR", "Asia/Riyadh", ".SR"),
-    ("DFM", "Dubai Financial Market", MarketRegion.GCC, "AE", "AED", "Asia/Dubai", ".DU"),
-    ("ADX", "Abu Dhabi Securities Exchange", MarketRegion.GCC, "AE", "AED", "Asia/Dubai", ".AD"),
+    ("QSE", "Qatar Stock Exchange", MarketRegion.GCC, "QA", "QAR", "Asia/Qatar", ".QA"),
+    # Dubai (.DU) and Abu Dhabi (.AD) dropped — no free Yahoo data.
+    ("ASX", "Australian Securities Exchange", MarketRegion.AUSTRALIA, "AU", "AUD", "Australia/Sydney", ".AX"),
     ("FOREX", "Foreign Exchange", MarketRegion.GLOBAL, None, "USD", "UTC", "=X"),
     ("CRYPTO", "Crypto Spot", MarketRegion.GLOBAL, None, "USD", "UTC", "-USD"),
     ("COMMODITY", "Commodity Futures", MarketRegion.GLOBAL, None, "USD", "UTC", "=F"),
@@ -37,29 +38,14 @@ MARKETS: list[tuple] = [
 
 # ── Securities ────────────────────────────────────────────────
 # (market_code, symbol, name, asset_class, sector, industry)
+# Only a few PSX demo names are seeded (they're matched/enriched by the PSX CSV
+# ingest). Every other market is owned by the universe loaders:
+#   US → us_universe (SEC + S&P 500);  India/GCC/Australia/forex/commodity/crypto
+#   → universe_curated. Seeding them here too would create cross-market duplicates.
 SECURITIES: list[tuple] = [
-    # US — NASDAQ / NYSE
-    ("NASDAQ", "AAPL", "Apple Inc.", AssetClass.EQUITY, "Technology", "Consumer Electronics"),
-    ("NASDAQ", "MSFT", "Microsoft Corporation", AssetClass.EQUITY, "Technology", "Software—Infrastructure"),
-    ("NASDAQ", "NVDA", "NVIDIA Corporation", AssetClass.EQUITY, "Technology", "Semiconductors"),
-    ("NASDAQ", "GOOGL", "Alphabet Inc.", AssetClass.EQUITY, "Communication Services", "Internet Content & Information"),
-    ("NASDAQ", "AMZN", "Amazon.com, Inc.", AssetClass.EQUITY, "Consumer Cyclical", "Internet Retail"),
-    ("NASDAQ", "META", "Meta Platforms, Inc.", AssetClass.EQUITY, "Communication Services", "Internet Content & Information"),
-    ("NASDAQ", "TSLA", "Tesla, Inc.", AssetClass.EQUITY, "Consumer Cyclical", "Auto Manufacturers"),
-    ("NASDAQ", "AMD", "Advanced Micro Devices, Inc.", AssetClass.EQUITY, "Technology", "Semiconductors"),
-    ("NASDAQ", "AVGO", "Broadcom Inc.", AssetClass.EQUITY, "Technology", "Semiconductors"),
-    ("NASDAQ", "NFLX", "Netflix, Inc.", AssetClass.EQUITY, "Communication Services", "Entertainment"),
-    ("NYSE", "JPM", "JPMorgan Chase & Co.", AssetClass.EQUITY, "Financial Services", "Banks—Diversified"),
-    ("NYSE", "V", "Visa Inc.", AssetClass.EQUITY, "Financial Services", "Credit Services"),
-    ("NYSE", "WMT", "Walmart Inc.", AssetClass.EQUITY, "Consumer Defensive", "Discount Stores"),
-    ("NYSE", "XOM", "Exxon Mobil Corporation", AssetClass.EQUITY, "Energy", "Oil & Gas Integrated"),
-    ("NYSE", "CVX", "Chevron Corporation", AssetClass.EQUITY, "Energy", "Oil & Gas Integrated"),
-
-    # Pakistan — PSX
+    # Pakistan — PSX (enriched by the stockanalysis CSV ingest)
     ("PSX", "LUCK", "Lucky Cement Limited", AssetClass.EQUITY, "Materials", "Cement"),
     ("PSX", "SYS", "Systems Limited", AssetClass.EQUITY, "Technology", "IT Services"),
-    # ENGRO Corporation rebranded to Engro Holdings (ticker ENGROH); the CSV
-    # fundamentals are under ENGROH, so seeding ENGRO created a dataless duplicate.
     ("PSX", "HUBC", "Hub Power Company Limited", AssetClass.EQUITY, "Utilities", "Independent Power Producer"),
     ("PSX", "OGDC", "Oil & Gas Development Company", AssetClass.EQUITY, "Energy", "Oil & Gas E&P"),
     ("PSX", "PPL", "Pakistan Petroleum Limited", AssetClass.EQUITY, "Energy", "Oil & Gas E&P"),
@@ -67,41 +53,6 @@ SECURITIES: list[tuple] = [
     ("PSX", "UBL", "United Bank Limited", AssetClass.EQUITY, "Financial Services", "Banks"),
     ("PSX", "MEBL", "Meezan Bank Limited", AssetClass.EQUITY, "Financial Services", "Islamic Banking"),
     ("PSX", "FFC", "Fauji Fertilizer Company", AssetClass.EQUITY, "Materials", "Fertilizers"),
-
-    # India — NSE
-    ("NSE", "RELIANCE", "Reliance Industries Limited", AssetClass.EQUITY, "Energy", "Conglomerate"),
-    ("NSE", "TCS", "Tata Consultancy Services", AssetClass.EQUITY, "Technology", "IT Services"),
-    ("NSE", "INFY", "Infosys Limited", AssetClass.EQUITY, "Technology", "IT Services"),
-    ("NSE", "HDFCBANK", "HDFC Bank Limited", AssetClass.EQUITY, "Financial Services", "Banks"),
-    ("NSE", "ICICIBANK", "ICICI Bank Limited", AssetClass.EQUITY, "Financial Services", "Banks"),
-    ("NSE", "SBIN", "State Bank of India", AssetClass.EQUITY, "Financial Services", "Banks"),
-    ("NSE", "ITC", "ITC Limited", AssetClass.EQUITY, "Consumer Defensive", "Tobacco & FMCG"),
-
-    # GCC — Tadawul / DFM / ADX
-    ("TADAWUL", "2222", "Saudi Arabian Oil Company (Aramco)", AssetClass.EQUITY, "Energy", "Oil & Gas Integrated"),
-    ("TADAWUL", "1120", "Al Rajhi Bank", AssetClass.EQUITY, "Financial Services", "Islamic Banking"),
-    ("TADAWUL", "2010", "Saudi Basic Industries Corp (SABIC)", AssetClass.EQUITY, "Materials", "Chemicals"),
-    ("DFM", "EMAAR", "Emaar Properties PJSC", AssetClass.EQUITY, "Real Estate", "Real Estate Development"),
-    ("DFM", "DEWA", "Dubai Electricity & Water Authority", AssetClass.EQUITY, "Utilities", "Utilities—Diversified"),
-    ("ADX", "FAB", "First Abu Dhabi Bank", AssetClass.EQUITY, "Financial Services", "Banks"),
-    ("ADX", "ALDAR", "Aldar Properties PJSC", AssetClass.EQUITY, "Real Estate", "Real Estate Development"),
-
-    # Crypto
-    ("CRYPTO", "BTC", "Bitcoin", AssetClass.CRYPTO, None, None),
-    ("CRYPTO", "ETH", "Ethereum", AssetClass.CRYPTO, None, None),
-    ("CRYPTO", "SOL", "Solana", AssetClass.CRYPTO, None, None),
-    ("CRYPTO", "BNB", "BNB", AssetClass.CRYPTO, None, None),
-    ("CRYPTO", "XRP", "XRP", AssetClass.CRYPTO, None, None),
-
-    # Forex
-    ("FOREX", "EURUSD", "Euro / US Dollar", AssetClass.FOREX, None, None),
-    ("FOREX", "GBPUSD", "British Pound / US Dollar", AssetClass.FOREX, None, None),
-    ("FOREX", "USDJPY", "US Dollar / Japanese Yen", AssetClass.FOREX, None, None),
-
-    # Commodities
-    ("COMMODITY", "GC", "Gold Futures", AssetClass.COMMODITY, None, None),
-    ("COMMODITY", "CL", "Crude Oil WTI Futures", AssetClass.COMMODITY, None, None),
-    ("COMMODITY", "SI", "Silver Futures", AssetClass.COMMODITY, None, None),
 ]
 
 
