@@ -150,6 +150,14 @@ def cmd_ingest_insider(args: argparse.Namespace) -> None:
         log.info("ingest-insider: %s", ingest_insider(db, EdgarClient(), limit=args.limit))
 
 
+def cmd_ingest_yahoo_insider(args: argparse.Namespace) -> None:
+    from app.db.session import session_scope
+    from app.ingestion.yahoo_insider import ingest_yahoo_insider
+
+    with session_scope() as db:
+        ingest_yahoo_insider(db, region=_region(args.region), limit=args.limit)
+
+
 def cmd_ingest_psx_insider(args: argparse.Namespace) -> None:
     from app.db.session import session_scope
     from app.ingestion.psx_insider import ingest_psx_insider
@@ -277,6 +285,7 @@ def cmd_all(args: argparse.Namespace) -> None:
     cmd_ingest_psx_market(argparse.Namespace(limit=None, no_history=False))
     cmd_ingest_macro(args)
     cmd_ingest_psx_insider(args)
+    cmd_ingest_yahoo_insider(argparse.Namespace(region=None, limit=None))
     cmd_ingest_quotes(argparse.Namespace(region=None, limit=None))
     cmd_backfill(argparse.Namespace(region=None, limit=None))
     cmd_ingest_fundamentals(argparse.Namespace(region=None, limit=None))
@@ -312,6 +321,7 @@ def build_parser() -> argparse.ArgumentParser:
     add("backfill", cmd_backfill, region=True, limit=True)
     add("ingest-fundamentals", cmd_ingest_fundamentals, region=True, limit=True)
     add("ingest-insider", cmd_ingest_insider, limit=True)
+    add("ingest-yahoo-insider", cmd_ingest_yahoo_insider, region=True, limit=True)
     add("ingest-psx-insider", cmd_ingest_psx_insider)
     add("ingest-news", cmd_ingest_news, limit=True)
     add("compute", cmd_compute, limit=True)

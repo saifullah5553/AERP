@@ -42,7 +42,7 @@ def detect_chart_patterns(
     hits: list[PatternHit] = []
     pivots = alternating(find_pivots(high, low, k))
 
-    hits += _double(pivots)
+    hits += _double(pivots, high, low, close)
     hits += _head_and_shoulders(pivots)
     hits += _triangle_family(pivots, high, low, close)
     hits += _flag(close, high, low)
@@ -50,29 +50,65 @@ def detect_chart_patterns(
     return hits
 
 
-def _double(pivots: list[Pivot]) -> list[PatternHit]:
+# Double top/bottom geometry thresholds. Kept strict on purpose: two similar
+# extremes alone are common noise — a real double top/bottom needs a *deep* valley
+# between the peaks, the peaks near the recent extreme, enough time separation, and
+# price rolling back through the neckline. These gates remove false positives like
+# two minor bumps mid-trend.
+_PEAK_SIMILARITY = 0.03   # the two peaks must be within 3% of each other
+_MIN_VALLEY_DEPTH = 0.05  # the middle trough must be ≥5% away from the lower peak
+_MIN_SEPARATION = 8       # bars between the two peaks
+_PROMINENCE = 0.985       # peaks must sit within ~1.5% of the extreme since peak 1
+
+
+def _double(
+    pivots: list[Pivot], high: np.ndarray, low: np.ndarray, close: np.ndarray
+) -> list[PatternHit]:
     if len(pivots) < 3:
         return []
     p3, p2, p1 = pivots[-1], pivots[-2], pivots[-3]
     hits: list[PatternHit] = []
-    # Double top: H, L, H with similar highs.
-    if p1.kind == "H" and p2.kind == "L" and p3.kind == "H" and _pct(p1.price, p3.price) < 0.02:
-        conf = clamp01(0.8 - _pct(p1.price, p3.price) * 15)
-        height = max(p1.price, p3.price) - p2.price
-        hits.append(PatternHit(
-            "double_top", CH, BEAR, conf, p1.index,
-            breakout_level=p2.price, target_price=p2.price - height,
-            stop_level=max(p1.price, p3.price),
-        ))
-    # Double bottom: L, H, L with similar lows.
-    if p1.kind == "L" and p2.kind == "H" and p3.kind == "L" and _pct(p1.price, p3.price) < 0.02:
-        conf = clamp01(0.8 - _pct(p1.price, p3.price) * 15)
-        height = p2.price - min(p1.price, p3.price)
-        hits.append(PatternHit(
-            "double_bottom", CH, BULL, conf, p1.index,
-            breakout_level=p2.price, target_price=p2.price + height,
-            stop_level=min(p1.price, p3.price),
-        ))
+    n = len(close)
+    last = float(close[-1])
+    sep = abs(p3.index - p1.index)
+    if sep < _MIN_SEPARATION:
+        return hits
+
+    # ── Double top: H, L, H — two similar peaks with a deep valley, near the high ──
+    if p1.kind == "H" and p2.kind == "L" and p3.kind == "H":
+        peak_sim = _pct(p1.price, p3.price)
+        lower_peak = min(p1.price, p3.price)
+        valley_depth = (lower_peak - p2.price) / lower_peak if lower_peak else 0.0
+        seg_high = float(np.max(high[p1.index:])) if p1.index < n else lower_peak
+        prominent = max(p1.price, p3.price) >= _PROMINENCE * seg_high
+        confirmed = last < p2.price  # neckline (valley) broken to the downside
+        if peak_sim < _PEAK_SIMILARITY and valley_depth >= _MIN_VALLEY_DEPTH and prominent:
+            base = 0.75 if confirmed else 0.55
+            conf = clamp01(base + valley_depth - peak_sim * 8)
+            height = max(p1.price, p3.price) - p2.price
+            hits.append(PatternHit(
+                "double_top", CH, BEAR, conf, p1.index,
+                breakout_level=p2.price, target_price=p2.price - height,
+                stop_level=max(p1.price, p3.price),
+            ))
+
+    # ── Double bottom: L, H, L — two similar troughs with a high peak, near the low ─
+    if p1.kind == "L" and p2.kind == "H" and p3.kind == "L":
+        trough_sim = _pct(p1.price, p3.price)
+        higher_trough = max(p1.price, p3.price)
+        peak_height = (p2.price - higher_trough) / higher_trough if higher_trough else 0.0
+        seg_low = float(np.min(low[p1.index:])) if p1.index < n else higher_trough
+        prominent = min(p1.price, p3.price) <= seg_low / _PROMINENCE
+        confirmed = last > p2.price  # neckline (peak) broken to the upside
+        if trough_sim < _PEAK_SIMILARITY and peak_height >= _MIN_VALLEY_DEPTH and prominent:
+            base = 0.75 if confirmed else 0.55
+            conf = clamp01(base + peak_height - trough_sim * 8)
+            height = p2.price - min(p1.price, p3.price)
+            hits.append(PatternHit(
+                "double_bottom", CH, BULL, conf, p1.index,
+                breakout_level=p2.price, target_price=p2.price + height,
+                stop_level=min(p1.price, p3.price),
+            ))
     return hits
 
 

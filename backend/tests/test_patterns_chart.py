@@ -37,6 +37,24 @@ def test_double_top() -> None:
     assert "double_top" in names
 
 
+def test_shallow_dip_is_not_double_top() -> None:
+    # Two similar highs but only a ~2% dip between them — common noise, NOT a real
+    # double top (this is the Bajaj-Auto-style false positive we want to reject).
+    close = _legs([100, 110, 108, 110, 108])
+    high, low = close + 0.5, close - 0.5
+    names = {h.name for h in detect_chart_patterns(high, low, close, k=3)}
+    assert "double_top" not in names
+
+
+def test_mid_trend_double_top_rejected_when_not_prominent() -> None:
+    # Two equal bumps, then price breaks well above them → peaks aren't the extreme,
+    # so it must not register as a topping pattern.
+    close = _legs([90, 110, 104, 110, 104, 130])
+    high, low = close + 0.5, close - 0.5
+    names = {h.name for h in detect_chart_patterns(high, low, close, k=3)}
+    assert "double_top" not in names
+
+
 def test_double_bottom_levels_are_sane() -> None:
     close = _legs([110, 80, 95, 81, 95])
     high, low = close + 0.5, close - 0.5

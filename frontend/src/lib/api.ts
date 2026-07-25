@@ -84,6 +84,13 @@ export const api = {
   rawMaterials(signal?: AbortSignal): Promise<RawMaterialsData> {
     return getJson<RawMaterialsData>(`${DATA_BASE}/raw_materials.json`, signal);
   },
+  async sectors(signal?: AbortSignal): Promise<string[]> {
+    if (IS_STATIC) {
+      const rows = await staticRows();
+      return [...new Set(rows.map((r) => r.sector).filter((s): s is string => !!s))].sort();
+    }
+    return getJson<string[]>(`${V1}/screener/sectors`, signal);
+  },
   health(signal?: AbortSignal): Promise<unknown> {
     if (IS_STATIC) return Promise.resolve({ status: "static" });
     return getJson(`${V1}/health`, signal);

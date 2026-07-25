@@ -20,12 +20,7 @@ import {
   strengthLabel,
   technicalRead,
 } from "@/lib/research";
-import {
-  commoditySummary,
-  companyMaterials,
-  type MaterialImpact,
-  type RawMaterialsData,
-} from "@/lib/rawMaterials";
+import { commoditySummary, companyMaterials, type RawMaterialsData } from "@/lib/rawMaterials";
 import type { MarketPulse } from "@/types/api";
 import type { CompanyDetail, Row } from "@/types/company";
 import PeersTable from "./PeersTable";
@@ -48,12 +43,6 @@ const LEVEL_TONE: Record<Level, string> = {
   High: "#ef4444",
   Unknown: "#64748b",
 };
-const IMPACT_TONE: Record<string, string> = {
-  Positive: "#22c55e",
-  Neutral: "#94a3b8",
-  Negative: "#ef4444",
-};
-const TREND_ARROW: Record<string, string> = { increasing: "↑", decreasing: "↓", sideways: "→" };
 const GRADE_TONE = (g: string) =>
   g.startsWith("A") ? "#22c55e" : g.startsWith("B") ? "#eab308" : g === "—" ? "#64748b" : "#f87171";
 
@@ -296,7 +285,6 @@ export default function CompanyPage() {
         <div className="space-y-4 lg:col-span-2">
           <FundamentalSection detail={data} derived={derived} />
           <TechnicalSection tech={derived.tech} patternSignal={derived.patternSignal} />
-          <RawMaterialSection materials={derived.materials} outlook={rawMaterials?.outlook ?? null} />
           <RiskSection risks={derived.risks} />
 
           {/* Detailed financials (existing tabs, unchanged data source) */}
@@ -412,53 +400,20 @@ function TechnicalSection({
   );
 }
 
-// ── Raw material cost trend ──────────────────────────────────────────────────
-function RawMaterialSection({
-  materials,
-  outlook,
-}: {
-  materials: MaterialImpact[];
-  outlook: string | null;
-}) {
-  return (
-    <Card title="Major Raw Material Price Trend & Margin Impact">
-      {materials.length === 0 ? (
-        <p className="p-4 text-sm text-slate-500">
-          No major tracked commodity inputs map to this sector — margins are driven mainly
-          by non-commodity factors.
-        </p>
-      ) : (
-        <div className="divide-y divide-base-700/40">
-          {materials.map((m) => (
-            <div key={m.symbol} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
-              <div>
-                <div className="text-sm font-medium text-slate-200">
-                  {TREND_ARROW[m.trend]} {m.name}
-                  <span className="ml-2 text-xs capitalize text-slate-500">{m.trend}</span>
-                </div>
-                <div className="text-[11px] text-slate-500">{m.effect}</div>
-              </div>
-              <Pill text={`${m.impact} Impact`} color={IMPACT_TONE[m.impact]} />
-            </div>
-          ))}
-        </div>
-      )}
-      {outlook && (
-        <div className="border-t border-base-700/50 px-4 py-2.5">
-          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Raw Material Cost Outlook
-          </div>
-          <p className="text-sm leading-relaxed text-slate-300">{outlook}</p>
-        </div>
-      )}
-    </Card>
-  );
-}
-
 // ── Risk analysis ────────────────────────────────────────────────────────────
 function RiskSection({ risks }: { risks: RiskItem[] }) {
+  // Risk score = how many of the risk dimensions read "Low" (green) out of all.
+  const green = risks.filter((r) => r.level === "Low").length;
+  const scoreTone = green === risks.length ? "#22c55e" : green >= risks.length - 1 ? "#eab308" : "#f87171";
   return (
-    <Card title="Risk Analysis">
+    <Card
+      title="Risk Analysis"
+      right={
+        <span className="num text-xs font-semibold" style={{ color: scoreTone }}>
+          {green}/{risks.length} Low
+        </span>
+      }
+    >
       <div className="grid grid-cols-1 gap-x-8 px-4 py-2 sm:grid-cols-2 lg:grid-cols-3">
         {risks.map((r) => (
           <div key={r.name} className="flex items-center justify-between border-b border-base-700/40 py-2">

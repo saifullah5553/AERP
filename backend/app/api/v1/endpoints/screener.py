@@ -47,6 +47,18 @@ def screener_columns() -> list[ScreenerColumn]:
     return COLUMNS
 
 
+@router.get("/sectors", response_model=list[str], summary="Distinct sectors")
+def screener_sectors(db: Session = Depends(get_db)) -> list[str]:
+    from sqlalchemy import select
+
+    from app.models.market import Security
+
+    rows = db.scalars(
+        select(Security.sector).where(Security.sector.is_not(None)).distinct()
+    ).all()
+    return sorted({s for s in rows if s})
+
+
 @router.get("", response_model=Page[ScreenerRow], summary="Run the screener")
 def run_screener(
     db: Session = Depends(get_db),

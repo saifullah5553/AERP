@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { api } from "@/lib/api";
 import type { AssetClass, MarketRegion, ScreenerQuery } from "@/types/api";
 
 type Filters = Omit<ScreenerQuery, "page" | "page_size" | "sort_by" | "sort_dir">;
@@ -31,6 +32,13 @@ interface Props {
 
 export default function FilterBar({ filters, onChange }: Props) {
   const [search, setSearch] = useState(filters.search ?? "");
+  const [sectors, setSectors] = useState<string[]>([]);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    api.sectors(ctrl.signal).then(setSectors).catch(() => setSectors([]));
+    return () => ctrl.abort();
+  }, []);
 
   // Debounce the free-text search so we don't hit the API on every keystroke.
   useEffect(() => {
@@ -98,12 +106,18 @@ export default function FilterBar({ filters, onChange }: Props) {
         <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
           Sector
         </label>
-        <input
+        <select
           value={filters.sector ?? ""}
           onChange={(e) => onChange({ ...filters, sector: e.target.value || undefined })}
-          placeholder="e.g. Technology"
-          className="w-44 rounded border border-base-500 bg-base-900 px-3 py-1.5 text-sm outline-none focus:border-accent"
-        />
+          className="w-52 rounded border border-base-500 bg-base-900 px-3 py-1.5 text-sm outline-none focus:border-accent"
+        >
+          <option value="">All Sectors</option>
+          {sectors.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="flex flex-col gap-1">
