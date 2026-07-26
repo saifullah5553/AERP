@@ -19,6 +19,22 @@ def list_markets(db: Session = Depends(get_db)) -> list[Market]:
     return list(db.scalars(select(Market).order_by(Market.code)).all())
 
 
+@router.get("/meta", summary="Snapshot freshness + coverage metadata")
+def market_meta(db: Session = Depends(get_db)) -> dict:
+    from datetime import UTC, datetime
+
+    from sqlalchemy import func
+
+    from app.models.market import Security
+
+    total = db.scalar(select(func.count()).select_from(Security)) or 0
+    return {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "securities": total,
+        "mode": "live",
+    }
+
+
 @router.get("/pulse", summary="Bullish/bearish/neutral pulse per market")
 def market_pulse(db: Session = Depends(get_db)) -> list[dict]:
     return compute_pulse(db)

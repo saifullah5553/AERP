@@ -6,6 +6,7 @@ import type {
   ScreenerQuery,
   ScreenerRow,
   SectorStatsData,
+  SnapshotMeta,
   SwingRow,
 } from "@/types/api";
 import type { CompanyDetail } from "@/types/company";
@@ -107,6 +108,14 @@ export const api = {
   },
   catalysts(signal?: AbortSignal): Promise<CatalystsData> {
     return getJson<CatalystsData>(`${DATA_BASE}/catalysts.json`, signal);
+  },
+  meta(signal?: AbortSignal): Promise<SnapshotMeta> {
+    if (IS_STATIC) return getJson<SnapshotMeta>(`${DATA_BASE}/meta.json`, signal);
+    return getJson<SnapshotMeta>(`${V1}/markets/meta`, signal).catch(() => ({
+      generated_at: null,
+      securities: null,
+      mode: "live",
+    }));
   },
   async sectors(signal?: AbortSignal): Promise<string[]> {
     if (IS_STATIC) {

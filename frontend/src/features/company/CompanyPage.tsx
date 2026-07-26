@@ -2,7 +2,15 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { api } from "@/lib/api";
-import { fmtChangePct, fmtCompact, fmtNumber, fmtPercent, titleize } from "@/lib/format";
+import {
+  fmtChangePct,
+  fmtCompact,
+  fmtNumber,
+  fmtPercent,
+  fmtSnapshotAge,
+  fmtSnapshotDate,
+  titleize,
+} from "@/lib/format";
 import { openQuoteStream } from "@/lib/liveQuotes";
 import {
   type CheckItem,
@@ -31,6 +39,7 @@ import {
   type MaterialImpact,
   type RawMaterialsData,
 } from "@/lib/rawMaterials";
+import { confidenceTone, dataSources } from "@/lib/provenance";
 import type {
   CatalystsData,
   CountryRegime,
@@ -38,6 +47,7 @@ import type {
   MarketPulse,
   SectorStat,
   SectorStatsData,
+  SnapshotMeta,
 } from "@/types/api";
 import type { CompanyDetail, Row } from "@/types/company";
 import PeersTable from "./PeersTable";
@@ -180,6 +190,7 @@ export default function CompanyPage() {
   const [sectorStats, setSectorStats] = useState<SectorStatsData | null>(null);
   const [regime, setRegime] = useState<MacroRegimeData | null>(null);
   const [catalysts, setCatalysts] = useState<CatalystsData | null>(null);
+  const [meta, setMeta] = useState<SnapshotMeta | null>(null);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -202,6 +213,7 @@ export default function CompanyPage() {
     api.sectorStats(ctrl.signal).then(setSectorStats).catch(() => setSectorStats(null));
     api.regime(ctrl.signal).then(setRegime).catch(() => setRegime(null));
     api.catalysts(ctrl.signal).then(setCatalysts).catch(() => setCatalysts(null));
+    api.meta(ctrl.signal).then(setMeta).catch(() => setMeta(null));
     return () => ctrl.abort();
   }, []);
 
@@ -274,7 +286,17 @@ export default function CompanyPage() {
       <header className="sticky top-0 z-10 border-b border-base-600 bg-base-900/95 px-5 py-3 backdrop-blur">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-4">
-            <Link to="/" className="text-sm text-slate-400 hover:text-accent">← Research</Link>
+            <div className="flex flex-col">
+              <Link to="/" className="text-sm text-slate-400 hover:text-accent">← Research</Link>
+              {meta?.generated_at && (
+                <span
+                  className="text-[10px] text-slate-600"
+                  title={`Snapshot generated ${fmtSnapshotDate(meta.generated_at)}`}
+                >
+                  Data {fmtSnapshotAge(meta.generated_at)}
+                </span>
+              )}
+            </div>
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xl font-bold text-accent">{data.security.symbol}</span>
@@ -362,6 +384,11 @@ export default function CompanyPage() {
           <PeersTable peers={data.peers} />
           <NewsCard news={data.news} />
           <ScoreHistoryChart history={data.score_history} />
+          <DataSourcesCard
+            region={String(sec.region ?? "")}
+            assetClass={String(sec.asset_class ?? "equity")}
+            meta={meta}
+          />
         </div>
       </div>
     </div>
@@ -947,6 +974,56 @@ function NewsCard({ news }: { news: Row[] }) {
             </div>
           </a>
         ))}
+      </div>
+    </Card>
+  );
+}
+
+// ── Data provenance (Phase 4) ────────────────────────────────────────────────
+function DataSourcesCard({
+  region,
+  assetClass,
+  meta,
+}: {
+  region: string;
+  assetClass: string;
+  meta: SnapshotMeta | null;
+}) {
+  const sources = dataSources(region, assetClass);
+  if (sources.length === 0) return null;
+  return (
+    <Card
+      title="Data & Sources"
+      right={
+        meta?.generated_at ? (
+          <span className="text-[10px] text-slate-500" title={fmtSnapshotDate(meta.generated_at)}>
+            {fmtSnapshotAge(meta.generated_at)}
+          </span>
+        ) : undefined
+      }
+    >
+      <div className="divide-y divide-base-700/40">
+        {sources.map((s) => (
+          <div key={s.domain} className="px-4 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm text-slate-300">{s.domain}</span>
+              <span
+                className="rounded px-1.5 py-0.5 text-[10px] font-semibold"
+                style={{ background: `${confidenceTone(s.confidence)}22`, color: confidenceTone(s.confidence) }}
+              >
+                {s.confidence}
+              </span>
+            </div>
+            <div className="mt-0.5 text-[11px] text-slate-500">
+              {s.source}
+              {s.note ? <span className="text-slate-600"> · {s.note}</span> : null}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="border-t border-base-700/50 px-4 py-2 text-[10px] leading-relaxed text-slate-600">
+        Research &amp; ranking intelligence only — not investment advice. No buy/sell signals or price
+        targets. Heuristic reads are labelled “model-derived”.
       </div>
     </Card>
   );

@@ -48,6 +48,27 @@ export function fmtScore(v: number | null | undefined): string {
   return v.toFixed(0);
 }
 
+// Human "updated X ago" from an ISO timestamp (snapshot freshness).
+export function fmtSnapshotAge(iso: string | null | undefined): string {
+  if (!iso) return DASH;
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return DASH;
+  const mins = Math.max(0, Math.round((Date.now() - then) / 60000));
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.round(hrs / 24);
+  return `${days}d ago`;
+}
+
+// Short calendar date (YYYY-MM-DD HH:MM UTC) from an ISO timestamp.
+export function fmtSnapshotDate(iso: string | null | undefined): string {
+  if (!iso) return DASH;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return DASH;
+  return `${d.toISOString().slice(0, 16).replace("T", " ")} UTC`;
+}
+
 export function titleize(v: string | null | undefined): string {
   if (!v) return DASH;
   return v.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());

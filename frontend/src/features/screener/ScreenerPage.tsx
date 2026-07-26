@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 
 import { api, IS_STATIC } from "@/lib/api";
 import { exportScreenerCsv } from "@/lib/exportCsv";
+import { fmtSnapshotAge, fmtSnapshotDate } from "@/lib/format";
 import { openQuoteStream } from "@/lib/liveQuotes";
 import {
   deleteView,
@@ -11,7 +12,7 @@ import {
   saveView,
   type SavedView,
 } from "@/lib/savedViews";
-import type { ScreenerQuery, ScreenerRow } from "@/types/api";
+import type { ScreenerQuery, ScreenerRow, SnapshotMeta } from "@/types/api";
 import FilterBar from "./FilterBar";
 import MarketOverview from "./MarketOverview";
 import MarketRegime from "./MarketRegime";
@@ -25,6 +26,7 @@ export default function ScreenerPage() {
   const [total, setTotal] = useState<number | null>(null);
   const [views, setViews] = useState<SavedView[]>(() => loadViews());
   const [online, setOnline] = useState<boolean | null>(null);
+  const [meta, setMeta] = useState<SnapshotMeta | null>(null);
   const [exporting, setExporting] = useState(false);
   const gridApiRef = useRef<GridApi<ScreenerRow> | null>(null);
   const navigate = useNavigate();
@@ -37,6 +39,7 @@ export default function ScreenerPage() {
       .health(ctrl.signal)
       .then(() => setOnline(true))
       .catch(() => setOnline(false));
+    api.meta(ctrl.signal).then(setMeta).catch(() => setMeta(null));
     return () => ctrl.abort();
   }, []);
 
@@ -100,6 +103,14 @@ export default function ScreenerPage() {
           {IS_STATIC && (
             <span className="rounded bg-amber-900/60 px-2 py-0.5 text-xs font-medium text-amber-300">
               Static demo snapshot
+            </span>
+          )}
+          {meta?.generated_at && (
+            <span
+              className="rounded bg-base-700 px-2 py-0.5 text-xs text-slate-400"
+              title={`Snapshot generated ${fmtSnapshotDate(meta.generated_at)}`}
+            >
+              Updated {fmtSnapshotAge(meta.generated_at)}
             </span>
           )}
         </div>

@@ -29,6 +29,13 @@ export interface MacroRegimeData {
   countries: Record<string, CountryRegime>;
 }
 
+export interface SnapshotMeta {
+  generated_at: string | null;
+  securities?: number | null;
+  companies?: number | null;
+  mode?: string | null;
+}
+
 export interface CatalystEvent {
   date: string | null;
   title: string;
