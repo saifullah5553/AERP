@@ -29,6 +29,23 @@ export interface MacroRegimeData {
   countries: Record<string, CountryRegime>;
 }
 
+export interface SwingRow {
+  provider_symbol: string;
+  symbol: string;
+  name: string | null;
+  market_code: string | null;
+  region: MarketRegion;
+  sector: string | null;
+  swing_score: number;
+  fundamental: number | null;
+  catalyst: number | null;
+  technical: number | null;
+  risk: number | null;
+  composite: number | null;
+  price: number | null;
+  change_pct: number | null;
+}
+
 export interface SectorStat {
   sector: string;
   region: MarketRegion;
@@ -91,6 +108,7 @@ export interface ScreenerRow {
   technical_score: number | null;
   composite_score: number | null;
   pabrai_score: number | null;
+  swing_score?: number | null;
   signal: SignalType | null;
   signal_label: string | null;
   top_pattern: string | null;

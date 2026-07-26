@@ -42,3 +42,19 @@ def market_regime(db: Session = Depends(get_db)) -> dict:
     except Exception:  # noqa: BLE001 - network optional
         pk = None
     return build_macro_regime(db, pk)
+
+
+@router.get("/swing", summary="Swing/positional opportunity ranking")
+def market_swing(db: Session = Depends(get_db)) -> list[dict]:
+    from app.ingestion.portfolio360 import Portfolio360Client
+    from app.services.macro_regime import build_macro_regime
+    from app.services.sectors import build_sector_stats
+    from app.services.swing import build_swing
+
+    pk = None
+    try:
+        pk = Portfolio360Client().pk_macro()
+    except Exception:  # noqa: BLE001 - network optional
+        pk = None
+    regime = build_macro_regime(db, pk)
+    return build_swing(db, build_sector_stats(db), regime, None)["ranked"]

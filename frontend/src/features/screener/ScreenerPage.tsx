@@ -89,6 +89,9 @@ export default function ScreenerPage() {
           <a href="#/sectors" className="rounded bg-base-700 px-2 py-0.5 text-xs font-medium text-slate-300 hover:bg-base-600 hover:text-accent">
             Sector Rotation →
           </a>
+          <a href="#/swing" className="rounded bg-base-700 px-2 py-0.5 text-xs font-medium text-slate-300 hover:bg-base-600 hover:text-accent">
+            Swing Scanner →
+          </a>
           {total !== null && (
             <span className="rounded bg-base-700 px-2 py-0.5 text-xs text-slate-300">
               {total.toLocaleString()} securities

@@ -3,6 +3,7 @@ import { HashRouter, Route, Routes } from "react-router-dom";
 import CompanyPage from "@/features/company/CompanyPage";
 import ScreenerPage from "@/features/screener/ScreenerPage";
 import SectorsPage from "@/features/sectors/SectorsPage";
+import SwingPage from "@/features/swing/SwingPage";
 
 // HashRouter keeps deep links working on GitHub Pages (no server-side rewrites),
 // and is harmless behind a real backend.
@@ -13,6 +14,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<ScreenerPage />} />
           <Route path="/sectors" element={<SectorsPage />} />
+          <Route path="/swing" element={<SwingPage />} />
           <Route path="/company/:symbol" element={<CompanyPage />} />
         </Routes>
       </HashRouter>

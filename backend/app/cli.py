@@ -255,32 +255,55 @@ def cmd_export_static(args: argparse.Namespace) -> None:
             key=lambda r: (r.get("composite_score") is not None, r.get("composite_score") or 0),
             reverse=True,
         )
-        screener_path.write_text(json.dumps(merged), encoding="utf-8")
 
-        # Market pulse from the merged (all-market) snapshot.
-        (out / "pulse.json").write_text(
-            json.dumps(pulse_from_screener_dicts(merged)), encoding="utf-8"
-        )
-
-        # Dynamic per-country macro regime (live PK macro from Portfolio360 + DB signals).
+        # Cross-cutting engines (computed before writing the screener so the swing
+        # score can be injected into its rows). All recompute each refresh.
         from app.ingestion.portfolio360 import Portfolio360Client
         from app.services.macro_regime import build_macro_regime
+        from app.services.sectors import build_sector_stats
+        from app.services.swing import build_swing
 
         pk_macro = None
         try:
             pk_macro = Portfolio360Client().pk_macro()
         except Exception as exc:  # network optional; regime falls back to DB signals
             log.warning("Portfolio360 PK macro fetch failed: %s", exc)
-        (out / "macro_regime.json").write_text(
-            json.dumps(build_macro_regime(db, pk_macro)), encoding="utf-8"
-        )
+        regime = build_macro_regime(db, pk_macro)
+        sector_stats = build_sector_stats(db)
+        raw_materials = build_raw_materials(out / "company")
+        swing = build_swing(db, sector_stats, regime, raw_materials)
 
-        # Sector rotation + sector-average stats (per region), for F2/F7.
-        from app.services.sectors import build_sector_stats
+        # Inject the swing score into each screener row, PRESERVING a prior value when
+        # this run didn't recompute it (CI is PSX-only → don't wipe other markets).
+        by_sym = swing["by_symbol"]
+        for r in merged:
+            v = by_sym.get(r.get("provider_symbol"))
+            if v is not None:
+                r["swing_score"] = v
+            elif "swing_score" not in r:
+                r["swing_score"] = None
 
-        (out / "sector_stats.json").write_text(
-            json.dumps(build_sector_stats(db)), encoding="utf-8"
+        # Merge swing.json the same way (this run's entries win; others preserved).
+        swing_path = out / "swing.json"
+        ranked = swing["ranked"]
+        if merge and swing_path.exists():
+            try:
+                old = json.loads(swing_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                old = []
+            by = {r.get("provider_symbol"): r for r in old}
+            for r in ranked:
+                by[r["provider_symbol"]] = r
+            ranked = sorted(by.values(), key=lambda r: r.get("swing_score") or 0, reverse=True)
+
+        screener_path.write_text(json.dumps(merged), encoding="utf-8")
+        (out / "pulse.json").write_text(
+            json.dumps(pulse_from_screener_dicts(merged)), encoding="utf-8"
         )
+        (out / "macro_regime.json").write_text(json.dumps(regime), encoding="utf-8")
+        (out / "sector_stats.json").write_text(json.dumps(sector_stats), encoding="utf-8")
+        (out / "raw_materials.json").write_text(json.dumps(raw_materials), encoding="utf-8")
+        swing_path.write_text(json.dumps(ranked), encoding="utf-8")
 
         exported = 0
         for r in rows:
@@ -293,11 +316,6 @@ def cmd_export_static(args: argparse.Namespace) -> None:
             exported += 1
         # Company files for securities only in the old snapshot are left in place.
         company_files = len(list((out / "company").glob("*.json")))
-
-        # Raw-material cost-trend map (built from the commodity company files).
-        (out / "raw_materials.json").write_text(
-            json.dumps(build_raw_materials(out / "company")), encoding="utf-8"
-        )
         (out / "meta.json").write_text(
             json.dumps({
                 "generated_at": datetime.now(UTC).isoformat(),

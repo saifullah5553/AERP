@@ -86,6 +86,14 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
       cellRenderer: ScoreCell,
     },
     {
+      field: "swing_score",
+      headerName: "Swing",
+      headerTooltip: "Swing/positional opportunity: fundamentals + sector + macro regime + technical (0–100)",
+      width: 100,
+      sortable: true,
+      cellRenderer: ScoreCell,
+    },
+    {
       field: "top_candlestick",
       headerName: "Candlestick",
       width: 150,
