@@ -24,6 +24,13 @@ def market_pulse(db: Session = Depends(get_db)) -> list[dict]:
     return compute_pulse(db)
 
 
+@router.get("/sectors", summary="Sector rotation + sector-average stats per region")
+def market_sectors(db: Session = Depends(get_db)) -> dict:
+    from app.services.sectors import build_sector_stats
+
+    return build_sector_stats(db)
+
+
 @router.get("/regime", summary="Per-country macro regime + Market Health Score")
 def market_regime(db: Session = Depends(get_db)) -> dict:
     from app.ingestion.portfolio360 import Portfolio360Client

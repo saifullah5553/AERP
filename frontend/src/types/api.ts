@@ -29,6 +29,21 @@ export interface MacroRegimeData {
   countries: Record<string, CountryRegime>;
 }
 
+export interface SectorStat {
+  sector: string;
+  region: MarketRegion;
+  count: number;
+  score: number;
+  technical: number | null;
+  fundamental: number | null;
+  pabrai: number | null;
+  momentum: number | null;
+  breadth_above_50dma: number | null;
+  trend: string;
+  medians: Record<string, number | null>;
+}
+export type SectorStatsData = Record<string, SectorStat[]>;
+
 export interface MarketPulse {
   region: MarketRegion;
   label: string;

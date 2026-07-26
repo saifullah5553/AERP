@@ -34,6 +34,7 @@ class EstimateSummary:
     eps_avg: float | None = None
     eps_num: int | None = None
     eps_growth: float | None = None
+    eps_fwd: float | None = None      # next fiscal-year consensus EPS (for forward P/E)
     rev_avg: float | None = None
     eps_up_30d: int | None = None
     eps_down_30d: int | None = None
@@ -83,10 +84,12 @@ def normalize(raw: dict[str, Any], today: date | None = None) -> EstimateSummary
     s = EstimateSummary()
     s.next_earnings_date = _pick_earnings_date(raw.get("calendar") or {}, today)
 
-    eps = (raw.get("earnings_estimate") or {}).get("0q") or {}
+    ee = raw.get("earnings_estimate") or {}
+    eps = ee.get("0q") or {}
     s.eps_avg = _num(eps.get("avg"))
     s.eps_num = _int(eps.get("numberOfAnalysts"))
     s.eps_growth = _num(eps.get("growth"))
+    s.eps_fwd = _num((ee.get("+1y") or {}).get("avg"))  # next fiscal year
 
     rev = (raw.get("revenue_estimate") or {}).get("0q") or {}
     s.rev_avg = _num(rev.get("avg"))
@@ -130,6 +133,7 @@ def ingest_for_security(db: Session, fetcher: EstimatesFetcher, security: Securi
     security.eps_estimate_avg = s.eps_avg
     security.eps_estimate_num = s.eps_num
     security.eps_estimate_growth = s.eps_growth
+    security.eps_estimate_fwd = s.eps_fwd
     security.revenue_estimate_avg = s.rev_avg
     security.eps_revisions_up_30d = s.eps_up_30d
     security.eps_revisions_down_30d = s.eps_down_30d

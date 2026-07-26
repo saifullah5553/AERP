@@ -86,6 +86,9 @@ export default function ScreenerPage() {
         <div className="flex items-baseline gap-3">
           <span className="text-lg font-bold tracking-tight text-accent">AERP</span>
           <span className="text-sm text-slate-400">Equity Research Terminal</span>
+          <a href="#/sectors" className="rounded bg-base-700 px-2 py-0.5 text-xs font-medium text-slate-300 hover:bg-base-600 hover:text-accent">
+            Sector Rotation →
+          </a>
           {total !== null && (
             <span className="rounded bg-base-700 px-2 py-0.5 text-xs text-slate-300">
               {total.toLocaleString()} securities

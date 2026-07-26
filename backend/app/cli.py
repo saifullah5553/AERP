@@ -275,6 +275,13 @@ def cmd_export_static(args: argparse.Namespace) -> None:
             json.dumps(build_macro_regime(db, pk_macro)), encoding="utf-8"
         )
 
+        # Sector rotation + sector-average stats (per region), for F2/F7.
+        from app.services.sectors import build_sector_stats
+
+        (out / "sector_stats.json").write_text(
+            json.dumps(build_sector_stats(db)), encoding="utf-8"
+        )
+
         exported = 0
         for r in rows:
             detail = get_company(db, r.provider_symbol)

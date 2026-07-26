@@ -88,6 +88,7 @@ class Security(Base, TimestampMixin):
     eps_estimate_avg: Mapped[float | None] = mapped_column(Numeric(20, 6))
     eps_estimate_num: Mapped[int | None] = mapped_column(Integer)  # analysts covering
     eps_estimate_growth: Mapped[float | None] = mapped_column(Numeric(12, 6))
+    eps_estimate_fwd: Mapped[float | None] = mapped_column(Numeric(20, 6))  # next-FY consensus EPS
     revenue_estimate_avg: Mapped[float | None] = mapped_column(Numeric(24, 2))
     eps_revisions_up_30d: Mapped[int | None] = mapped_column(Integer)
     eps_revisions_down_30d: Mapped[int | None] = mapped_column(Integer)

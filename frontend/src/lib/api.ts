@@ -1,4 +1,11 @@
-import type { MacroRegimeData, MarketPulse, Page, ScreenerQuery, ScreenerRow } from "@/types/api";
+import type {
+  MacroRegimeData,
+  MarketPulse,
+  Page,
+  ScreenerQuery,
+  ScreenerRow,
+  SectorStatsData,
+} from "@/types/api";
 import type { CompanyDetail } from "@/types/company";
 import type { RawMaterialsData } from "@/lib/rawMaterials";
 
@@ -87,6 +94,10 @@ export const api = {
   regime(signal?: AbortSignal): Promise<MacroRegimeData> {
     if (IS_STATIC) return getJson<MacroRegimeData>(`${DATA_BASE}/macro_regime.json`, signal);
     return getJson<MacroRegimeData>(`${V1}/markets/regime`, signal);
+  },
+  sectorStats(signal?: AbortSignal): Promise<SectorStatsData> {
+    if (IS_STATIC) return getJson<SectorStatsData>(`${DATA_BASE}/sector_stats.json`, signal);
+    return getJson<SectorStatsData>(`${V1}/markets/sectors`, signal);
   },
   async sectors(signal?: AbortSignal): Promise<string[]> {
     if (IS_STATIC) {

@@ -21,8 +21,13 @@ import {
   strengthLabel,
   technicalRead,
 } from "@/lib/research";
-import { commoditySummary, companyMaterials, type RawMaterialsData } from "@/lib/rawMaterials";
-import type { MarketPulse } from "@/types/api";
+import {
+  commoditySummary,
+  companyMaterials,
+  type MaterialImpact,
+  type RawMaterialsData,
+} from "@/lib/rawMaterials";
+import type { MarketPulse, SectorStat, SectorStatsData } from "@/types/api";
 import type { CompanyDetail, Row } from "@/types/company";
 import PeersTable from "./PeersTable";
 import ScoreHistoryChart from "./ScoreHistoryChart";
@@ -38,6 +43,10 @@ const CONDITION_TONE: Record<Condition, string> = {
   Bearish: "#ef4444",
   Neutral: "#94a3b8",
 };
+const IMPACT_TONE: Record<string, string> = {
+  Positive: "#22c55e", Neutral: "#94a3b8", Negative: "#ef4444",
+};
+const TREND_ARROW: Record<string, string> = { increasing: "↑", decreasing: "↓", sideways: "→" };
 const LEVEL_TONE: Record<Level, string> = {
   Low: "#22c55e",
   Medium: "#f59e0b",
@@ -157,6 +166,7 @@ export default function CompanyPage() {
   const [tab, setTab] = useState<Tab>("income");
   const [pulse, setPulse] = useState<MarketPulse[]>([]);
   const [rawMaterials, setRawMaterials] = useState<RawMaterialsData | null>(null);
+  const [sectorStats, setSectorStats] = useState<SectorStatsData | null>(null);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -176,6 +186,7 @@ export default function CompanyPage() {
     const ctrl = new AbortController();
     api.pulse(ctrl.signal).then(setPulse).catch(() => setPulse([]));
     api.rawMaterials(ctrl.signal).then(setRawMaterials).catch(() => setRawMaterials(null));
+    api.sectorStats(ctrl.signal).then(setSectorStats).catch(() => setSectorStats(null));
     return () => ctrl.abort();
   }, []);
 
@@ -287,7 +298,10 @@ export default function CompanyPage() {
         <div className="space-y-4 lg:col-span-2">
           <PabraiSection scores={data.scores} />
           <FundamentalSection detail={data} derived={derived} />
+          <ValuationSection detail={data} />
+          <SectorComparison detail={data} sectorStats={sectorStats} />
           <TechnicalSection tech={derived.tech} patternSignal={derived.patternSignal} />
+          <RawMaterialSection materials={derived.materials} outlook={rawMaterials?.outlook ?? null} />
           <RiskSection risks={derived.risks} />
 
           {/* Detailed financials (existing tabs, unchanged data source) */}
@@ -433,6 +447,140 @@ function RiskSection({ risks }: { risks: RiskItem[] }) {
           </div>
         ))}
       </div>
+    </Card>
+  );
+}
+
+// ── Valuation (cheap / fair / expensive) ─────────────────────────────────────
+function classify(v: number | null, cheap: number, fair: number): { label: string; tone: string } {
+  if (v == null || v <= 0) return { label: "—", tone: "#64748b" };
+  if (v < cheap) return { label: "Cheap", tone: "#22c55e" };
+  if (v < fair) return { label: "Fair", tone: "#eab308" };
+  return { label: "Expensive", tone: "#ef4444" };
+}
+
+function ValuationSection({ detail }: { detail: CompanyDetail }) {
+  const r = detail.ratios ?? {};
+  const sec = detail.security as Row;
+  const price = num(detail.quote?.price);
+  const fwdEps = num(sec.eps_estimate_fwd);
+  const fwdPe = price != null && fwdEps && fwdEps > 0 ? price / fwdEps : null;
+  const rows: { label: string; value: number | null; c: [number, number] }[] = [
+    { label: "P/E (TTM)", value: num(r.pe_ratio), c: [10, 20] },
+    { label: "Forward P/E", value: fwdPe, c: [10, 18] },
+    { label: "EV / EBITDA", value: num(r.ev_to_ebitda), c: [8, 14] },
+    { label: "Price / Book", value: num(r.price_to_book), c: [1.5, 3] },
+    { label: "PEG Ratio", value: num(r.peg_ratio), c: [1, 2] },
+  ];
+  const labels = rows.map((x) => classify(x.value, x.c[0], x.c[1]).label).filter((l) => l !== "—");
+  const cheap = labels.filter((l) => l === "Cheap").length;
+  const exp = labels.filter((l) => l === "Expensive").length;
+  const overall = labels.length === 0 ? "—" : cheap > exp ? "Cheap" : exp > cheap ? "Expensive" : "Fair";
+  const overallTone = overall === "Cheap" ? "#22c55e" : overall === "Expensive" ? "#ef4444" : "#eab308";
+  const dy = num(r.dividend_yield);
+  return (
+    <Card title="Valuation" right={overall !== "—" ? <Pill text={overall} color={overallTone} /> : undefined}>
+      <div className="grid grid-cols-1 gap-x-8 px-4 py-2 md:grid-cols-2">
+        {rows.map((x) => {
+          const cl = classify(x.value, x.c[0], x.c[1]);
+          return (
+            <div key={x.label} className="flex items-center justify-between border-b border-base-700/40 py-1.5">
+              <span className="text-xs text-slate-400">{x.label}</span>
+              <span className="flex items-center gap-2">
+                <span className="num text-sm text-slate-200">{x.value == null ? "—" : fmtNumber(x.value)}</span>
+                {cl.label !== "—" && <span className="text-[10px]" style={{ color: cl.tone }}>{cl.label}</span>}
+              </span>
+            </div>
+          );
+        })}
+        <StatRow label="Dividend Yield" value={dy == null ? "—" : fmtPercent(dy)} />
+      </div>
+    </Card>
+  );
+}
+
+// ── Company vs sector average (Feature 7) ────────────────────────────────────
+const _CMP_METRICS: [string, string, "pct" | "num", boolean][] = [
+  ["roe", "ROE", "pct", true], ["net_margin", "Net Margin", "pct", true],
+  ["operating_margin", "Operating Margin", "pct", true],
+  ["revenue_growth", "Revenue Growth", "pct", true],
+  ["debt_to_equity", "Debt / Equity", "num", false],
+  ["pe_ratio", "P/E", "num", false],
+];
+
+function SectorComparison({ detail, sectorStats }: { detail: CompanyDetail; sectorStats: SectorStatsData | null }) {
+  const sec = detail.security as Row;
+  const region = String(sec.region ?? "");
+  const sector = (sec.sector as string) ?? null;
+  const r = detail.ratios ?? {};
+  const stat: SectorStat | undefined = (sectorStats?.[region] ?? []).find((s) => s.sector === sector);
+  if (!stat || !sector) return null;
+  const fmt = (v: number | null, kind: string) => (v == null ? "—" : kind === "pct" ? fmtPercent(v) : fmtNumber(v));
+  return (
+    <Card title="Company vs Sector" right={<span className="text-[11px] text-slate-500">{sector} · {stat.count} peers</span>}>
+      <div className="px-4 py-2">
+        <div className="grid grid-cols-4 gap-2 border-b border-base-700/50 pb-1 text-[10px] uppercase tracking-wide text-slate-500">
+          <span>Metric</span><span className="text-right">Company</span>
+          <span className="text-right">Sector Median</span><span className="text-right">vs</span>
+        </div>
+        {_CMP_METRICS.map(([key, label, kind, higherBetter]) => {
+          const co = num(r[key]);
+          const se = stat.medians[key] ?? null;
+          let tone = "#94a3b8", mark = "—";
+          if (co != null && se != null) {
+            const better = higherBetter ? co > se : co < se;
+            const same = Math.abs(co - se) < 1e-9;
+            mark = same ? "≈" : better ? "▲" : "▼";
+            tone = same ? "#94a3b8" : better ? "#22c55e" : "#f87171";
+          }
+          return (
+            <div key={key} className="grid grid-cols-4 gap-2 border-b border-base-700/30 py-1.5 text-sm">
+              <span className="text-slate-400">{label}</span>
+              <span className="num text-right text-slate-200">{fmt(co, kind)}</span>
+              <span className="num text-right text-slate-400">{fmt(se, kind)}</span>
+              <span className="num text-right font-semibold" style={{ color: tone }}>{mark}</span>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+// ── Raw material cost trend (Feature 4) ──────────────────────────────────────
+function RawMaterialSection({ materials, outlook }: { materials: MaterialImpact[]; outlook: string | null }) {
+  if (materials.length === 0 && !outlook) return null;
+  return (
+    <Card title="Raw Material Cost Trend & Margin Impact">
+      {materials.length === 0 ? (
+        <p className="p-4 text-sm text-slate-500">
+          No major tracked commodity inputs map to this sector — margins are driven mainly by
+          non-commodity factors.
+        </p>
+      ) : (
+        <div className="divide-y divide-base-700/40">
+          {materials.map((m) => (
+            <div key={m.symbol} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+              <div>
+                <div className="text-sm font-medium text-slate-200">
+                  {TREND_ARROW[m.trend]} {m.name}
+                  <span className="ml-2 text-xs capitalize text-slate-500">{m.trend}</span>
+                </div>
+                <div className="text-[11px] text-slate-500">{m.effect}</div>
+              </div>
+              <Pill text={`${m.impact} Impact`} color={IMPACT_TONE[m.impact]} />
+            </div>
+          ))}
+        </div>
+      )}
+      {outlook && (
+        <div className="border-t border-base-700/50 px-4 py-2.5">
+          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Raw Material Cost Outlook
+          </div>
+          <p className="text-sm leading-relaxed text-slate-300">{outlook}</p>
+        </div>
+      )}
     </Card>
   );
 }
