@@ -22,3 +22,16 @@ def list_markets(db: Session = Depends(get_db)) -> list[Market]:
 @router.get("/pulse", summary="Bullish/bearish/neutral pulse per market")
 def market_pulse(db: Session = Depends(get_db)) -> list[dict]:
     return compute_pulse(db)
+
+
+@router.get("/regime", summary="Per-country macro regime + Market Health Score")
+def market_regime(db: Session = Depends(get_db)) -> dict:
+    from app.ingestion.portfolio360 import Portfolio360Client
+    from app.services.macro_regime import build_macro_regime
+
+    pk = None
+    try:
+        pk = Portfolio360Client().pk_macro()
+    except Exception:  # noqa: BLE001 - network optional
+        pk = None
+    return build_macro_regime(db, pk)

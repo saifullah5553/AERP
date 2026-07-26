@@ -14,6 +14,7 @@ import {
 import type { ScreenerQuery, ScreenerRow } from "@/types/api";
 import FilterBar from "./FilterBar";
 import MarketOverview from "./MarketOverview";
+import MarketRegime from "./MarketRegime";
 import PulseBar from "./PulseBar";
 import ScreenerGrid from "./ScreenerGrid";
 
@@ -115,6 +116,8 @@ export default function ScreenerPage() {
       </header>
 
       <MarketOverview />
+
+      <MarketRegime />
 
       <PulseBar />
 

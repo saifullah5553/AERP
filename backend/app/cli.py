@@ -262,6 +262,19 @@ def cmd_export_static(args: argparse.Namespace) -> None:
             json.dumps(pulse_from_screener_dicts(merged)), encoding="utf-8"
         )
 
+        # Dynamic per-country macro regime (live PK macro from Portfolio360 + DB signals).
+        from app.ingestion.portfolio360 import Portfolio360Client
+        from app.services.macro_regime import build_macro_regime
+
+        pk_macro = None
+        try:
+            pk_macro = Portfolio360Client().pk_macro()
+        except Exception as exc:  # network optional; regime falls back to DB signals
+            log.warning("Portfolio360 PK macro fetch failed: %s", exc)
+        (out / "macro_regime.json").write_text(
+            json.dumps(build_macro_regime(db, pk_macro)), encoding="utf-8"
+        )
+
         exported = 0
         for r in rows:
             detail = get_company(db, r.provider_symbol)

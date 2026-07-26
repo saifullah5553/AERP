@@ -10,6 +10,25 @@ export type AssetClass =
 
 export type MarketRegion = "psx" | "us" | "india" | "gcc" | "australia" | "global";
 
+export interface RegimeSignal {
+  key: string;
+  label: string;
+  value: string;
+  score: number | null;
+  note: string;
+}
+export interface CountryRegime {
+  region: MarketRegion;
+  label: string;
+  regime: "Bullish" | "Neutral" | "Bearish";
+  health: number | null;
+  explanation: string;
+  signals: RegimeSignal[];
+}
+export interface MacroRegimeData {
+  countries: Record<string, CountryRegime>;
+}
+
 export interface MarketPulse {
   region: MarketRegion;
   label: string;
