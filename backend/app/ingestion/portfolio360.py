@@ -55,5 +55,14 @@ class Portfolio360Client:
     def pk_sector_rotation(self) -> Any:
         return self._get("/api/market/sector-rotation", {"region": "PK", "window": "3m"})
 
-    def pk_economic_events(self, limit: int = 20) -> Any:
-        return self._get("/api/market/economic-events", {"limit": limit, "country": "PK"})
+    def pk_economic_events(self, limit: int = 20) -> list[dict]:
+        data = self._get("/api/market/economic-events", {"limit": limit, "country": "PK"})
+        return (data or {}).get("events", []) if isinstance(data, dict) else []
+
+    def announcements(self, count: int = 60) -> list[dict]:
+        data = self._get("/api/market/announcements", {"count": count})
+        return (data or {}).get("items", []) if isinstance(data, dict) else []
+
+    def pk_corporate_actions(self) -> list[dict]:
+        data = self._get("/api/inventory/corporate-actions/public", {"exchange": "PSX"})
+        return (data or {}).get("items", []) if isinstance(data, dict) else []

@@ -4,6 +4,7 @@
 // scores, financial ratios, technical indicators, patterns). No predictions, no
 // buy/sell calls — just labelling and framing of real numbers for presentation.
 
+import type { CountryRegime } from "@/types/api";
 import type { CompanyDetail, Row } from "@/types/company";
 
 export type Level = "Low" | "Medium" | "High" | "Unknown";
@@ -247,4 +248,138 @@ export function investmentChecklist(
     { label: "Sector Strength", pass: ctx.regionCondition === "Bullish" },
     { label: "Raw Material Environment", pass: !!ctx.commodity && (!ctx.commodity.hasInputs || ctx.commodity.favorable) },
   ];
+}
+
+// ── Macro sensitivity (model-derived) ────────────────────────────────────────
+// Combines a sector's structural exposure with the LIVE regime direction so it
+// updates as macro changes. A rule-based interpretation, not hard data.
+export interface MacroFactor {
+  factor: string;
+  impact: "Positive" | "Neutral" | "Negative";
+  note: string;
+}
+
+const _RATE_POS = /bank|insur|financ|securit|modaraba/i;   // gain from higher rates
+const _RATE_NEG = /cement|steel|engineer|auto|textile|utilit|power|chemical|leasing|real estate|glass/i;
+const _EXPORTER = /textile|apparel|technolog|software|it services|pharma|leather|surgical|rice|sports|weaving|spinning/i;
+const _IMPORTER = /automobile|oil & gas marketing|refiner|chemical|electronic|appliance|steel/i;
+const _ENERGY_PROD = /exploration|e&p|oil & gas dev|petroleum|oil & gas exploration/i;
+const _ENERGY_CONS = /cement|steel|auto|airline|transport|chemical|power|glass|fertiliz/i;
+
+function _rising(regime: CountryRegime | undefined, key: string): boolean | null {
+  const s = regime?.signals.find((x) => x.key === key)?.score;
+  if (s == null) return null;
+  // rate/inflation/commodity signals score high when FALLING (supportive).
+  return s <= 40 ? true : s >= 60 ? false : null; // true = factor is rising
+}
+
+export function macroSensitivity(
+  sector: string | null,
+  industry: string | null,
+  regime: CountryRegime | undefined,
+): MacroFactor[] {
+  if (!regime) return [];
+  const hay = `${sector ?? ""} ${industry ?? ""}`;
+  const out: MacroFactor[] = [];
+  const impactFrom = (exposure: number, rising: boolean | null): MacroFactor["impact"] => {
+    if (exposure === 0 || rising == null) return "Neutral";
+    const good = (exposure > 0 && rising) || (exposure < 0 && !rising);
+    return good ? "Positive" : "Negative";
+  };
+
+  // Interest rates
+  const rateExp = _RATE_POS.test(hay) ? 1 : _RATE_NEG.test(hay) ? -1 : 0;
+  const ratesRising = _rising(regime, "rate_cycle");
+  out.push({
+    factor: "Interest Rates",
+    impact: impactFrom(rateExp, ratesRising),
+    note: rateExp > 0 ? "Higher-rate beneficiary (net interest margins)"
+      : rateExp < 0 ? "Leverage-sensitive to higher rates"
+      : "Limited direct rate sensitivity",
+  });
+  // Currency (local depreciation)
+  const ccyExp = _EXPORTER.test(hay) ? 1 : _IMPORTER.test(hay) ? -1 : 0; // +1 gains from weak local ccy
+  const ccyWeak = _rising(regime, "currency_trend"); // score low = weak → rising()=true means weak
+  out.push({
+    factor: "Currency",
+    impact: impactFrom(ccyExp, ccyWeak),
+    note: ccyExp > 0 ? "Exporter — gains when local currency weakens"
+      : ccyExp < 0 ? "Import-reliant — hurt by currency weakness"
+      : "Limited FX sensitivity",
+  });
+  // Energy / commodity input costs
+  const oilExp = _ENERGY_PROD.test(hay) ? 1 : _ENERGY_CONS.test(hay) ? -1 : 0;
+  const costsRising = _rising(regime, "commodity_env");
+  out.push({
+    factor: "Oil / Commodity Costs",
+    impact: impactFrom(oilExp, costsRising),
+    note: oilExp > 0 ? "Energy/commodity producer — gains when prices rise"
+      : oilExp < 0 ? "Input-cost sensitive — hurt by rising commodity prices"
+      : "Limited commodity sensitivity",
+  });
+  // Inflation
+  const inflRising = _rising(regime, "inflation_trend");
+  const inflExp = _RATE_POS.test(hay) ? 0 : -1; // most non-financials hurt by rising inflation
+  out.push({
+    factor: "Inflation",
+    impact: impactFrom(inflExp, inflRising),
+    note: inflExp < 0 ? "Margins pressured by rising inflation" : "Limited direct inflation sensitivity",
+  });
+  return out;
+}
+
+// ── Business cycle position (model-derived) ──────────────────────────────────
+export function businessCycle(detail: CompanyDetail): { phase: string; note: string } | null {
+  const inc = detail.statements?.income ?? []; // newest-first
+  if (inc.length < 3) return null;
+  const rev = (i: number) => num(inc[i]?.revenue);
+  const ni = (i: number) => num(inc[i]?.net_income);
+  const r0 = rev(0), r1 = rev(1), r2 = rev(2);
+  if (r0 == null || r1 == null || r2 == null || r1 === 0 || r2 === 0) return null;
+  const gRecent = (r0 - r1) / Math.abs(r1);
+  const gPrev = (r1 - r2) / Math.abs(r2);
+  const m0 = ni(0) != null && r0 ? (ni(0) as number) / r0 : null;
+  const m1 = ni(1) != null && r1 ? (ni(1) as number) / r1 : null;
+  const marginUp = m0 != null && m1 != null ? m0 > m1 : null;
+
+  let phase: string, note: string;
+  if (gRecent < 0 && marginUp) {
+    phase = "Turnaround"; note = "Revenue still soft but margins are recovering.";
+  } else if (gRecent < -0.02) {
+    phase = "Slowdown"; note = "Revenue contracting versus the prior year.";
+  } else if (gPrev <= 0.02 && gRecent > 0.05) {
+    phase = "Recovery"; note = "Growth re-accelerating from a low base.";
+  } else if (gRecent > 0.05 && gRecent >= gPrev) {
+    phase = "Expansion"; note = "Accelerating growth with healthy momentum.";
+  } else if (gRecent > 0 && gRecent < gPrev) {
+    phase = "Peak / Maturing"; note = "Still growing but the pace is decelerating.";
+  } else {
+    phase = "Stable"; note = "Steady growth with no strong cyclical signal.";
+  }
+  return { phase, note };
+}
+
+// ── Wyckoff phase (model-derived) ────────────────────────────────────────────
+export function wyckoffPhase(detail: CompanyDetail): { phase: string; note: string } | null {
+  const t = detail.technical ?? {};
+  const q = detail.quote ?? {};
+  const close = num(q.price) ?? num(t.sma_20);
+  const s50 = num(t.sma_50);
+  const s200 = num(t.sma_200);
+  const fromHigh = num(t.pct_from_52w_high); // fraction, <= 0
+  if (close == null || s50 == null) return null;
+
+  if (s200 != null && close > s50 && s50 > s200) {
+    return { phase: "Markup", note: "Sustained uptrend above rising moving averages." };
+  }
+  if (s200 != null && close < s50 && s50 < s200) {
+    return { phase: "Markdown", note: "Sustained downtrend below falling moving averages." };
+  }
+  if (fromHigh != null && fromHigh <= -0.25 && close >= s50 * 0.95) {
+    return { phase: "Accumulation", note: "Basing well below the 52-week high — potential accumulation." };
+  }
+  if (fromHigh != null && fromHigh >= -0.05 && close < s50) {
+    return { phase: "Distribution", note: "Rolling over near the highs — potential distribution." };
+  }
+  return { phase: "Consolidation", note: "Range-bound; no decisive Wyckoff phase yet." };
 }

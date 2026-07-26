@@ -1,4 +1,5 @@
 import type {
+  CatalystsData,
   MacroRegimeData,
   MarketPulse,
   Page,
@@ -103,6 +104,9 @@ export const api = {
   swing(signal?: AbortSignal): Promise<SwingRow[]> {
     if (IS_STATIC) return getJson<SwingRow[]>(`${DATA_BASE}/swing.json`, signal);
     return getJson<SwingRow[]>(`${V1}/markets/swing`, signal);
+  },
+  catalysts(signal?: AbortSignal): Promise<CatalystsData> {
+    return getJson<CatalystsData>(`${DATA_BASE}/catalysts.json`, signal);
   },
   async sectors(signal?: AbortSignal): Promise<string[]> {
     if (IS_STATIC) {

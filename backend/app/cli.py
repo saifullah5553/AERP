@@ -305,6 +305,14 @@ def cmd_export_static(args: argparse.Namespace) -> None:
         (out / "raw_materials.json").write_text(json.dumps(raw_materials), encoding="utf-8")
         swing_path.write_text(json.dumps(ranked), encoding="utf-8")
 
+        # Catalyst calendar (PK economic events + PSX announcements/corporate actions).
+        from app.services.catalysts import build_catalysts
+
+        try:
+            (out / "catalysts.json").write_text(json.dumps(build_catalysts()), encoding="utf-8")
+        except Exception as exc:  # network optional
+            log.warning("catalysts export failed: %s", exc)
+
         exported = 0
         for r in rows:
             detail = get_company(db, r.provider_symbol)

@@ -29,6 +29,18 @@ export interface MacroRegimeData {
   countries: Record<string, CountryRegime>;
 }
 
+export interface CatalystEvent {
+  date: string | null;
+  title: string;
+  category?: string | null;
+  note?: string | null;
+  type?: string;
+}
+export interface CatalystsData {
+  market_events: CatalystEvent[];
+  by_symbol: Record<string, CatalystEvent[]>;
+}
+
 export interface SwingRow {
   provider_symbol: string;
   symbol: string;

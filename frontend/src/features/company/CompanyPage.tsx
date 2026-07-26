@@ -6,12 +6,15 @@ import { fmtChangePct, fmtCompact, fmtNumber, fmtPercent, titleize } from "@/lib
 import { openQuoteStream } from "@/lib/liveQuotes";
 import {
   type CheckItem,
+  businessCycle,
   type Condition,
   investmentChecklist,
   investmentGrade,
   isFinancial,
   type Level,
   latestCashFlow,
+  type MacroFactor,
+  macroSensitivity,
   marketCondition,
   num,
   patternRead,
@@ -20,6 +23,7 @@ import {
   scoreSet,
   strengthLabel,
   technicalRead,
+  wyckoffPhase,
 } from "@/lib/research";
 import {
   commoditySummary,
@@ -27,7 +31,14 @@ import {
   type MaterialImpact,
   type RawMaterialsData,
 } from "@/lib/rawMaterials";
-import type { MarketPulse, SectorStat, SectorStatsData } from "@/types/api";
+import type {
+  CatalystsData,
+  CountryRegime,
+  MacroRegimeData,
+  MarketPulse,
+  SectorStat,
+  SectorStatsData,
+} from "@/types/api";
 import type { CompanyDetail, Row } from "@/types/company";
 import PeersTable from "./PeersTable";
 import ScoreHistoryChart from "./ScoreHistoryChart";
@@ -167,6 +178,8 @@ export default function CompanyPage() {
   const [pulse, setPulse] = useState<MarketPulse[]>([]);
   const [rawMaterials, setRawMaterials] = useState<RawMaterialsData | null>(null);
   const [sectorStats, setSectorStats] = useState<SectorStatsData | null>(null);
+  const [regime, setRegime] = useState<MacroRegimeData | null>(null);
+  const [catalysts, setCatalysts] = useState<CatalystsData | null>(null);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -187,6 +200,8 @@ export default function CompanyPage() {
     api.pulse(ctrl.signal).then(setPulse).catch(() => setPulse([]));
     api.rawMaterials(ctrl.signal).then(setRawMaterials).catch(() => setRawMaterials(null));
     api.sectorStats(ctrl.signal).then(setSectorStats).catch(() => setSectorStats(null));
+    api.regime(ctrl.signal).then(setRegime).catch(() => setRegime(null));
+    api.catalysts(ctrl.signal).then(setCatalysts).catch(() => setCatalysts(null));
     return () => ctrl.abort();
   }, []);
 
@@ -223,6 +238,7 @@ export default function CompanyPage() {
       if (!p) return "Neutral";
       return p.pulse === "bullish" ? "Bullish" : p.pulse === "bearish" ? "Bearish" : "Neutral";
     })();
+    const regionRegime: CountryRegime | undefined = regime?.countries?.[region];
     return {
       scores,
       tech,
@@ -237,8 +253,11 @@ export default function CompanyPage() {
       risks: riskAnalysis(data, { regionCondition, commodity }),
       checklist: investmentChecklist(data, { tech, regionCondition, commodity, fcf: cf.fcf }),
       netProfitGrowth: growthOf(data.statements.income, "net_income"),
+      macroFactors: macroSensitivity((sec.sector as string) ?? null, (sec.industry as string) ?? null, regionRegime),
+      cycle: businessCycle(data),
+      wyckoff: wyckoffPhase(data),
     };
-  }, [data, pulse, rawMaterials]);
+  }, [data, pulse, rawMaterials, regime]);
 
   const changePct = useMemo(() => num(data?.quote?.change_pct), [data]);
 
@@ -300,8 +319,10 @@ export default function CompanyPage() {
           <FundamentalSection detail={data} derived={derived} />
           <ValuationSection detail={data} />
           <SectorComparison detail={data} sectorStats={sectorStats} />
-          <TechnicalSection tech={derived.tech} patternSignal={derived.patternSignal} />
+          <TechnicalSection tech={derived.tech} patternSignal={derived.patternSignal} wyckoff={derived.wyckoff} />
+          <MacroSensitivitySection factors={derived.macroFactors} cycle={derived.cycle} />
           <RawMaterialSection materials={derived.materials} outlook={rawMaterials?.outlook ?? null} />
+          <CatalystSection sec={data.security as Row} catalysts={catalysts} materials={derived.materials} />
           <RiskSection risks={derived.risks} />
 
           {/* Detailed financials (existing tabs, unchanged data source) */}
@@ -394,9 +415,11 @@ function FundamentalSection({
 function TechnicalSection({
   tech,
   patternSignal,
+  wyckoff,
 }: {
   tech: ReturnType<typeof technicalRead>;
   patternSignal: string | null;
+  wyckoff: { phase: string; note: string } | null;
 }) {
   const trendTone = tech.trend === "Bullish" ? "#22c55e" : tech.trend === "Bearish" ? "#ef4444" : "#94a3b8";
   const rsiTone = tech.rsiCondition === "Overbought" ? "#ef4444" : tech.rsiCondition === "Oversold" ? "#22c55e" : "#94a3b8";
@@ -417,6 +440,95 @@ function TechnicalSection({
         <StatRow label="Volume" value={tech.volume} />
         <StatRow label="Pattern Read" value={patternSignal ?? "—"} />
         <StatRow label="Detected Pattern" value={tech.pattern ? titleize(tech.pattern) : "—"} />
+        <StatRow label="Wyckoff Phase" value={wyckoff?.phase ?? "—"} />
+      </div>
+      {wyckoff && (
+        <div className="border-t border-base-700/50 px-4 py-2 text-[11px] text-slate-500">{wyckoff.note}</div>
+      )}
+    </Card>
+  );
+}
+
+// ── Macro sensitivity + business cycle (model-derived) ───────────────────────
+function MacroSensitivitySection({
+  factors,
+  cycle,
+}: {
+  factors: MacroFactor[];
+  cycle: { phase: string; note: string } | null;
+}) {
+  if (factors.length === 0 && !cycle) return null;
+  return (
+    <Card title="Macro Sensitivity & Business Cycle" right={<span className="text-[10px] text-slate-500">model-derived</span>}>
+      {cycle && (
+        <div className="border-b border-base-700/50 px-4 py-2.5">
+          <span className="text-xs text-slate-400">Business Cycle Position: </span>
+          <span className="text-sm font-semibold text-accent">{cycle.phase}</span>
+          <div className="mt-0.5 text-[11px] text-slate-500">{cycle.note}</div>
+        </div>
+      )}
+      <div className="grid grid-cols-1 gap-x-8 px-4 py-2 md:grid-cols-2">
+        {factors.map((f) => (
+          <div key={f.factor} className="flex items-center justify-between border-b border-base-700/40 py-1.5">
+            <div>
+              <div className="text-sm text-slate-300">{f.factor}</div>
+              <div className="text-[10px] text-slate-500">{f.note}</div>
+            </div>
+            <Pill text={f.impact} color={IMPACT_TONE[f.impact]} />
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+// ── Catalyst tracker (Feature 9) ─────────────────────────────────────────────
+function CatalystSection({
+  sec,
+  catalysts,
+  materials,
+}: {
+  sec: Row;
+  catalysts: CatalystsData | null;
+  materials: MaterialImpact[];
+}) {
+  const symbol = String(sec.symbol ?? "");
+  const region = String(sec.region ?? "");
+  const items: { date: string | null; label: string; kind: string }[] = [];
+
+  const nextEarn = typeof sec.next_earnings_date === "string" ? sec.next_earnings_date.slice(0, 10) : null;
+  if (nextEarn) items.push({ date: nextEarn, label: "Upcoming quarterly results", kind: "Earnings" });
+
+  // Per-company PSX announcements / corporate actions.
+  for (const e of catalysts?.by_symbol?.[symbol] ?? []) {
+    items.push({ date: e.date ?? null, label: e.title, kind: e.type === "corporate_action" ? "Corporate Action" : "Announcement" });
+  }
+  // Market-wide macro events (PSX only — PK calendar).
+  if (region === "psx") {
+    for (const e of (catalysts?.market_events ?? []).slice(0, 4)) {
+      items.push({ date: e.date ?? null, label: e.title, kind: "Macro Event" });
+    }
+  }
+  // Commodity-cycle catalyst from raw materials.
+  const rising = materials.filter((m) => m.trend === "increasing").map((m) => m.name);
+  const falling = materials.filter((m) => m.trend === "decreasing").map((m) => m.name);
+  if (falling.length) items.push({ date: null, label: `Falling input costs: ${falling.join(", ")}`, kind: "Commodity Cycle" });
+  if (rising.length) items.push({ date: null, label: `Rising input costs: ${rising.join(", ")}`, kind: "Commodity Cycle" });
+
+  if (items.length === 0) return null;
+  items.sort((a, b) => (a.date ?? "9999").localeCompare(b.date ?? "9999"));
+  return (
+    <Card title="Upcoming Catalysts">
+      <div className="divide-y divide-base-700/40">
+        {items.slice(0, 10).map((it, i) => (
+          <div key={i} className="flex items-start justify-between gap-3 px-4 py-2">
+            <div>
+              <span className="rounded bg-base-700 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-slate-400">{it.kind}</span>
+              <span className="ml-2 text-sm text-slate-200">{it.label}</span>
+            </div>
+            <span className="num shrink-0 text-[11px] text-slate-500">{it.date ?? ""}</span>
+          </div>
+        ))}
       </div>
     </Card>
   );
