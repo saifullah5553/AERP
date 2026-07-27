@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
 from app.engines.benchmark.engine import score_metric
+from app.engines.benchmark.profiles import FINANCIAL_KEYWORDS
 from app.models.enums import AssetClass, StatementPeriod
 from app.models.fundamentals import (
     CashFlowStatement,
@@ -94,6 +95,11 @@ def _cv_stability(vals: list[float]) -> float | None:
         return None
     cv = statistics.pstdev(clean) / abs(mean)
     return max(0.0, min(1.0, 1.0 - cv))
+
+
+def _is_financial(sector: str | None, industry: str | None) -> bool:
+    hay = f"{sector or ''} {industry or ''}".lower()
+    return any(k in hay for k in FINANCIAL_KEYWORDS)
 
 
 def _simplicity(sector: str | None, industry: str | None) -> float:
@@ -200,6 +206,7 @@ def compute_for_security(db: Session, security: Security, ctx: _Ctx) -> tuple[fl
     dm = _derived_metrics(latest)
     region = security.market.region.value if security.market else None
     sector, industry = security.sector, security.industry
+    fin = _is_financial(sector, industry)
     med = ctx.medians.get(_sector_key(sector), {})
 
     def sm(metric: str):
@@ -288,25 +295,39 @@ def compute_for_security(db: Session, security: Security, ctx: _Ctx) -> tuple[fl
         available=growth is not None,
     ))
 
-    # 6. Strong free cash flow — FCF margin + cash conversion (CFO/NI)
+    # 6. Strong free cash flow — FCF margin + cash conversion (CFO/NI).
+    #    Not meaningful for banks/insurers (no traditional capex/FCF) → excluded for financials,
+    #    matching how the company page shows FCF as "N/A (financials)".
     fcf_s = sm("fcf_margin")
     cfo = _f(getattr(cashflows[0], "operating_cash_flow", None)) if cashflows else None
     ni = _f(getattr(incomes[0], "net_income", None)) if incomes else None
     conv = (cfo / ni) if cfo is not None and ni not in (None, 0) and ni > 0 else None
     conv_score = min(1.0, conv / 1.2) if conv else None
-    fcf_parts = [x for x in (fcf_s.score, conv_score) if x is not None]
-    fcf = statistics.fmean(fcf_parts) if fcf_parts else None
-    items.append(Item(
-        "free_cash_flow", "Strong Free Cash Flow", WEIGHTS["free_cash_flow"], fcf,
-        metric=f"FCF margin {pct(dm.get('fcf_margin'))}" + (f", CFO/NI {conv:.2f}" if conv else ""),
-        benchmark="country+industry+history",
-        reason="Free-cash-flow margin plus cash conversion (operating cash flow vs net "
-               "income) — real cash generation, not just accounting profit.",
-        positives=["Earnings backed by strong cash flow"] if (conv or 0) >= 1 else [],
-        negatives=(["Cash conversion lags reported earnings"]
-                   if conv is not None and conv < 0.8 else []),
-        available=fcf is not None,
-    ))
+    if fin:
+        items.append(Item(
+            "free_cash_flow", "Strong Free Cash Flow", WEIGHTS["free_cash_flow"], None,
+            metric="N/A (financials)", benchmark="—",
+            reason="Free cash flow is not a meaningful measure for banks/insurers (no "
+                   "traditional capex); this item is excluded for financial firms.",
+            available=False,
+        ))
+    else:
+        fcf_parts = [x for x in (fcf_s.score, conv_score) if x is not None]
+        fcf = statistics.fmean(fcf_parts) if fcf_parts else None
+        fcf_metric = f"FCF margin {pct(dm.get('fcf_margin'))}"
+        if conv:
+            fcf_metric += f", CFO/NI {conv:.2f}"
+        items.append(Item(
+            "free_cash_flow", "Strong Free Cash Flow", WEIGHTS["free_cash_flow"], fcf,
+            metric=fcf_metric,
+            benchmark="country+industry+history",
+            reason="Free-cash-flow margin plus cash conversion (operating cash flow vs net "
+                   "income) — real cash generation, not just accounting profit.",
+            positives=["Earnings backed by strong cash flow"] if (conv or 0) >= 1 else [],
+            negatives=(["Cash conversion lags reported earnings"]
+                       if conv is not None and conv < 0.8 else []),
+            available=fcf is not None,
+        ))
 
     # 7. Honest capital allocation — dilution + payout sanity + ROIC trend
     shares = _series(list(reversed(incomes)), "weighted_shares")
@@ -348,26 +369,36 @@ def compute_for_security(db: Session, security: Security, ctx: _Ctx) -> tuple[fl
         available=ms is not None,
     ))
 
-    # 9. High owner earnings — (NI + D&A - capex) margin ≈ FCF proxy
+    # 9. High owner earnings — (NI + D&A - capex) margin ≈ FCF proxy.
+    #    Capex-based owner earnings don't apply to banks/insurers → excluded for financials.
     da = _f(getattr(cashflows[0], "depreciation_amortization", None)) if cashflows else None
     capex = _f(getattr(cashflows[0], "capital_expenditure", None)) if cashflows else None
     rev = _f(getattr(incomes[0], "revenue", None)) if incomes else None
     owner = None
     owner_margin = None
-    if ni is not None and rev not in (None, 0):
+    if not fin and ni is not None and rev not in (None, 0):
         oe = ni + (da or 0) + (capex or 0)  # capex stored negative
         owner_margin = oe / rev
         owner = max(0.0, min(1.0, owner_margin / 0.15))
-    items.append(Item(
-        "owner_earnings", "High Owner Earnings", WEIGHTS["owner_earnings"], owner,
-        metric=(pct(owner_margin) if owner is not None else "—"),
-        benchmark="owner-earnings margin",
-        reason="Owner earnings ≈ net income + D&A − maintenance capex, as a share of "
-               "revenue — the cash an owner could extract.",
-        positives=["Healthy owner earnings"] if (owner or 0) >= 0.6 else [],
-        negatives=["Capital-intensive; low owner earnings"] if (owner or 1) < 0.4 else [],
-        available=owner is not None,
-    ))
+    if fin:
+        items.append(Item(
+            "owner_earnings", "High Owner Earnings", WEIGHTS["owner_earnings"], None,
+            metric="N/A (financials)", benchmark="—",
+            reason="Owner earnings (net income + D&A − capex) do not apply to financial "
+                   "firms; this item is excluded for banks/insurers.",
+            available=False,
+        ))
+    else:
+        items.append(Item(
+            "owner_earnings", "High Owner Earnings", WEIGHTS["owner_earnings"], owner,
+            metric=(pct(owner_margin) if owner is not None else "—"),
+            benchmark="owner-earnings margin",
+            reason="Owner earnings ≈ net income + D&A − maintenance capex, as a share of "
+                   "revenue — the cash an owner could extract.",
+            positives=["Healthy owner earnings"] if (owner or 0) >= 0.6 else [],
+            negatives=["Capital-intensive; low owner earnings"] if (owner or 1) < 0.4 else [],
+            available=owner is not None,
+        ))
 
     # 10. Predictable business — revenue/EPS/CF stability
     pred_stabs = [s for s in (

@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.core.logging import get_logger
 from app.engines.common import f
 from app.engines.composite.dimensions import momentum_score, quality_score, risk_score
+from app.engines.composite.regime_modifier import apply_regime_modifier
 from app.engines.composite.signals import derive_signal
 from app.models.fundamentals import FinancialRatios
 from app.models.market import Security
@@ -68,7 +69,9 @@ def _latest_indicator(db: Session, security_id: int) -> TechnicalIndicator | Non
     )
 
 
-def compute_for_security(db: Session, security: Security) -> CompositeOutcome:
+def compute_for_security(
+    db: Session, security: Security, regime_map: dict | None = None
+) -> CompositeOutcome:
     score = _latest_score(db, security.id)
     if score is None:
         return CompositeOutcome(security.id, None, None, computed=False)
@@ -97,8 +100,16 @@ def compute_for_security(db: Session, security: Security) -> CompositeOutcome:
         return CompositeOutcome(security.id, None, None, computed=False)
 
     total_w = sum(WEIGHTS[k] for k in present)
-    composite = round(sum(v * WEIGHTS[k] for k, v in present.items()) / total_w, 2)
+    base_composite = round(sum(v * WEIGHTS[k] for k, v in present.items()) / total_w, 2)
     coverage = round(total_w, 4)
+
+    # Macro-regime overlay: bounded nudge from the security's country regime (dynamic,
+    # country-relevant). No-op when no regime is available, so scores are unchanged unless
+    # macro data is present.
+    region = security.market.region.value if security.market else None
+    regime = (regime_map or {}).get(region) if region else None
+    de = f(ratios.debt_to_equity) if ratios is not None else None
+    composite, regime_bd = apply_regime_modifier(base_composite, regime, de)
 
     signal = derive_signal(composite, coverage, present)
 
@@ -107,6 +118,7 @@ def compute_for_security(db: Session, security: Security) -> CompositeOutcome:
     merged = dict(score.breakdown or {})
     merged["composite"] = {
         "composite": composite,
+        "base_composite": base_composite,
         "coverage": coverage,
         "weights": WEIGHTS,
         "components": {
@@ -115,6 +127,7 @@ def compute_for_security(db: Session, security: Security) -> CompositeOutcome:
             for k, v in present.items()
         },
         "dimensions": {"momentum": mom_bd, "quality": qual_bd, "risk": rsk_bd},
+        "regime_modifier": regime_bd,
     }
     score.breakdown = merged
 
@@ -124,19 +137,36 @@ def compute_for_security(db: Session, security: Security) -> CompositeOutcome:
     return CompositeOutcome(security.id, composite, signal.signal.value, computed=True)
 
 
+def _build_regime_map(db: Session) -> dict:
+    """Per-country regime lookup for the modifier. Best-effort: any failure → {} (no-op)."""
+    try:
+        from app.ingestion.portfolio360 import Portfolio360Client
+        from app.services.macro_regime import build_macro_regime
+
+        pk = None
+        try:
+            pk = Portfolio360Client().pk_macro()
+        except Exception:  # noqa: BLE001 - network optional
+            pk = None
+        return build_macro_regime(db, pk).get("countries", {}) or {}
+    except Exception:  # noqa: BLE001 - regime overlay is optional
+        return {}
+
+
 def compute_all(db: Session, limit: int | None = None) -> dict[str, int]:
     sec_ids = db.scalars(select(Score.security_id).distinct()).all()
     if limit is not None:
         sec_ids = sec_ids[:limit]
+    regime_map = _build_regime_map(db)
     scored = 0
     for sid in sec_ids:
         security = db.get(Security, sid)
         if security is None:
             continue
-        outcome = compute_for_security(db, security)
+        outcome = compute_for_security(db, security, regime_map)
         if outcome.computed:
             scored += 1
-    result = {"securities": len(sec_ids), "scored": scored}
+    result = {"securities": len(sec_ids), "scored": scored, "regime_countries": len(regime_map)}
     log.info("compute_all composite: %s", result)
     return result
 
