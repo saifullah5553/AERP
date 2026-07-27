@@ -220,6 +220,47 @@ def cmd_compute(args: argparse.Namespace) -> None:
         log.info("pabrai: %s", pabrai_all(db, limit=args.limit))
 
 
+def _regime_is_empty(country: dict | None) -> bool:
+    """A regime entry carries no real signal (blank health and no signals)."""
+    if not country:
+        return True
+    return country.get("health") is None and not country.get("signals")
+
+
+def _merge_regime(fresh: dict, path) -> dict:
+    """Keep a previously-populated country regime when this run couldn't populate it
+    (a PSX-only CI refresh otherwise blanks US/India/GCC/Australia)."""
+    import json
+
+    try:
+        old = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, FileNotFoundError):
+        return fresh
+    old_countries = old.get("countries", {}) if isinstance(old, dict) else {}
+    countries = dict(fresh.get("countries", {}))
+    for region, prev in old_countries.items():
+        if _regime_is_empty(countries.get(region)) and not _regime_is_empty(prev):
+            countries[region] = prev
+    return {**fresh, "countries": countries}
+
+
+def _merge_sector_stats(fresh: dict, path) -> dict:
+    """Preserve a region's prior sector stats when this run produced none for it."""
+    import json
+
+    try:
+        old = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, FileNotFoundError):
+        return fresh
+    if not isinstance(old, dict):
+        return fresh
+    merged = dict(fresh)
+    for region, stats in old.items():
+        if stats and not merged.get(region):
+            merged[region] = stats
+    return merged
+
+
 def cmd_export_static(args: argparse.Namespace) -> None:
     """Export the computed data as static JSON for a backend-less Pages demo."""
     import json
@@ -278,6 +319,12 @@ def cmd_export_static(args: argparse.Namespace) -> None:
             log.warning("Portfolio360 PK macro fetch failed: %s", exc)
         regime = build_macro_regime(db, pk_macro)
         sector_stats = build_sector_stats(db)
+        # CI refreshes are PSX-only (Yahoo 429s on runners), so a fresh regime/sector run
+        # only populates PSX. Preserve previously-computed regions from the committed
+        # snapshot instead of blanking them (same spirit as the screener/swing merge).
+        if merge:
+            regime = _merge_regime(regime, out / "macro_regime.json")
+            sector_stats = _merge_sector_stats(sector_stats, out / "sector_stats.json")
         raw_materials = build_raw_materials(out / "company")
         swing = build_swing(db, sector_stats, regime, raw_materials)
 
