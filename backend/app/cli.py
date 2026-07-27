@@ -293,6 +293,22 @@ def cmd_export_static(args: argparse.Namespace) -> None:
         )
         fresh = [r.model_dump(mode="json") for r in rows]
 
+        # Keep only the curated crypto set — a full `cmd_all` loads the whole Binance
+        # universe (~470 pairs), which would flood an equity-research terminal with obscure
+        # altcoins. Filter both the screener rows and the company-file source list.
+        from app.ingestion.universe_curated import CRYPTO
+
+        _curated_crypto = {sym for sym, _ in CRYPTO}
+
+        def _keep_row(r: dict) -> bool:
+            if r.get("asset_class") != "crypto":
+                return True
+            return str(r.get("provider_symbol", "")).split("-")[0] in _curated_crypto
+
+        fresh = [r for r in fresh if _keep_row(r)]
+        _kept = {r["provider_symbol"] for r in fresh}
+        rows = [r for r in rows if r.provider_symbol in _kept]
+
         # Merge with any existing snapshot, keyed by provider_symbol: rows this run
         # produced win; rows only in the old snapshot are preserved. This lets the
         # free CI refresh (PSX-only, since Yahoo 429s on datacenter IPs) update PSX
