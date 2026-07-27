@@ -158,6 +158,15 @@ def cmd_ingest_estimates(args: argparse.Namespace) -> None:
         ingest_estimates(db, region=_region(args.region), limit=args.limit)
 
 
+def cmd_refresh_prices(args: argparse.Namespace) -> None:
+    """Patch price fields in the exported snapshot via Yahoo chart v8 (keyless, CI-friendly).
+    Does not touch the DB — updates screener.json + company/*.json prices in place."""
+    from app.ingestion.price_refresh import refresh_prices
+
+    out = args.out or "../frontend/public/data"
+    log.info("refresh-prices: %s", refresh_prices(out, limit=args.limit))
+
+
 def cmd_ingest_profiles(args: argparse.Namespace) -> None:
     from app.db.session import session_scope
     from app.ingestion.profiles import ingest_profiles
@@ -474,6 +483,8 @@ def build_parser() -> argparse.ArgumentParser:
     export.add_argument("--out", default=None, help="output dir (default ../frontend/public/data)")
     export.add_argument("--no-merge", action="store_true", help="overwrite; no merge")
     export.set_defaults(func=cmd_export_static)
+    rp = add("refresh-prices", cmd_refresh_prices, limit=True)
+    rp.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
     add("all", cmd_all)
     return parser
 
