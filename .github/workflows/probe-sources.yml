@@ -1,0 +1,43 @@
+name: Probe Data Sources
+
+# One-shot diagnostic: from a GitHub US runner, check which KEYLESS price sources are
+# reachable and what they cover. Used to decide the auto-refresh data source. Safe to
+# delete after reading the logs. Triggered by editing this file or manual dispatch.
+on:
+  workflow_dispatch:
+  push:
+    paths: [".github/workflows/probe-sources.yml"]
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe keyless sources
+        run: |
+          set +e
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+          hr() { echo; echo "=================== $1 ==================="; }
+
+          hr "Stooq quote CSV (US aapl.us)"
+          curl -s --max-time 15 "https://stooq.com/q/l/?s=aapl.us&f=sd2t2ohlcv&h&e=csv"; echo
+          hr "Stooq (India reliance.in)"
+          curl -s --max-time 15 "https://stooq.com/q/l/?s=reliance.in&f=sd2t2ohlcv&h&e=csv"; echo
+          hr "Stooq (Saudi 1010.sr)"
+          curl -s --max-time 15 "https://stooq.com/q/l/?s=1010.sr&f=sd2t2ohlcv&h&e=csv"; echo
+          hr "Stooq (AUS bhp.au)"
+          curl -s --max-time 15 "https://stooq.com/q/l/?s=bhp.au&f=sd2t2ohlcv&h&e=csv"; echo
+          hr "Stooq (forex eurusd)"
+          curl -s --max-time 15 "https://stooq.com/q/l/?s=eurusd&f=sd2t2ohlcv&h&e=csv"; echo
+
+          hr "Yahoo chart v8 (US AAPL)"
+          curl -s --max-time 15 -H "User-Agent: $UA" "https://query1.finance.yahoo.com/v8/finance/chart/AAPL?range=1d&interval=1d" | head -c 350; echo
+          hr "Yahoo chart v8 (India RELIANCE.NS)"
+          curl -s --max-time 15 -H "User-Agent: $UA" "https://query1.finance.yahoo.com/v8/finance/chart/RELIANCE.NS?range=1d&interval=1d" | head -c 350; echo
+          hr "Yahoo chart v8 (Saudi 1010.SR)"
+          curl -s --max-time 15 -H "User-Agent: $UA" "https://query1.finance.yahoo.com/v8/finance/chart/1010.SR?range=1d&interval=1d" | head -c 350; echo
+          hr "Yahoo chart v8 (AUS BHP.AX)"
+          curl -s --max-time 15 -H "User-Agent: $UA" "https://query1.finance.yahoo.com/v8/finance/chart/BHP.AX?range=1d&interval=1d" | head -c 350; echo
+
+          hr "Binance (BTCUSDT)"
+          curl -s --max-time 15 "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT"; echo
+          echo; echo "=== probe complete ==="

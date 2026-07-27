@@ -9,7 +9,7 @@ name: Refresh Demo Data
 # with the default GITHUB_TOKEN do not trigger other workflows.)
 on:
   schedule:
-    - cron: "0 */6 * * *" # every 6 hours
+    - cron: "*/30 * * * *" # every 30 minutes (min practical for scheduled Actions)
   workflow_dispatch:
   push:
     paths: [".github/workflows/refresh-data.yml"] # self-test on changes
