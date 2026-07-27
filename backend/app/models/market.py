@@ -14,6 +14,7 @@ from sqlalchemy import (
     Integer,
     Numeric,
     String,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -78,6 +79,7 @@ class Security(Base, TimestampMixin):
     isin: Mapped[str | None] = mapped_column(String(12), index=True)
     figi: Mapped[str | None] = mapped_column(String(12))
     cik: Mapped[str | None] = mapped_column(String(10), index=True)  # SEC EDGAR id
+    long_business_summary: Mapped[str | None] = mapped_column(Text)  # Yahoo profile (non-PSX)
 
     # Fast-read cached snapshot (kept in sync by ingestion; DB stays source of truth).
     market_cap: Mapped[float | None] = mapped_column(Numeric(24, 2))

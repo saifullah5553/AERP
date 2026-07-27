@@ -50,6 +50,7 @@ import type {
   SnapshotMeta,
 } from "@/types/api";
 import type { CompanyDetail, Row } from "@/types/company";
+import PabraiRadar from "./PabraiRadar";
 import PeersTable from "./PeersTable";
 import ScoreHistoryChart from "./ScoreHistoryChart";
 import StatementsTable, {
@@ -337,6 +338,7 @@ export default function CompanyPage() {
       {/* Body */}
       <div className="grid gap-4 p-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
+          <BusinessOverview summary={typeof sec.long_business_summary === "string" ? sec.long_business_summary : null} />
           <PabraiSection scores={data.scores} />
           <FundamentalSection detail={data} derived={derived} />
           <ValuationSection detail={data} />
@@ -392,6 +394,34 @@ export default function CompanyPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Business overview (Yahoo longBusinessSummary; non-PSX) ───────────────────
+function BusinessOverview({ summary }: { summary: string | null }) {
+  if (!summary) return null;
+  if (summary.length <= 420) {
+    return (
+      <Card title="Business Overview">
+        <p className="px-4 py-3 text-sm leading-relaxed text-slate-300">{summary}</p>
+      </Card>
+    );
+  }
+  return (
+    <Card title="Business Overview">
+      <details className="group px-4 py-3">
+        <summary className="cursor-pointer list-none text-sm leading-relaxed text-slate-300">
+          <span className="group-open:hidden">
+            {summary.slice(0, 420).trimEnd()}…{" "}
+            <span className="text-xs font-medium text-accent">Show more</span>
+          </span>
+          <span className="hidden group-open:inline">
+            {summary}{" "}
+            <span className="text-xs font-medium text-accent">Show less</span>
+          </span>
+        </summary>
+      </details>
+    </Card>
   );
 }
 
@@ -770,6 +800,9 @@ function PabraiSection({ scores }: { scores: Row | null }) {
           </div>
         </div>
       </div>
+      <PabraiRadar
+        items={bd.items.map((it) => ({ name: it.name, score: it.score, available: it.available }))}
+      />
       <div className="divide-y divide-base-700/40">
         {bd.items.map((it) => {
           const pctScore = it.score ?? 0;
