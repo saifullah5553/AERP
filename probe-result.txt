@@ -1,0 +1,36 @@
+probe run at Mon Jul 27 13:17:03 UTC 2026
+
+=== Stooq US aapl.us ===
+<meta charset=utf-8><title>Stooq</title><center style=font-family:arial;margin-top:50px><p><a href=/><img src=//static.stooq.com/stooq.svg height=68></a><p style=font-size:x-large>The page you requested does not exist<br>or has been moved<p><small><a href=/>Main Page</a>
+
+=== Stooq India reliance.in ===
+<meta charset=utf-8><title>Stooq</title><center style=font-family:arial;margin-top:50px><p><a href=/><img src=//static.stooq.com/stooq.svg height=68></a><p style=font-size:x-large>The page you requested does not exist<br>or has been moved<p><small><a href=/>Main Page</a>
+
+=== Stooq Saudi 1010.sr ===
+<meta charset=utf-8><title>Stooq</title><center style=font-family:arial;margin-top:50px><p><a href=/><img src=//static.stooq.com/stooq.svg height=68></a><p style=font-size:x-large>The page you requested does not exist<br>or has been moved<p><small><a href=/>Main Page</a>
+
+=== Stooq AUS bhp.au ===
+<meta charset=utf-8><title>Stooq</title><center style=font-family:arial;margin-top:50px><p><a href=/><img src=//static.stooq.com/stooq.svg height=68></a><p style=font-size:x-large>The page you requested does not exist<br>or has been moved<p><small><a href=/>Main Page</a>
+
+=== Stooq forex eurusd ===
+<meta charset=utf-8><title>Stooq</title><center style=font-family:arial;margin-top:50px><p><a href=/><img src=//static.stooq.com/stooq.svg height=68></a><p style=font-size:x-large>The page you requested does not exist<br>or has been moved<p><small><a href=/>Main Page</a>
+
+=== Yahoo v8 US AAPL ===
+{"chart":{"result":[{"meta":{"currency":"USD","symbol":"AAPL","exchangeName":"NMS","fullExchangeName":"NasdaqGS","instrumentType":"EQUITY","firstTradeDate":345479400,"regularMarketTime":1784923201,"hasPrePostMarketData":true,"gmtoffset":-14400,"timezone":"EDT","exchangeTimezoneName":"America/New_York","regularMarketPrice":333.02,"fiftyTwoWeekHigh":334.99,"fiftyTwoWeekLow":201.5,"regularMarketDayHi
+
+=== Yahoo v8 India RELIANCE.NS ===
+{"chart":{"result":[{"meta":{"currency":"INR","symbol":"RELIANCE.NS","exchangeName":"NSI","fullExchangeName":"NSE","instrumentType":"EQUITY","firstTradeDate":820467900,"regularMarketTime":1785146399,"hasPrePostMarketData":false,"gmtoffset":19800,"timezone":"IST","exchangeTimezoneName":"Asia/Kolkata","regularMarketPrice":1280.0,"fiftyTwoWeekHigh":1611.8,"fiftyTwoWeekLow":1249.8,"regularMarketDayHig
+
+=== Yahoo v8 Saudi 1010.SR ===
+{"chart":{"result":[{"meta":{"currency":"SAR","symbol":"1010.SR","exchangeName":"SAU","fullExchangeName":"Saudi","instrumentType":"EQUITY","firstTradeDate":1333177200,"regularMarketTime":1785154733,"hasPrePostMarketData":false,"gmtoffset":10800,"timezone":"AST","exchangeTimezoneName":"Asia/Riyadh","regularMarketPrice":20.97,"fiftyTwoWeekHigh":22.41,"fiftyTwoWeekLow":18.975,"regularMarketDayHigh":2
+
+=== Yahoo v8 AUS BHP.AX ===
+{"chart":{"result":[{"meta":{"currency":"AUD","symbol":"BHP.AX","exchangeName":"ASX","fullExchangeName":"ASX","instrumentType":"EQUITY","firstTradeDate":570409200,"regularMarketTime":1785133175,"hasPrePostMarketData":false,"gmtoffset":36000,"timezone":"AEST","exchangeTimezoneName":"Australia/Sydney","regularMarketPrice":60.1,"fiftyTwoWeekHigh":65.98,"fiftyTwoWeekLow":39.18,"regularMarketDayHigh":6
+
+=== Binance BTCUSDT ===
+{
+  "code": 0,
+  "msg": "Service unavailable from a restricted location according to 'b. Eligibility' in https://www.binance.com/en/terms. Please contact customer service if you believe you received this message in error."
+}
+
+=== done ===
