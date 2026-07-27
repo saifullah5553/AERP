@@ -347,25 +347,44 @@ def cmd_export_static(args: argparse.Namespace) -> None:
     )
 
 
+def _safe(name: str, fn: Callable[[], None]) -> None:
+    """Run one pipeline step, logging and swallowing failures so a single flaky external
+    source (a transient 5xx, a rate-limit) can't abort a full multi-hour rebuild."""
+    try:
+        fn()
+    except Exception as exc:  # noqa: BLE001 - resilience: continue the pipeline
+        log.warning("cmd_all: step '%s' failed (continuing): %s", name, exc)
+
+
 def cmd_all(args: argparse.Namespace) -> None:
-    """Full local pipeline: schema → seed → ingest everything → compute."""
+    """Full local pipeline: schema → seed → ingest everything → compute.
+
+    Schema/seed and the final compute are hard (must run); every network-dependent
+    ingestion step is wrapped so a transient upstream failure degrades coverage rather
+    than aborting the whole run (the merge-preserving export then keeps prior data)."""
     cmd_init_db(args)
     cmd_seed(args)
-    cmd_load_universe(argparse.Namespace(providers="binance,psx"))
-    cmd_load_us_universe(argparse.Namespace(limit=None, curated=True))
-    cmd_load_markets(args)
-    cmd_ingest_psx(args)
-    cmd_ingest_psx_market(argparse.Namespace(limit=None, no_history=False))
-    cmd_ingest_macro(args)
-    cmd_ingest_psx_insider(args)
-    cmd_ingest_psx_insider_api(argparse.Namespace(limit=500))
-    cmd_ingest_yahoo_insider(argparse.Namespace(region=None, limit=None))
-    cmd_ingest_estimates(argparse.Namespace(region=None, limit=None))
-    cmd_ingest_profiles(argparse.Namespace(region=None, limit=None))
-    cmd_ingest_quotes(argparse.Namespace(region=None, limit=None))
-    cmd_backfill(argparse.Namespace(region=None, limit=None))
-    cmd_ingest_fundamentals(argparse.Namespace(region=None, limit=None))
-    cmd_compute(argparse.Namespace(limit=None))
+    ns = argparse.Namespace
+    rl = ns(region=None, limit=None)  # region=all, no limit — reused by the region-aware steps
+    steps: list[tuple[str, Callable[[], None]]] = [
+        ("load-universe", lambda: cmd_load_universe(ns(providers="binance,psx"))),
+        ("load-us-universe", lambda: cmd_load_us_universe(ns(limit=None, curated=True))),
+        ("load-markets", lambda: cmd_load_markets(args)),
+        ("ingest-psx", lambda: cmd_ingest_psx(args)),
+        ("ingest-psx-market", lambda: cmd_ingest_psx_market(ns(limit=None, no_history=False))),
+        ("ingest-macro", lambda: cmd_ingest_macro(args)),
+        ("ingest-psx-insider", lambda: cmd_ingest_psx_insider(args)),
+        ("ingest-psx-insider-api", lambda: cmd_ingest_psx_insider_api(ns(limit=500))),
+        ("ingest-yahoo-insider", lambda: cmd_ingest_yahoo_insider(rl)),
+        ("ingest-estimates", lambda: cmd_ingest_estimates(rl)),
+        ("ingest-profiles", lambda: cmd_ingest_profiles(rl)),
+        ("ingest-quotes", lambda: cmd_ingest_quotes(rl)),
+        ("backfill", lambda: cmd_backfill(rl)),
+        ("ingest-fundamentals", lambda: cmd_ingest_fundamentals(rl)),
+    ]
+    for name, fn in steps:
+        _safe(name, fn)
+    cmd_compute(ns(limit=None))
 
 
 def build_parser() -> argparse.ArgumentParser:
