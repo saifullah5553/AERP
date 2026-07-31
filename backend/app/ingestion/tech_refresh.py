@@ -43,17 +43,21 @@ def _f(v: Any) -> float | None:
 
 
 def fetch_history(sym: str, client: httpx.Client):
-    """chart-v8 daily OHLCV → (high, low, close, volume) numpy arrays, or None."""
+    """chart-v8 daily OHLCV → (dates, high, low, close, volume), or None.
+
+    `dates` are ISO strings aligned with the arrays (for signal-inception backtesting)."""
     try:
         resp = client.get(_CHART.format(sym=sym), headers={"User-Agent": _UA}, timeout=20)
         resp.raise_for_status()
         res = resp.json()["chart"]["result"][0]
+        ts = res.get("timestamp") or []
         q = res["indicators"]["quote"][0]
         highs, lows, closes, vols = q.get("high"), q.get("low"), q.get("close"), q.get("volume")
         if not closes:
             return None
         bars = [
-            (highs[i], lows[i], closes[i], vols[i] if vols else None)
+            (highs[i], lows[i], closes[i], vols[i] if vols else None,
+             ts[i] if i < len(ts) else None)
             for i in range(len(closes))
             if closes[i] is not None
         ]
@@ -63,7 +67,10 @@ def fetch_history(sym: str, client: httpx.Client):
         high = np.array([b[0] if b[0] is not None else b[2] for b in bars], dtype=float)
         low = np.array([b[1] if b[1] is not None else b[2] for b in bars], dtype=float)
         vol = np.array([b[3] if b[3] is not None else 0.0 for b in bars], dtype=float)
-        return high, low, close, vol
+        dates = [
+            datetime.fromtimestamp(b[4], UTC).date().isoformat() if b[4] else "" for b in bars
+        ]
+        return dates, high, low, close, vol
     except Exception:  # noqa: BLE001 - one bad symbol shouldn't stop the batch
         return None
 
@@ -77,6 +84,37 @@ def _reblend(fund, tech, mom, qual, risk) -> tuple[float | None, float, dict]:
     total_w = sum(WEIGHTS[k] for k in present)
     base = round(sum(v * WEIGHTS[k] for k, v in present.items()) / total_w, 2)
     return base, round(total_w, 4), present
+
+
+def _signal_value_at(high, low, close, vol, k, legs, regime, de) -> str | None:
+    """The derived signal value using only the first k bars (for inception backtesting)."""
+    ind = compute_indicators(high[:k], low[:k], close[:k], vol[:k])
+    tech = score_technical(_scoring_metrics(ind)).score
+    if tech is None:
+        return None
+    fund, mom, qual, risk = legs
+    base, cov, present = _reblend(fund, _f(tech), mom, qual, risk)
+    if base is None:
+        return None
+    comp, _ = apply_regime_modifier(base, regime, de)
+    return derive_signal(comp, cov, present).signal.value
+
+
+def _signal_since(dates, high, low, close, vol, legs, regime, de, current, lookback=250):
+    """Walk back over history to the earliest day the current signal has held → (date, close).
+    Real inception, not fabricated — capped at `lookback` trading days."""
+    n = len(close)
+    floor = max(MIN_BARS - 1, n - 1 - lookback)
+    inception = floor
+    for j in range(n - 1, floor - 1, -1):
+        s = _signal_value_at(high, low, close, vol, j + 1, legs, regime, de)
+        if s != current:  # includes None → treat as boundary
+            inception = j + 1
+            break
+        inception = j
+    idx = max(0, min(inception, n - 1))
+    d = dates[idx] if idx < len(dates) and dates[idx] else None
+    return d, float(close[idx])
 
 
 def refresh_technicals(
@@ -119,7 +157,7 @@ def refresh_technicals(
         h = hist.get(sym)
         if h is None:
             continue
-        high, low, close, vol = h
+        dates, high, low, close, vol = h
         tech = score_technical(_scoring_metrics(compute_indicators(high, low, close, vol))).score
         if tech is None:
             continue
@@ -138,16 +176,27 @@ def refresh_technicals(
                                            _f(sc.get("quality")), _f(sc.get("risk")))
         if base is None:
             continue
-        composite, _bd = apply_regime_modifier(
-            base, regime_map.get(r.get("region")), _f(r.get("debt_to_equity"))
-        )
+        regime = regime_map.get(r.get("region"))
+        de = _f(r.get("debt_to_equity"))
+        composite, _bd = apply_regime_modifier(base, regime, de)
         sig = derive_signal(composite, coverage, present)
+
+        # Backtest the real signal-inception date + return-since (fixes "all show today").
+        legs = (fund, _f(sc.get("momentum")), _f(sc.get("quality")), _f(sc.get("risk")))
+        since, price_at = _signal_since(
+            dates, high, low, close, vol, legs, regime, de, sig.signal.value
+        )
+        cur_price = _f(r.get("price")) or float(close[-1])
+        ret = round((cur_price - price_at) / price_at * 100.0, 2) if price_at else None
 
         old = r.get("composite_score")
         r["technical_score"] = round(tech, 2)
         r["composite_score"] = composite
         r["signal"] = sig.signal.value
         r["signal_label"] = sig.label
+        r["signal_since"] = since or today
+        r["price_at_signal"] = round(price_at, 4) if price_at else None
+        r["signal_return_pct"] = ret
 
         if old is not None and abs(composite - old) >= 1.0:
             deltas[sym] = {
@@ -166,6 +215,9 @@ def refresh_technicals(
                 if isinstance(d.get("signal"), dict):
                     d["signal"]["signal_type"] = sig.signal.value
                     d["signal"]["label"] = sig.label
+                    d["signal"]["signal_since"] = r["signal_since"]
+                    d["signal"]["price_at_signal"] = r["price_at_signal"]
+                    d["signal"]["signal_return_pct"] = ret
                 cf.write_text(json.dumps(d), encoding="utf-8")
             except (OSError, json.JSONDecodeError):
                 pass
