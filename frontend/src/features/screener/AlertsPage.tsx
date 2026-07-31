@@ -2,12 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, type InsiderTx } from "@/lib/api";
-import { buildAlerts } from "@/lib/alerts";
+import { buildAlerts, resultsFiled } from "@/lib/alerts";
 import { fmtCompact } from "@/lib/format";
 import type { CatalystsData } from "@/types/api";
 import { AlertRow } from "./NotificationBell";
 
-type Tab = "events" | "insider";
+type Tab = "events" | "insider" | "results";
 
 function shares(n: number | null): string {
   return n == null ? "—" : Math.round(n).toLocaleString();
@@ -76,6 +76,8 @@ export default function AlertsPage() {
   }, []);
 
   const alerts = useMemo(() => buildAlerts(cat), [cat]);
+  const since = useMemo(() => new Date(Date.now() - 100 * 86400000).toISOString().slice(0, 10), []);
+  const results = useMemo(() => resultsFiled(cat, since), [cat, since]);
   const regions = useMemo(() => ["all", ...[...new Set(ins.map((t) => t.region))].sort()], [ins]);
   const insider = region === "all" ? ins : ins.filter((t) => t.region === region);
 
@@ -98,6 +100,7 @@ export default function AlertsPage() {
         <div className="flex items-center gap-1 rounded-full border border-base-600 p-0.5">
           {tabBtn("events", `Announcements (${alerts.length})`)}
           {tabBtn("insider", `Insider (${ins.length})`)}
+          {tabBtn("results", `Results Filed (${results.length})`)}
         </div>
         {tab === "insider" && (
           <div className="ml-auto flex flex-wrap gap-1.5">
@@ -117,7 +120,7 @@ export default function AlertsPage() {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {tab === "events" ? (
+        {tab === "events" && (
           alerts.length === 0 ? (
             <div className="p-8 text-center text-sm text-slate-500">No announcements.</div>
           ) : (
@@ -125,8 +128,40 @@ export default function AlertsPage() {
               {alerts.map((a) => <AlertRow key={a.id} a={a} />)}
             </div>
           )
-        ) : (
-          <InsiderTable rows={insider} />
+        )}
+        {tab === "insider" && <InsiderTable rows={insider} />}
+        {tab === "results" && (
+          <div className="mx-auto max-w-3xl p-2">
+            <div className="mb-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200/90">
+              PSX companies that filed results in the last ~100 days. Re-export these companies'
+              financials (stockanalysis CSV) during results season — the pipeline recomputes
+              fundamentals + scores automatically on the next refresh.
+            </div>
+            {results.length === 0 ? (
+              <div className="p-8 text-center text-sm text-slate-500">No results filed recently.</div>
+            ) : (
+              <div className="divide-y divide-base-700/50">
+                {results.map((r) => (
+                  <div key={r.symbol} className="flex items-center justify-between gap-3 px-3 py-2">
+                    <div className="min-w-0">
+                      <Link to={`/company/${encodeURIComponent(r.symbol + ".KA")}`} className="font-semibold text-accent">
+                        {r.symbol}
+                      </Link>
+                      <span className="ml-2 truncate text-xs text-slate-400">{r.title}</span>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3">
+                      {r.url && (
+                        <a href={r.url} target="_blank" rel="noreferrer" className="text-[11px] font-semibold text-accent hover:underline">
+                          PDF ↗
+                        </a>
+                      )}
+                      <span className="num text-[11px] text-slate-500">{r.date}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
       <div className="border-t border-base-600 px-5 py-2 text-[11px] text-slate-500">
