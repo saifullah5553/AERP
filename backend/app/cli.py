@@ -158,6 +158,15 @@ def cmd_ingest_estimates(args: argparse.Namespace) -> None:
         ingest_estimates(db, region=_region(args.region), limit=args.limit)
 
 
+def cmd_refresh_technicals(args: argparse.Namespace) -> None:
+    """Daily all-market technical → composite → signal recompute via Yahoo chart-v8 history
+    (keyless, CI-friendly). Patches the snapshot + movers.json; no DB. Non-PSX by default."""
+    from app.ingestion.tech_refresh import refresh_technicals
+
+    out = args.out or "../frontend/public/data"
+    log.info("refresh-technicals: %s", refresh_technicals(out, limit=args.limit))
+
+
 def cmd_refresh_prices(args: argparse.Namespace) -> None:
     """Patch price fields in the exported snapshot via Yahoo chart v8 (keyless, CI-friendly).
     Does not touch the DB — updates screener.json + company/*.json prices in place."""
@@ -610,6 +619,8 @@ def build_parser() -> argparse.ArgumentParser:
     export.set_defaults(func=cmd_export_static)
     rp = add("refresh-prices", cmd_refresh_prices, limit=True)
     rp.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
+    rt = add("refresh-technicals", cmd_refresh_technicals, limit=True)
+    rt.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
     add("all", cmd_all)
     return parser
 

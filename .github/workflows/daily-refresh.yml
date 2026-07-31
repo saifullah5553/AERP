@@ -1,0 +1,75 @@
+name: Daily Technical Refresh
+
+# After market close, recompute the technical → composite → signal for every market from
+# Yahoo chart-v8 daily history (reachable from CI, unlike yfinance) and reblend with the
+# committed fundamental/momentum/quality/risk. This is what makes signals + Movers update
+# daily across all markets. Patches the snapshot directly (no DB), commits, and deploys.
+on:
+  schedule:
+    - cron: "0 22 * * *" # 22:00 UTC — after the US market close
+  workflow_dispatch:
+  push:
+    paths: [".github/workflows/daily-refresh.yml"] # self-test on changes
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r backend/requirements.txt
+
+      - name: Refresh prices + recompute technicals (all markets, chart-v8)
+        working-directory: backend
+        run: |
+          python -m app.cli refresh-prices || true
+          python -m app.cli refresh-technicals || true
+
+      - name: Commit refreshed snapshot
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add frontend/public/data
+          if git diff --cached --quiet; then
+            echo "No changes."
+          else
+            git commit -m "chore: daily technical/score refresh"
+            git push || echo "push skipped"
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Build Pages site
+        working-directory: frontend
+        run: npm install && npm run build
+        env:
+          VITE_BASE: /AERP/
+          VITE_API_BASE: ${{ vars.VITE_API_BASE }}
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
