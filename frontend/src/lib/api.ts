@@ -12,6 +12,21 @@ import type {
 import type { CompanyDetail } from "@/types/company";
 import type { RawMaterialsData } from "@/lib/rawMaterials";
 
+export interface CotData {
+  label: string;
+  contract: string;
+  report_date: string;
+  nc_long: number;
+  nc_short: number;
+  net: number;
+  pct_long: number | null;
+  oi: number | null;
+  stance: string; // Net Long / Net Short / Flat
+  flow: string; // Buying / Selling / Neutral
+  net_trend: string;
+  oi_trend: string;
+}
+
 export interface ExtraIndex {
   provider_symbol: string;
   symbol: string;
@@ -120,6 +135,9 @@ export const api = {
   },
   extraIndices(signal?: AbortSignal): Promise<ExtraIndex[]> {
     return getJson<ExtraIndex[]>(`${DATA_BASE}/extra_indices.json`, signal).catch(() => []);
+  },
+  cot(signal?: AbortSignal): Promise<Record<string, CotData>> {
+    return getJson<Record<string, CotData>>(`${DATA_BASE}/cot.json`, signal).catch(() => ({}));
   },
   meta(signal?: AbortSignal): Promise<SnapshotMeta> {
     if (IS_STATIC) return getJson<SnapshotMeta>(`${DATA_BASE}/meta.json`, signal);

@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { api } from "@/lib/api";
+import { api, type CotData } from "@/lib/api";
 import {
   fmtChangePct,
   fmtCompact,
@@ -192,6 +192,7 @@ export default function CompanyPage() {
   const [regime, setRegime] = useState<MacroRegimeData | null>(null);
   const [catalysts, setCatalysts] = useState<CatalystsData | null>(null);
   const [meta, setMeta] = useState<SnapshotMeta | null>(null);
+  const [cot, setCot] = useState<Record<string, CotData>>({});
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -215,6 +216,7 @@ export default function CompanyPage() {
     api.regime(ctrl.signal).then(setRegime).catch(() => setRegime(null));
     api.catalysts(ctrl.signal).then(setCatalysts).catch(() => setCatalysts(null));
     api.meta(ctrl.signal).then(setMeta).catch(() => setMeta(null));
+    api.cot(ctrl.signal).then(setCot).catch(() => setCot({}));
     return () => ctrl.abort();
   }, []);
 
@@ -339,6 +341,7 @@ export default function CompanyPage() {
       <div className="grid gap-4 p-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
           <SignalCard signal={data.signal} />
+          <CotSection data={cot[String(sec.provider_symbol ?? "")]} />
           <BusinessOverview summary={typeof sec.long_business_summary === "string" ? sec.long_business_summary : null} />
           <PabraiSection scores={data.scores} />
           <FundamentalSection detail={data} derived={derived} />
@@ -453,6 +456,47 @@ function SignalCard({ signal }: { signal: Row | null }) {
         signal date, not a forecast.
       </div>
     </section>
+  );
+}
+
+// ── Commitment of Traders (CFTC) — non-commercial "smart money" positioning ──
+function CotSection({ data }: { data: CotData | undefined }) {
+  if (!data) return null;
+  const stanceTone = data.stance === "Net Long" ? "#22c55e" : data.stance === "Net Short" ? "#ef4444" : "#94a3b8";
+  const flowTone = data.flow === "Buying" ? "#22c55e" : data.flow === "Selling" ? "#ef4444" : "#94a3b8";
+  const pl = data.pct_long ?? 50;
+  const cell = (label: string, value: string, tone?: string) => (
+    <div className="flex flex-col">
+      <span className="text-[10px] uppercase tracking-widest text-slate-500">{label}</span>
+      <span className="num text-sm font-bold" style={{ color: tone ?? "var(--app-fg)" }}>{value}</span>
+    </div>
+  );
+  return (
+    <Card
+      title="Commitment of Traders — Smart Money"
+      right={<span className="text-[10px] text-slate-500">CFTC · {data.report_date}</span>}
+    >
+      <div className="grid grid-cols-2 gap-x-8 gap-y-3 px-4 py-3 md:grid-cols-4">
+        {cell("Non-Comm Stance", data.stance, stanceTone)}
+        {cell("This Week", `${data.flow} ${data.net_trend === "increasing" ? "↑" : data.net_trend === "decreasing" ? "↓" : ""}`, flowTone)}
+        {cell("Net Position", data.net.toLocaleString(), stanceTone)}
+        {cell("Open Interest", `${data.oi?.toLocaleString() ?? "—"} ${data.oi_trend === "increasing" ? "↑" : data.oi_trend === "decreasing" ? "↓" : ""}`)}
+      </div>
+      <div className="px-4 pb-3">
+        <div className="mb-1 flex justify-between text-[10px] text-slate-500">
+          <span>Speculators long {pl}%</span>
+          <span>short {(100 - pl).toFixed(1)}%</span>
+        </div>
+        <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-base-900">
+          <span style={{ width: `${pl}%`, background: "#22c55e" }} />
+          <span style={{ width: `${100 - pl}%`, background: "#ef4444" }} />
+        </div>
+      </div>
+      <div className="border-t border-base-700/50 px-4 py-1.5 text-[10px] leading-relaxed text-slate-500">
+        {data.contract} · non-commercials (large speculators) from the CFTC weekly report.
+        "{data.flow}" = their net position {data.net_trend} vs last week. Data, not advice.
+      </div>
+    </Card>
   );
 }
 

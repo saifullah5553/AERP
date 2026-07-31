@@ -431,6 +431,13 @@ def cmd_export_static(args: argparse.Namespace) -> None:
         except Exception as exc:  # noqa: BLE001 - optional
             log.warning("extra indices (KSE100) export failed: %s", exc)
 
+        # Commitment of Traders (CFTC weekly) for commodities & FX — smart-money positioning.
+        try:
+            from app.ingestion.cot import build_cot
+            (out / "cot.json").write_text(json.dumps(build_cot()), encoding="utf-8")
+        except Exception as exc:  # noqa: BLE001 - network optional
+            log.warning("COT export failed: %s", exc)
+
         # Catalyst calendar (PK economic events + PSX announcements/corporate actions).
         from app.services.catalysts import build_catalysts
 
