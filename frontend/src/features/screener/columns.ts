@@ -40,7 +40,6 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
     { field: "name", headerName: "Company", width: 220, sortable: true },
     { field: "market_code", headerName: "Exchange", width: 110, sortable: false },
     { field: "sector", headerName: "Sector", width: 150, sortable: false },
-    { field: "industry", headerName: "Industry", width: 170, sortable: false },
 
     num("price", "Price", { width: 110, valueFormatter: (p) => fmtNumber(p.value) }),
     {
