@@ -6,7 +6,7 @@ name: Daily Technical Refresh
 # daily across all markets. Patches the snapshot directly (no DB), commits, and deploys.
 on:
   schedule:
-    - cron: "0 22 * * *" # 22:00 UTC — after the US market close
+    - cron: "15 22 * * *" # 22:15 UTC (after US close; offset from the 30-min refresh)
   workflow_dispatch:
   push:
     paths: [".github/workflows/daily-refresh.yml"] # self-test on changes
