@@ -49,6 +49,19 @@ class Portfolio360Client:
                 out[key] = pts
         return out
 
+    def pk_index(self, code: str = "KSE100") -> dict[str, Any] | None:
+        """Current PSX index level/change (Yahoo has no usable KSE100). Returns
+        {name, price, change_pct} or None."""
+        data = self._get(f"/api/market/indices/{code}")
+        ov = (data or {}).get("overview") if isinstance(data, dict) else None
+        if not isinstance(ov, dict) or ov.get("current") is None:
+            return None
+        return {
+            "name": ov.get("name") or code,
+            "price": ov.get("current"),
+            "change_pct": ov.get("changePercent"),
+        }
+
     def pk_investor_flows(self, sessions: int = 30) -> Any:
         return self._get("/api/market/psx/investor-flows", {"sessions": sessions})
 

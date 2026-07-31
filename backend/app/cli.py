@@ -409,6 +409,23 @@ def cmd_export_static(args: argparse.Namespace) -> None:
         (out / "raw_materials.json").write_text(json.dumps(raw_materials), encoding="utf-8")
         swing_path.write_text(json.dumps(ranked), encoding="utf-8")
 
+        # KSE100 index level from Portfolio360 (Yahoo has no usable ^KSE). Additive strip
+        # data for the World Indices ticker; best-effort so a P360 hiccup doesn't fail export.
+        try:
+            kse = Portfolio360Client().pk_index("KSE100")
+            extra = (
+                [{"provider_symbol": "KSE100", "symbol": "KSE100", "name": kse["name"],
+                  "region": "psx", "price": kse["price"], "change_pct": kse["change_pct"]}]
+                if kse else []
+            )
+            if merge and not extra:
+                prev = out / "extra_indices.json"
+                if prev.exists():
+                    extra = json.loads(prev.read_text(encoding="utf-8"))
+            (out / "extra_indices.json").write_text(json.dumps(extra), encoding="utf-8")
+        except Exception as exc:  # noqa: BLE001 - optional
+            log.warning("extra indices (KSE100) export failed: %s", exc)
+
         # Catalyst calendar (PK economic events + PSX announcements/corporate actions).
         from app.services.catalysts import build_catalysts
 

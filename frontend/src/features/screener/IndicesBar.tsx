@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 
-import { api } from "@/lib/api";
+import { api, type ExtraIndex } from "@/lib/api";
 import { fmtChangePct } from "@/lib/format";
-import type { ScreenerRow } from "@/types/api";
+
+// Minimal shape shared by Yahoo index rows and the P360 KSE100 extra.
+type Idx = { provider_symbol: string; symbol: string; name: string | null; price: number | null; change_pct: number | null };
 
 // Short display names + a priority order for the major indices.
 const SHORT: Record<string, string> = {
+  KSE100: "KSE 100",
   "^GSPC": "S&P 500", "^IXIC": "NASDAQ", "^DJI": "Dow Jones", "^RUT": "Russell 2000",
   "^NSEI": "NIFTY 50", "^BSESN": "SENSEX", "^TASI.SR": "Tadawul", "^AXJO": "ASX 200",
   "^FTSE": "FTSE 100", "^GDAXI": "DAX", "^N225": "Nikkei 225", "^HSI": "Hang Seng",
@@ -21,7 +24,8 @@ function level(v: number | null): string {
 // refreshed each snapshot). Replaces the old per-market sentiment strip (which duplicated
 // the KPI sentiment bar + the regime cards).
 export default function IndicesBar() {
-  const [idx, setIdx] = useState<ScreenerRow[]>([]);
+  const [idx, setIdx] = useState<Idx[]>([]);
+  const [extra, setExtra] = useState<ExtraIndex[]>([]);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -29,16 +33,19 @@ export default function IndicesBar() {
       .screener({ page: 1, page_size: 50, asset_class: "index" }, ctrl.signal)
       .then((p) => setIdx(p.items))
       .catch(() => setIdx([]));
+    api.extraIndices(ctrl.signal).then(setExtra).catch(() => setExtra([]));
     return () => ctrl.abort();
   }, []);
 
-  if (idx.length === 0) return null;
+  if (idx.length === 0 && extra.length === 0) return null;
 
   const byd = new Map(idx.map((r) => [r.provider_symbol, r]));
-  const ordered = [
-    ...ORDER.map((s) => byd.get(s)).filter((r): r is ScreenerRow => !!r),
+  const yahoo = [
+    ...ORDER.map((s) => byd.get(s)).filter((r): r is Idx => !!r),
     ...idx.filter((r) => !ORDER.includes(r.provider_symbol)),
   ];
+  // Home market (KSE100 from P360) leads the strip.
+  const ordered: Idx[] = [...extra, ...yahoo];
 
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-base-600 bg-base-900 px-4 py-2">

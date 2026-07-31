@@ -12,6 +12,15 @@ import type {
 import type { CompanyDetail } from "@/types/company";
 import type { RawMaterialsData } from "@/lib/rawMaterials";
 
+export interface ExtraIndex {
+  provider_symbol: string;
+  symbol: string;
+  name: string | null;
+  region: string;
+  price: number | null;
+  change_pct: number | null;
+}
+
 const BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
 const V1 = `${BASE}/api/v1`;
 
@@ -108,6 +117,9 @@ export const api = {
   },
   catalysts(signal?: AbortSignal): Promise<CatalystsData> {
     return getJson<CatalystsData>(`${DATA_BASE}/catalysts.json`, signal);
+  },
+  extraIndices(signal?: AbortSignal): Promise<ExtraIndex[]> {
+    return getJson<ExtraIndex[]>(`${DATA_BASE}/extra_indices.json`, signal).catch(() => []);
   },
   meta(signal?: AbortSignal): Promise<SnapshotMeta> {
     if (IS_STATIC) return getJson<SnapshotMeta>(`${DATA_BASE}/meta.json`, signal);
