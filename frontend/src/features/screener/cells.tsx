@@ -1,6 +1,6 @@
 import type { ICellRendererParams } from "ag-grid-community";
 
-import { fmtChangePct, fmtScore, scoreColor, titleize } from "@/lib/format";
+import { fmtChangePct, fmtScore, titleize } from "@/lib/format";
 import type { SignalType } from "@/types/api";
 
 const SIGNAL_STYLE: Record<SignalType, { bg: string; fg: string; label: string }> = {
@@ -25,19 +25,26 @@ export function SignalCell(p: ICellRendererParams) {
   );
 }
 
+function scoreTones(v: number): { bg: string; border: string; text: string } {
+  const hue = Math.max(0, Math.min(120, (v / 100) * 120)); // 0=red → 120=green
+  return {
+    bg: `hsla(${hue}, 70%, 45%, 0.22)`,
+    border: `hsla(${hue}, 70%, 52%, 0.6)`,
+    text: `hsl(${hue}, 85%, 66%)`,
+  };
+}
+
 export function ScoreCell(p: ICellRendererParams) {
   const v = p.value as number | null;
   if (v === null || v === undefined) return <span className="text-slate-600">—</span>;
+  const t = scoreTones(v);
   return (
-    <div className="flex items-center gap-2">
-      <span
-        className="inline-block h-2 w-2 rounded-full"
-        style={{ background: scoreColor(v) }}
-      />
-      <span className="num tabular-nums font-semibold" style={{ color: scoreColor(v) }}>
-        {fmtScore(v)}
-      </span>
-    </div>
+    <span
+      className="num inline-flex min-w-[2.6rem] items-center justify-center rounded-md px-2 py-0.5 text-xs font-bold tabular-nums"
+      style={{ background: t.bg, color: t.text, border: `1px solid ${t.border}` }}
+    >
+      {fmtScore(v)}
+    </span>
   );
 }
 

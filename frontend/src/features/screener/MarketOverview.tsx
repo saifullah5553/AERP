@@ -38,23 +38,24 @@ export default function MarketOverview() {
         {kpis.map((k) => (
           <div
             key={k.label}
-            className="flex min-w-[132px] flex-1 items-center gap-3 rounded-lg border px-3 py-2 transition-transform hover:-translate-y-0.5"
+            className="flex min-w-[132px] flex-1 items-center gap-3 rounded-lg border px-3 py-2.5 shadow-lg transition-transform hover:-translate-y-0.5"
             style={{
-              borderColor: `${k.tone}44`,
-              background: `linear-gradient(135deg, ${k.tone}1f 0%, rgba(15,23,42,0.4) 70%)`,
+              borderColor: `${k.tone}55`,
+              borderTop: `3px solid ${k.tone}`,
+              background: `linear-gradient(135deg, ${k.tone}3a 0%, ${k.tone}12 45%, rgb(var(--base-900) / 0.55) 100%)`,
             }}
           >
             <span
-              className="flex h-8 w-8 items-center justify-center rounded-md text-sm font-bold"
-              style={{ background: `${k.tone}22`, color: k.tone }}
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-base font-bold"
+              style={{ background: `${k.tone}33`, color: k.tone, boxShadow: `0 0 12px ${k.tone}44` }}
             >
               {k.icon}
             </span>
             <div className="flex flex-col">
-              <span className="num text-xl font-black leading-none" style={{ color: k.tone }}>
+              <span className="num text-2xl font-black leading-none" style={{ color: k.tone }}>
                 {k.value}
               </span>
-              <span className="mt-1 text-[10px] uppercase tracking-wide text-slate-400">{k.label}</span>
+              <span className="mt-1 text-[10px] uppercase tracking-wide text-slate-300">{k.label}</span>
             </div>
           </div>
         ))}

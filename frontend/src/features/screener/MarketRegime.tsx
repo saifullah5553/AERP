@@ -49,7 +49,7 @@ export default function MarketRegime() {
               <button
                 onClick={() => setOpen(isOpen ? null : c.region)}
                 className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
-                style={{ background: `linear-gradient(135deg, ${tone}22 0%, rgba(15,23,42,0.5) 75%)` }}
+                style={{ background: `linear-gradient(135deg, ${tone}22 0%, rgb(var(--base-900) / 0.5) 75%)` }}
               >
                 <div>
                   <div className="text-xs font-semibold text-slate-100">{c.label}</div>

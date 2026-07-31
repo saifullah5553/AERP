@@ -2,10 +2,30 @@
 @tailwind components;
 @tailwind utilities;
 
-/* AG Grid theme (imported in ScreenerGrid via JS) is tuned here to the
-   institutional palette. */
+/* ── Theme palettes ──────────────────────────────────────────────────────────
+   Surface colors are CSS variables (R G B triplets) consumed by the Tailwind
+   `base` palette, so every bg-/border-base-* utility (and its /opacity variants)
+   flips with the theme. Default = dark; [data-theme="light"] overrides. */
 :root {
   color-scheme: dark;
+  --base-900: 10 14 20;
+  --base-800: 15 23 42;
+  --base-700: 20 27 45;
+  --base-600: 30 41 59;
+  --base-500: 51 65 85;
+  --app-bg: #0a0e14;
+  --app-fg: #e2e8f0;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --base-900: 255 255 255;
+  --base-800: 248 250 252;
+  --base-700: 241 245 249;
+  --base-600: 226 232 240;
+  --base-500: 203 213 225;
+  --app-bg: #eef2f7;
+  --app-fg: #0f172a;
 }
 
 html,
@@ -13,9 +33,24 @@ body,
 #root {
   height: 100%;
   margin: 0;
-  background: #0a0e14;
-  color: #e2e8f0;
+  background: var(--app-bg);
+  color: var(--app-fg);
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Light-theme text remaps: the components use Tailwind's fixed slate grays (tuned
+   for a dark bg); invert the common ones so text stays readable on light surfaces. */
+:root[data-theme="light"] .text-slate-200 { color: #0f172a; }
+:root[data-theme="light"] .text-slate-300 { color: #1e293b; }
+:root[data-theme="light"] .text-slate-400 { color: #475569; }
+:root[data-theme="light"] .text-slate-500 { color: #64748b; }
+:root[data-theme="light"] .text-slate-600 { color: #94a3b8; }
+:root[data-theme="light"] .text-accent { color: #0284c7; }
+:root[data-theme="light"] .brand-gradient {
+  background: linear-gradient(90deg, #0284c7 0%, #6366f1 55%, #9333ea 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 /* Institutional AG Grid quartz-dark overrides. */
@@ -35,6 +70,22 @@ body,
   --ag-header-column-separator-color: #1e293b;
   --ag-accent-color: #38bdf8;
   --ag-header-height: 38px;
+}
+
+/* Light-theme AG Grid re-skin (keeps the quartz-dark class, swaps the palette vars). */
+:root[data-theme="light"] .ag-theme-quartz-dark {
+  --ag-background-color: #ffffff;
+  --ag-odd-row-background-color: #f8fafc;
+  --ag-header-background-color: #f1f5f9;
+  --ag-header-foreground-color: #0369a1;
+  --ag-foreground-color: #0f172a;
+  --ag-border-color: #e2e8f0;
+  --ag-row-border-color: #eef2f7;
+  --ag-row-hover-color: #e0f2fe;
+  --ag-selected-row-background-color: #dbeafe;
+}
+:root[data-theme="light"] .ag-theme-quartz-dark .ag-header {
+  border-bottom: 2px solid #0284c766;
 }
 
 /* Uppercase, tracked, accented column headers for a terminal feel. */

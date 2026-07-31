@@ -116,7 +116,7 @@ function StatRow({ label, value, tone }: { label: string; value: string; tone?: 
   return (
     <div className="flex items-center justify-between border-b border-base-700/40 py-1.5">
       <span className="text-xs text-slate-400">{label}</span>
-      <span className="num text-sm font-medium" style={{ color: tone ?? "#e2e8f0" }}>
+      <span className="num text-sm font-medium" style={{ color: tone ?? "var(--app-fg)" }}>
         {value}
       </span>
     </div>

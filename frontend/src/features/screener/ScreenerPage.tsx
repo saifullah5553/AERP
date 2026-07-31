@@ -15,6 +15,7 @@ import {
 import type { ScreenerQuery, ScreenerRow, SnapshotMeta } from "@/types/api";
 import FilterBar from "./FilterBar";
 import MarketOverview from "./MarketOverview";
+import ThemeToggle from "./ThemeToggle";
 import MarketRegime from "./MarketRegime";
 import PulseBar from "./PulseBar";
 import ScreenerGrid from "./ScreenerGrid";
@@ -115,6 +116,7 @@ export default function ScreenerPage() {
           )}
         </div>
         <div className="flex items-center gap-3 text-xs">
+          <ThemeToggle />
           {live && (
             <span className="flex items-center gap-1.5 font-semibold text-up">
               <span className="h-2 w-2 animate-pulse rounded-full bg-up" />

@@ -4,13 +4,14 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Institutional dark palette (Bloomberg/Koyfin-inspired).
+        // Surface palette driven by CSS variables so it flips between the dark and
+        // light themes (opacity variants work via the `<alpha-value>` channel form).
         base: {
-          900: "#0a0e14",
-          800: "#0f172a",
-          700: "#141b2d",
-          600: "#1e293b",
-          500: "#334155",
+          900: "rgb(var(--base-900) / <alpha-value>)",
+          800: "rgb(var(--base-800) / <alpha-value>)",
+          700: "rgb(var(--base-700) / <alpha-value>)",
+          600: "rgb(var(--base-600) / <alpha-value>)",
+          500: "rgb(var(--base-500) / <alpha-value>)",
         },
         accent: { DEFAULT: "#38bdf8", muted: "#0284c7" },
         up: "#22c55e",

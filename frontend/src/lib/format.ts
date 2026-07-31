@@ -85,6 +85,6 @@ export function scoreColor(v: number | null | undefined): string {
 export function scoreHeatBg(v: number | null | undefined): string {
   if (v === null || v === undefined) return "transparent";
   const hue = Math.max(0, Math.min(120, (v / 100) * 120));
-  const alpha = 0.1 + (Math.abs(v - 50) / 50) * 0.22; // stronger toward the extremes
-  return `hsla(${hue}, 70%, 45%, ${alpha.toFixed(3)})`;
+  const alpha = 0.14 + (Math.abs(v - 50) / 50) * 0.28; // stronger toward the extremes
+  return `hsla(${hue}, 70%, 42%, ${alpha.toFixed(3)})`;
 }
