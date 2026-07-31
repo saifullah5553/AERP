@@ -43,6 +43,25 @@ export interface MoversData {
   downgrades: Mover[];
 }
 
+export interface SignalMove {
+  provider_symbol: string;
+  symbol: string;
+  name: string | null;
+  region: string;
+  direction: "buy" | "sell";
+  from: string;
+  to: string;
+  label: string | null;
+  composite: number | null;
+  price: number | null;
+  date: string;
+}
+export interface SignalMovesData {
+  generated_at: string | null;
+  buy: SignalMove[];
+  sell: SignalMove[];
+}
+
 export interface CotData {
   label: string;
   contract: string;
@@ -188,6 +207,13 @@ export const api = {
       generated_at: null,
       upgrades: [],
       downgrades: [],
+    }));
+  },
+  signalMoves(signal?: AbortSignal): Promise<SignalMovesData> {
+    return getJson<SignalMovesData>(`${DATA_BASE}/signal_moves.json`, signal).catch(() => ({
+      generated_at: null,
+      buy: [],
+      sell: [],
     }));
   },
   meta(signal?: AbortSignal): Promise<SnapshotMeta> {

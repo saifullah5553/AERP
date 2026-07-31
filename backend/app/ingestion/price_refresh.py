@@ -68,6 +68,42 @@ def _load(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _eps_ttm(detail: dict) -> float | None:
+    """Trailing-twelve-month EPS from a company file's income statements.
+
+    Prefers the sum of the last 4 *quarterly* EPS (a true TTM); falls back to the most
+    recent *annual* EPS (itself a full trailing year) when no quarterly data exists — the
+    case for every PSX name, whose only filings here are annual.
+    """
+    inc = ((detail.get("statements") or {}).get("income")) or []
+    if not isinstance(inc, list):
+        return None
+
+    def _fd(x: dict) -> str:
+        return x.get("fiscal_date") or x.get("period_end") or ""
+
+    q = sorted(
+        [x for x in inc if x.get("period") == "quarterly" and x.get("eps") is not None],
+        key=_fd, reverse=True,
+    )
+    if len(q) >= 4:
+        return round(sum(float(x["eps"]) for x in q[:4]), 4)
+    a = sorted(
+        [x for x in inc if x.get("period") == "annual" and x.get("eps") is not None],
+        key=_fd, reverse=True,
+    )
+    if a:
+        return round(float(a[0]["eps"]), 4)
+    return None
+
+
+def _pe_ttm(price: Any, eps_ttm: float | None) -> float | None:
+    """P/E (TTM). None for missing/zero/negative EPS (a loss has no meaningful P/E)."""
+    if price is None or eps_ttm is None or eps_ttm <= 0:
+        return None
+    return round(float(price) / eps_ttm, 2)
+
+
 def _add_psx_quotes(rows: list[dict], quotes: dict[str, dict]) -> None:
     """Populate `quotes` (keyed by provider_symbol) for PSX names from the official
     dps.psx.com.pk/market-watch table (live close/change/volume for the whole market)."""
@@ -174,11 +210,13 @@ def refresh_prices(
         if pas:
             r["signal_return_pct"] = round((q["price"] - pas) / pas * 100.0, 2)
         updated += 1
-    screener_path.write_text(json.dumps(rows), encoding="utf-8")
 
-    # Patch each company file's quote block too (best-effort).
+    # Patch each company file's quote block too (best-effort), and recompute P/E (TTM)
+    # from the fresh price so valuation stays current every refresh. pe_by_sym then flows
+    # back onto the screener rows below before screener.json is written.
     company_dir = out / "company"
     patched_files = 0
+    pe_by_sym: dict[str, float | None] = {}
     for sym, q in quotes.items():
         cf = company_dir / f"{sym}.json"
         if not cf.exists():
@@ -196,7 +234,17 @@ def refresh_prices(
         for k in ("day_open", "day_high", "day_low", "volume"):
             if q.get(k) is not None:
                 quote[k] = q[k]
+        # P/E (TTM) from the fresh price ÷ trailing EPS (last-4-quarters, else latest annual).
+        eps_ttm = _eps_ttm(detail)
+        pe = _pe_ttm(q["price"], eps_ttm)
+        pe_by_sym[sym] = pe
+        quote["eps_ttm"] = eps_ttm
+        quote["pe_ttm"] = pe
         detail["quote"] = quote
+        if isinstance(detail.get("fundamentals"), dict):
+            detail["fundamentals"]["pe_ttm"] = pe
+        if isinstance(detail.get("ratios"), dict):
+            detail["ratios"]["pe_ratio"] = pe
         if q.get("sector") and isinstance(detail.get("security"), dict):
             detail["security"]["sector"] = q["sector"]
         # Keep the company signal block's return-since in step with the fresh price too.
@@ -207,7 +255,13 @@ def refresh_prices(
         cf.write_text(json.dumps(detail, ensure_ascii=False), encoding="utf-8")
         patched_files += 1
 
+    # Apply the freshly-computed P/E (TTM) onto the screener rows, then persist.
+    for r in rows:
+        if r.get("provider_symbol") in pe_by_sym:
+            r["pe_ttm"] = pe_by_sym[r["provider_symbol"]]
+    screener_path.write_text(json.dumps(rows), encoding="utf-8")
+
     result = {"targets": len(targets), "quoted": len(quotes), "rows_updated": updated,
-              "company_files": patched_files}
+              "company_files": patched_files, "pe_computed": sum(1 for v in pe_by_sym.values() if v)}
     log.info("refresh-prices: %s", result)
     return result

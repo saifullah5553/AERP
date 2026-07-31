@@ -440,6 +440,20 @@ def cmd_export_static(args: argparse.Namespace) -> None:
             "all": allm,
         }), encoding="utf-8")
 
+        # Signal transitions across the strong-buy boundary (time-to-buy / time-to-sell),
+        # accumulated into a rolling 30-day feed. Same prior-vs-new comparison as movers.
+        from app.ingestion.tech_refresh import _record_signal_move, _update_signal_moves
+        smoves: dict[str, dict] = {}
+        for r in merged:
+            prev = prior_by_symbol.get(r.get("provider_symbol"))
+            if not prev:
+                continue
+            _record_signal_move(
+                smoves, r, prev.get("signal"), r.get("signal"),
+                r.get("signal_label"), r.get("composite_score"), r.get("price"), today,
+            )
+        _update_signal_moves(out, smoves, today)
+
         # Merge swing.json the same way (this run's entries win; others preserved).
         swing_path = out / "swing.json"
         ranked = swing["ranked"]

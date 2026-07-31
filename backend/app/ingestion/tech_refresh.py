@@ -231,6 +231,7 @@ def refresh_technicals(
     today = datetime.now(UTC).date().isoformat()
     updated = 0
     deltas: dict[str, dict] = {}
+    smoves: dict[str, dict] = {}  # strong-buy crossings (time-to-buy / time-to-sell)
 
     for r in targets:
         sym = r["provider_symbol"]
@@ -270,9 +271,12 @@ def refresh_technicals(
         ret = round((cur_price - price_at) / price_at * 100.0, 2) if price_at else None
 
         old = r.get("composite_score")
+        old_sig = r.get("signal")
+        new_sig = sig.signal.value
+        _record_signal_move(smoves, r, old_sig, new_sig, sig.label, composite, cur_price, today)
         r["technical_score"] = round(tech, 2)
         r["composite_score"] = composite
-        r["signal"] = sig.signal.value
+        r["signal"] = new_sig
         r["signal_label"] = sig.label
         r["signal_since"] = since or today
         r["price_at_signal"] = round(price_at, 4) if price_at else None
@@ -309,13 +313,57 @@ def refresh_technicals(
 
     (out / "screener.json").write_text(json.dumps(rows), encoding="utf-8")
     _update_movers(out, deltas, today)
+    _update_signal_moves(out, smoves, today)
 
     result = {
         "targets": len(targets), "quoted": len(hist),
-        "updated": updated, "movers": len(deltas),
+        "updated": updated, "movers": len(deltas), "signal_moves": len(smoves),
     }
     log.info("refresh-technicals: %s", result)
     return result
+
+
+def _record_signal_move(
+    dst: dict[str, dict], r: dict, old_sig, new_sig, label, composite, price, today: str
+) -> None:
+    """Record a crossing of the strong_buy boundary: entering it = time-to-buy,
+    leaving it = time-to-sell. Ignores first-observation (no prior signal)."""
+    if not old_sig or not new_sig or old_sig == new_sig:
+        return
+    if new_sig == "strong_buy":
+        direction = "buy"
+    elif old_sig == "strong_buy":
+        direction = "sell"
+    else:
+        return
+    dst[r.get("provider_symbol")] = {
+        "provider_symbol": r.get("provider_symbol"), "symbol": r.get("symbol"),
+        "name": r.get("name"), "region": r.get("region"),
+        "direction": direction, "from": old_sig, "to": new_sig, "label": label,
+        "composite": composite, "price": price, "date": today,
+    }
+
+
+def _update_signal_moves(out: Path, moves: dict[str, dict], today: str) -> None:
+    """Rolling 30-day feed of strong-buy crossings (buy/sell timing alerts)."""
+    path = out / "signal_moves.json"
+    recent: dict[str, dict] = {}
+    if path.exists():
+        try:
+            for m in json.loads(path.read_text(encoding="utf-8")).get("all", []):
+                recent[m.get("provider_symbol")] = m
+        except (OSError, json.JSONDecodeError):
+            pass
+    cutoff = (datetime.now(UTC).date() - timedelta(days=30)).isoformat()
+    recent = {k: v for k, v in recent.items() if (v.get("date") or "") >= cutoff}
+    recent.update(moves)
+    allm = sorted(recent.values(), key=lambda m: (m.get("date") or ""), reverse=True)
+    path.write_text(json.dumps({
+        "generated_at": datetime.now(UTC).isoformat(),
+        "buy": [m for m in allm if m.get("direction") == "buy"],
+        "sell": [m for m in allm if m.get("direction") == "sell"],
+        "all": allm,
+    }), encoding="utf-8")
 
 
 def _update_movers(out: Path, deltas: dict[str, dict], today: str) -> None:

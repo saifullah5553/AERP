@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { api, type InsiderTx } from "@/lib/api";
+import { api, type InsiderTx, type SignalMove } from "@/lib/api";
 import { buildAlerts, resultsFiled } from "@/lib/alerts";
 import { fmtCompact } from "@/lib/format";
 import type { CatalystsData } from "@/types/api";
 import { AlertRow } from "./NotificationBell";
 
-type Tab = "events" | "insider" | "results";
+type Tab = "signals" | "events" | "insider" | "results";
 
 function shares(n: number | null): string {
   return n == null ? "—" : Math.round(n).toLocaleString();
@@ -60,18 +60,85 @@ function InsiderTable({ rows }: { rows: InsiderTx[] }) {
   );
 }
 
+const SIG_LABEL: Record<string, string> = {
+  strong_buy: "Strong Buy", buy: "Buy", hold: "Hold", sell: "Sell", strong_sell: "Strong Sell",
+};
+
+// Stocks that crossed the strong-buy line since the last refresh: entering = time to buy,
+// leaving = consider trimming/selling. This is the actionable buy/sell-timing feed.
+function SignalMovesTable({ rows }: { rows: SignalMove[] }) {
+  if (rows.length === 0)
+    return <div className="p-8 text-center text-sm text-slate-500">No strong-buy transitions in the last 30 days.</div>;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead className="sticky top-0 bg-base-800 text-[10px] uppercase tracking-wide text-slate-400">
+          <tr className="border-b border-base-600">
+            <th className="px-3 py-2 text-left">Signal</th>
+            <th className="px-3 py-2 text-left">Ticker</th>
+            <th className="px-3 py-2 text-left">Name</th>
+            <th className="px-3 py-2 text-left">Transition</th>
+            <th className="px-3 py-2 text-right">Score</th>
+            <th className="px-3 py-2 text-left">Market</th>
+            <th className="px-3 py-2 text-right">Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((m, i) => {
+            const buy = m.direction === "buy";
+            return (
+              <tr key={i} className="border-b border-base-700/40 hover:bg-base-700/40">
+                <td className="px-3 py-1.5">
+                  <span
+                    className="rounded px-2 py-0.5 text-[11px] font-bold"
+                    style={{
+                      color: buy ? "#22c55e" : "#ef4444",
+                      background: buy ? "rgba(34,197,94,0.14)" : "rgba(239,68,68,0.14)",
+                    }}
+                  >
+                    {buy ? "▲ TIME TO BUY" : "▼ TIME TO SELL"}
+                  </span>
+                </td>
+                <td className="px-3 py-1.5">
+                  <Link to={`/company/${encodeURIComponent(m.provider_symbol)}`} className="font-semibold text-accent">
+                    {m.symbol}
+                  </Link>
+                </td>
+                <td className="px-3 py-1.5 text-slate-300">
+                  <span className="block max-w-[220px] truncate" title={m.name ?? ""}>{m.name ?? "—"}</span>
+                </td>
+                <td className="px-3 py-1.5 text-xs text-slate-400">
+                  {SIG_LABEL[m.from] ?? m.from} → <span className="font-semibold text-slate-200">{SIG_LABEL[m.to] ?? m.to}</span>
+                </td>
+                <td className="num px-3 py-1.5 text-right text-slate-300">{m.composite == null ? "—" : m.composite.toFixed(1)}</td>
+                <td className="px-3 py-1.5 text-[11px] uppercase text-slate-500">{m.region}</td>
+                <td className="num px-3 py-1.5 text-right text-[11px] text-slate-500">{m.date}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // Alerts: Announcements & macro events (each links to its PSX PDF) + a cross-market
 // Insider Transactions table (real filings for US/India/Australia/PSX).
 export default function AlertsPage() {
   const [cat, setCat] = useState<CatalystsData | null>(null);
   const [ins, setIns] = useState<InsiderTx[]>([]);
-  const [tab, setTab] = useState<Tab>("events");
+  const [moves, setMoves] = useState<SignalMove[]>([]);
+  const [tab, setTab] = useState<Tab>("signals");
   const [region, setRegion] = useState("all");
 
   useEffect(() => {
     const ctrl = new AbortController();
     api.catalysts(ctrl.signal).then(setCat).catch(() => setCat(null));
     api.insiderFeed(ctrl.signal).then(setIns).catch(() => setIns([]));
+    api
+      .signalMoves(ctrl.signal)
+      .then((d) => setMoves([...d.buy, ...d.sell].sort((a, b) => (a.date < b.date ? 1 : -1))))
+      .catch(() => setMoves([]));
     return () => ctrl.abort();
   }, []);
 
@@ -98,6 +165,7 @@ export default function AlertsPage() {
         <Link to="/" className="text-sm text-slate-400 hover:text-accent">← Dashboard</Link>
         <span className="text-lg font-bold text-slate-100">Market Alerts</span>
         <div className="flex items-center gap-1 rounded-full border border-base-600 p-0.5">
+          {tabBtn("signals", `Buy / Sell Signals (${moves.length})`)}
           {tabBtn("events", `Announcements (${alerts.length})`)}
           {tabBtn("insider", `Insider (${ins.length})`)}
           {tabBtn("results", `Results Filed (${results.length})`)}
@@ -120,6 +188,18 @@ export default function AlertsPage() {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
+        {tab === "signals" && (
+          <div>
+            <div className="mx-auto max-w-3xl px-2 pt-3">
+              <div className="rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-[11px] text-slate-300">
+                Stocks that <span className="font-semibold text-up">entered Strong Buy</span> (time to buy)
+                or <span className="font-semibold text-down">dropped out of Strong Buy</span> (time to sell / trim),
+                over the last 30 days. Research context only — not investment advice.
+              </div>
+            </div>
+            <SignalMovesTable rows={moves} />
+          </div>
+        )}
         {tab === "events" && (
           alerts.length === 0 ? (
             <div className="p-8 text-center text-sm text-slate-500">No announcements.</div>
