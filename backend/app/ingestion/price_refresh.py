@@ -262,6 +262,7 @@ def refresh_prices(
     screener_path.write_text(json.dumps(rows), encoding="utf-8")
 
     result = {"targets": len(targets), "quoted": len(quotes), "rows_updated": updated,
-              "company_files": patched_files, "pe_computed": sum(1 for v in pe_by_sym.values() if v)}
+              "company_files": patched_files,
+              "pe_computed": sum(1 for v in pe_by_sym.values() if v)}
     log.info("refresh-prices: %s", result)
     return result
