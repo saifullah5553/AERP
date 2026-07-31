@@ -13,10 +13,13 @@ import {
   type SavedView,
 } from "@/lib/savedViews";
 import type { ScreenerQuery, ScreenerRow, SnapshotMeta } from "@/types/api";
+import ColumnChooser from "./ColumnChooser";
 import FilterBar from "./FilterBar";
 import IndicesBar from "./IndicesBar";
 import MarketOverview from "./MarketOverview";
+import NotificationBell from "./NotificationBell";
 import ThemeToggle from "./ThemeToggle";
+import { loadHiddenCols, saveHiddenCols } from "@/lib/colPrefs";
 import MarketRegime from "./MarketRegime";
 import ScreenerGrid from "./ScreenerGrid";
 
@@ -116,6 +119,7 @@ export default function ScreenerPage() {
           )}
         </div>
         <div className="flex items-center gap-3 text-xs">
+          <NotificationBell />
           <ThemeToggle />
           {live && (
             <span className="flex items-center gap-1.5 font-semibold text-up">
@@ -179,8 +183,12 @@ export default function ScreenerPage() {
             Delete View
           </button>
         )}
+        <ColumnChooser getApi={() => gridApiRef.current} />
         <button
-          onClick={() => gridApiRef.current?.resetColumnState()}
+          onClick={() => {
+            gridApiRef.current?.resetColumnState();
+            saveHiddenCols([]);
+          }}
           className="rounded bg-base-700 px-3 py-1 text-slate-400 hover:bg-base-600"
         >
           Reset Columns
@@ -191,7 +199,11 @@ export default function ScreenerPage() {
         <ScreenerGrid
           filters={filters}
           onTotal={setTotal}
-          onGridReady={(gridApi) => (gridApiRef.current = gridApi)}
+          onGridReady={(gridApi) => {
+            gridApiRef.current = gridApi;
+            const hidden = loadHiddenCols();
+            if (hidden.length) gridApi.setColumnsVisible(hidden, false);
+          }}
           onRowClick={(row) => navigate(`/company/${encodeURIComponent(row.provider_symbol)}`)}
         />
       </div>
