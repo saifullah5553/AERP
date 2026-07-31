@@ -1,8 +1,13 @@
 import type { ColDef } from "ag-grid-community";
 
-import { fmtInt, fmtNumber, fmtPercent, titleize } from "@/lib/format";
+import { fmtInt, fmtNumber, fmtPercent, scoreHeatBg, titleize } from "@/lib/format";
 import type { ScreenerRow } from "@/types/api";
 import { ChangeCell, PatternCell, ScoreCell, SignalCell } from "./cells";
+
+// Translucent heat fill for a score column cell.
+const heat = (p: { value: unknown }) => ({
+  backgroundColor: scoreHeatBg(typeof p.value === "number" ? p.value : null),
+});
 
 // Fields the backend can sort on (app/services/screener.py SORT_FIELDS).
 const SERVER_SORTABLE = new Set([
@@ -61,6 +66,7 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
       width: 90,
       sortable: true,
       cellRenderer: ScoreCell,
+      cellStyle: heat,
     },
     {
       field: "fundamental_score",
@@ -68,6 +74,7 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
       width: 90,
       sortable: true,
       cellRenderer: ScoreCell,
+      cellStyle: heat,
     },
     {
       field: "composite_score",
@@ -76,6 +83,7 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
       sort: "desc",
       sortable: true,
       cellRenderer: ScoreCell,
+      cellStyle: heat,
     },
     {
       field: "pabrai_score",
@@ -84,6 +92,7 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
       width: 100,
       sortable: true,
       cellRenderer: ScoreCell,
+      cellStyle: heat,
     },
     {
       field: "swing_score",
@@ -92,6 +101,7 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
       width: 100,
       sortable: true,
       cellRenderer: ScoreCell,
+      cellStyle: heat,
     },
     {
       field: "top_candlestick",

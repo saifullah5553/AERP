@@ -38,27 +38,41 @@ export default function MarketRegime() {
       <div className="flex flex-wrap gap-2">
         {countries.map((c) => {
           const tone = REGIME_TONE[c.regime];
+          const hTone = healthTone(c.health);
           const isOpen = open === c.region;
           return (
             <div
               key={c.region}
-              className="min-w-[190px] flex-1 rounded-lg border border-base-600 bg-base-800"
+              className="min-w-[190px] flex-1 overflow-hidden rounded-lg border transition-transform hover:-translate-y-0.5"
+              style={{ borderColor: `${tone}44` }}
             >
               <button
                 onClick={() => setOpen(isOpen ? null : c.region)}
                 className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
+                style={{ background: `linear-gradient(135deg, ${tone}22 0%, rgba(15,23,42,0.5) 75%)` }}
               >
                 <div>
-                  <div className="text-xs font-semibold text-slate-200">{c.label}</div>
-                  <div className="text-xs font-medium" style={{ color: tone }}>{c.regime}</div>
+                  <div className="text-xs font-semibold text-slate-100">{c.label}</div>
+                  <span
+                    className="mt-0.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold"
+                    style={{ background: `${tone}26`, color: tone }}
+                  >
+                    {c.regime}
+                  </span>
                 </div>
                 <div className="flex flex-col items-center">
-                  <span className="num text-lg font-bold" style={{ color: healthTone(c.health) }}>
+                  <span
+                    className="num flex h-10 w-10 items-center justify-center rounded-full text-base font-black"
+                    style={{ background: `${hTone}1f`, color: hTone, border: `2px solid ${hTone}66` }}
+                  >
                     {c.health == null ? "—" : Math.round(c.health)}
                   </span>
-                  <span className="text-[9px] uppercase tracking-wide text-slate-500">Health</span>
+                  <span className="mt-0.5 text-[9px] uppercase tracking-wide text-slate-500">Health</span>
                 </div>
               </button>
+              <div className="h-1 w-full bg-base-900">
+                <span className="block h-full" style={{ width: `${c.health ?? 0}%`, background: hTone }} />
+              </div>
               {isOpen && (
                 <div className="border-t border-base-700/60 px-3 py-2">
                   <p className="mb-2 text-[11px] leading-relaxed text-slate-400">{c.explanation}</p>

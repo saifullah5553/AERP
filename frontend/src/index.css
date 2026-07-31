@@ -22,20 +22,44 @@ body,
 .ag-theme-quartz-dark {
   --ag-background-color: #0f172a;
   --ag-odd-row-background-color: #0c1424;
-  --ag-header-background-color: #0a0e14;
-  --ag-header-foreground-color: #94a3b8;
+  --ag-header-background-color: #0b1220;
+  --ag-header-foreground-color: #7dd3fc;
   --ag-foreground-color: #e2e8f0;
   --ag-border-color: #1e293b;
   --ag-row-border-color: #16203a;
-  --ag-row-hover-color: #16233f;
-  --ag-selected-row-background-color: #1e293b;
+  --ag-row-hover-color: #1a2b4d;
+  --ag-selected-row-background-color: #17335a;
   --ag-font-size: 13px;
   --ag-font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
   --ag-header-column-separator-display: block;
   --ag-header-column-separator-color: #1e293b;
   --ag-accent-color: #38bdf8;
+  --ag-header-height: 38px;
+}
+
+/* Uppercase, tracked, accented column headers for a terminal feel. */
+.ag-theme-quartz-dark .ag-header-cell-text {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.ag-theme-quartz-dark .ag-header {
+  border-bottom: 2px solid #38bdf855;
+}
+/* Snappier row hover. */
+.ag-theme-quartz-dark .ag-row {
+  transition: background-color 0.08s ease;
 }
 
 .num {
   font-variant-numeric: tabular-nums;
+}
+
+/* Gradient brand text for the terminal header. */
+.brand-gradient {
+  background: linear-gradient(90deg, #38bdf8 0%, #818cf8 55%, #c084fc 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }

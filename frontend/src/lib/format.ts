@@ -80,3 +80,11 @@ export function scoreColor(v: number | null | undefined): string {
   const hue = Math.max(0, Math.min(120, (v / 100) * 120)); // 0=red, 120=green
   return `hsl(${hue}, 65%, 45%)`;
 }
+
+// Translucent heat fill for score cells (0=red → 120=green), intensity scaled by score.
+export function scoreHeatBg(v: number | null | undefined): string {
+  if (v === null || v === undefined) return "transparent";
+  const hue = Math.max(0, Math.min(120, (v / 100) * 120));
+  const alpha = 0.1 + (Math.abs(v - 50) / 50) * 0.22; // stronger toward the extremes
+  return `hsla(${hue}, 70%, 45%, ${alpha.toFixed(3)})`;
+}

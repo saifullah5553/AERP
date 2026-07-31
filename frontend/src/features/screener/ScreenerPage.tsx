@@ -87,12 +87,12 @@ export default function ScreenerPage() {
     <div className="flex h-full flex-col">
       <header className="flex items-center justify-between border-b border-base-600 bg-base-900 px-4 py-2.5">
         <div className="flex items-baseline gap-3">
-          <span className="text-lg font-bold tracking-tight text-accent">AERP</span>
+          <span className="brand-gradient text-xl font-black tracking-tight">AERP</span>
           <span className="text-sm text-slate-400">Equity Research Terminal</span>
-          <a href="#/sectors" className="rounded bg-base-700 px-2 py-0.5 text-xs font-medium text-slate-300 hover:bg-base-600 hover:text-accent">
+          <a href="#/sectors" className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2.5 py-0.5 text-xs font-semibold text-sky-300 transition-colors hover:bg-sky-500/25">
             Sector Rotation →
           </a>
-          <a href="#/swing" className="rounded bg-base-700 px-2 py-0.5 text-xs font-medium text-slate-300 hover:bg-base-600 hover:text-accent">
+          <a href="#/swing" className="rounded-full border border-violet-500/40 bg-violet-500/10 px-2.5 py-0.5 text-xs font-semibold text-violet-300 transition-colors hover:bg-violet-500/25">
             Swing Scanner →
           </a>
           {total !== null && (
