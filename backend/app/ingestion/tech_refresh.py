@@ -117,6 +117,86 @@ def _signal_since(dates, high, low, close, vol, legs, regime, de, current, lookb
     return d, float(close[idx])
 
 
+def _fetch_psx_history(sym: str):
+    """PSX portal EOD history → (dates, close, volume) for the last ~300 bars, or None."""
+    from app.ingestion.psx_market import parse_eod
+
+    try:
+        resp = httpx.get(
+            f"https://dps.psx.com.pk/timeseries/eod/{sym}",
+            headers={"User-Agent": _UA}, timeout=20,
+        )
+        resp.raise_for_status()
+        bars = parse_eod(resp.text)
+    except Exception:  # noqa: BLE001 - one bad symbol shouldn't stop the batch
+        return None
+    if len(bars) < MIN_BARS:
+        return None
+    bars = bars[-300:]
+    close = np.array([float(b.close) for b in bars], dtype=float)
+    vol = np.array([float(b.volume or 0) for b in bars], dtype=float)
+    dates = [b.date.date().isoformat() for b in bars]
+    return dates, close, vol
+
+
+def _backtest_psx(rows, company, regime_map, today, limit):
+    """Backfill signal_since / return-since for PSX from portal EOD history, keeping the
+    DB-computed composite/signal (we only DATE the shown signal, using the same raw scale)."""
+    psx_rows = [r for r in rows if r.get("region") == "psx" and r.get("provider_symbol")]
+    if limit is not None:
+        psx_rows = psx_rows[:limit]
+    if not psx_rows:
+        return
+    syms = [r.get("symbol") or r["provider_symbol"].replace(".KA", "") for r in psx_rows]
+    hist: dict[str, Any] = {}
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        for r, h in zip(psx_rows, pool.map(_fetch_psx_history, syms), strict=False):
+            if h is not None:
+                hist[r["provider_symbol"]] = h
+    regime = regime_map.get("psx")
+    updated = 0
+    for r in psx_rows:
+        h = hist.get(r["provider_symbol"])
+        committed = r.get("signal")
+        if not h or not committed:
+            continue
+        dates, close, vol = h
+        sc: dict = {}
+        cf = company / f"{r['provider_symbol']}.json"
+        if cf.exists():
+            try:
+                sc = json.loads(cf.read_text(encoding="utf-8")).get("scores") or {}
+            except (OSError, json.JSONDecodeError):
+                sc = {}
+        fund = _f(sc.get("fundamental"))
+        if fund is None:
+            fund = _f(r.get("fundamental_score"))
+        legs = (fund, _f(sc.get("momentum")), _f(sc.get("quality")), _f(sc.get("risk")))
+        de = _f(r.get("debt_to_equity"))
+        if _signal_value_at(close, close, close, vol, len(close), legs, regime, de) != committed:
+            continue  # only date it when our EOD-recomputed signal agrees with the shown one
+        since, price_at = _signal_since(
+            dates, close, close, close, vol, legs, regime, de, committed
+        )
+        cur_price = _f(r.get("price")) or float(close[-1])
+        ret = round((cur_price - price_at) / price_at * 100.0, 2) if price_at else None
+        r["signal_since"] = since or today
+        r["price_at_signal"] = round(price_at, 4) if price_at else None
+        r["signal_return_pct"] = ret
+        if cf.exists():
+            try:
+                d = json.loads(cf.read_text(encoding="utf-8"))
+                if isinstance(d.get("signal"), dict):
+                    d["signal"]["signal_since"] = r["signal_since"]
+                    d["signal"]["price_at_signal"] = r["price_at_signal"]
+                    d["signal"]["signal_return_pct"] = ret
+                cf.write_text(json.dumps(d), encoding="utf-8")
+            except (OSError, json.JSONDecodeError):
+                pass
+        updated += 1
+    log.info("PSX signal-since backtest: %d updated", updated)
+
+
 def refresh_technicals(
     data_dir: str | Path,
     skip_regions: tuple[str, ...] = ("psx",),
@@ -222,6 +302,10 @@ def refresh_technicals(
             except (OSError, json.JSONDecodeError):
                 pass
         updated += 1
+
+    # ── PSX signal-inception backtest (portal EOD history — raw scale, matches PSX prices) ──
+    if "psx" in skip_regions:
+        _backtest_psx(rows, out / "company", regime_map, today, limit)
 
     (out / "screener.json").write_text(json.dumps(rows), encoding="utf-8")
     _update_movers(out, deltas, today)

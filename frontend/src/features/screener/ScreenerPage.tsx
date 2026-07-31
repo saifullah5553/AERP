@@ -102,9 +102,6 @@ export default function ScreenerPage() {
           <a href="#/movers" className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-xs font-semibold text-amber-300 transition-colors hover:bg-amber-500/25">
             Movers →
           </a>
-          <a href="#/alerts" className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/25">
-            Alerts →
-          </a>
           {total !== null && (
             <span className="rounded bg-base-700 px-2 py-0.5 text-xs text-slate-300">
               {total.toLocaleString()} securities
