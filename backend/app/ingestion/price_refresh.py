@@ -68,6 +68,48 @@ def _load(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _add_psx_quotes(rows: list[dict], quotes: dict[str, dict]) -> None:
+    """Populate `quotes` (keyed by provider_symbol) for PSX names from the official
+    dps.psx.com.pk/market-watch table (live close/change/volume for the whole market)."""
+    psx_map = {
+        r.get("symbol"): r.get("provider_symbol")
+        for r in rows
+        if r.get("region") == "psx" and r.get("symbol") and r.get("provider_symbol")
+    }
+    if not psx_map:
+        return
+    try:
+        from app.ingestion.psx_market import parse_market_watch
+
+        resp = httpx.get(
+            "https://dps.psx.com.pk/market-watch", headers={"User-Agent": _UA}, timeout=25
+        )
+        resp.raise_for_status()
+        marketrows = parse_market_watch(resp.text)
+    except Exception as exc:  # noqa: BLE001 - network optional
+        log.warning("PSX market-watch fetch failed: %s", exc)
+        return
+    for mr in marketrows:
+        ps = psx_map.get(mr.symbol)
+        if not ps:
+            continue
+        price = mr.close if mr.close is not None else mr.ldcp
+        if price is None:
+            continue
+        prev = mr.ldcp
+        change = mr.change
+        change_pct = mr.change_pct
+        if change is None and prev not in (None, 0):
+            change = round(price - prev, 4)
+        if change_pct is None and prev not in (None, 0):
+            change_pct = round((price - prev) / prev * 100.0, 4)
+        quotes[ps] = {
+            "price": price, "prev_close": prev, "change": change, "change_pct": change_pct,
+            "day_open": mr.open, "day_high": mr.high, "day_low": mr.low, "volume": mr.volume,
+        }
+    log.info("PSX market-watch: %d symbols patched", sum(1 for k in quotes if k.endswith(".KA")))
+
+
 def refresh_prices(
     data_dir: str | Path,
     skip_regions: tuple[str, ...] = ("psx",),
@@ -96,6 +138,10 @@ def refresh_prices(
                     quotes[sym] = q
     finally:
         client.close()
+
+    # PSX prices from the official market-watch (Yahoo has no PSX). Patched directly here so
+    # PSX stays robust even if the DB-based ingest hiccups. One fetch for the whole market.
+    _add_psx_quotes(rows, quotes)
 
     updated = 0
     for r in rows:
