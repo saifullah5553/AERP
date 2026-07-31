@@ -399,12 +399,14 @@ export default function CompanyPage() {
 }
 
 // ── Model signal (labeled, not advice) — date generated + return since ───────
-const SIGNAL_TONE: Record<string, { bg: string; fg: string; label: string }> = {
-  strong_buy: { bg: "#052e1b", fg: "#4ade80", label: "Strong Buy" },
-  buy: { bg: "#064e3b", fg: "#6ee7b7", label: "Buy" },
-  hold: { bg: "#1e293b", fg: "#cbd5e1", label: "Hold" },
-  sell: { bg: "#450a0a", fg: "#fca5a5", label: "Sell" },
-  strong_sell: { bg: "#7f1d1d", fg: "#fecaca", label: "Strong Sell" },
+// Single semantic colour per signal so the card reads correctly on both themes
+// (light tint background + solid label chip with white text).
+const SIGNAL_TONE: Record<string, { color: string; label: string }> = {
+  strong_buy: { color: "#16a34a", label: "Strong Buy" },
+  buy: { color: "#22c55e", label: "Buy" },
+  hold: { color: "#64748b", label: "Hold" },
+  sell: { color: "#ef4444", label: "Sell" },
+  strong_sell: { color: "#b91c1c", label: "Strong Sell" },
 };
 
 function SignalCard({ signal }: { signal: Row | null }) {
@@ -418,17 +420,17 @@ function SignalCard({ signal }: { signal: Row | null }) {
   const conf = num(signal.confidence);
   return (
     <section className="overflow-hidden rounded-lg border border-base-600 bg-base-800">
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 p-4" style={{ background: `${tone.bg}55` }}>
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 p-4" style={{ background: `${tone.color}1f` }}>
         <div className="flex flex-col">
           <span className="text-[10px] uppercase tracking-widest text-slate-500">Model Signal</span>
-          <span className="rounded px-3 py-1 text-lg font-black" style={{ background: tone.bg, color: tone.fg }}>
+          <span className="rounded px-3 py-1 text-lg font-black text-white" style={{ background: tone.color }}>
             {tone.label}
           </span>
         </div>
         {since && (
           <div className="flex flex-col">
             <span className="text-[10px] uppercase tracking-widest text-slate-500">Generated</span>
-            <span className="num text-sm font-semibold text-slate-200">{since}</span>
+            <span className="num text-sm font-semibold" style={{ color: "var(--app-fg)" }}>{since}</span>
           </div>
         )}
         {ret != null && (
@@ -442,7 +444,7 @@ function SignalCard({ signal }: { signal: Row | null }) {
         {conf != null && (
           <div className="flex flex-col">
             <span className="text-[10px] uppercase tracking-widest text-slate-500">Confidence</span>
-            <span className="num text-sm font-semibold text-slate-200">{Math.round(conf * 100)}%</span>
+            <span className="num text-sm font-semibold" style={{ color: "var(--app-fg)" }}>{Math.round(conf * 100)}%</span>
           </div>
         )}
       </div>
@@ -916,7 +918,7 @@ function EstimatesSection({ sec }: { sec: Row }) {
   return (
     <Card title="Analyst Estimates & Next Earnings">
       <div className="px-4 py-2">
-        {nextDate && <StatRow label="Next Earnings Date" value={nextDate} tone="#e2e8f0" />}
+        {nextDate && <StatRow label="Next Earnings Date" value={nextDate} />}
         {epsAvg != null && (
           <StatRow
             label={`Consensus EPS${epsNum != null ? ` (${epsNum} analysts)` : ""}`}

@@ -30,7 +30,7 @@ def build_catalysts(client: Portfolio360Client | None = None) -> dict:
     announcements = _try(lambda: client.announcements(80), [])
     actions = _try(lambda: client.pk_corporate_actions(), [])
 
-    # Market-wide PK economic calendar.
+    # Market-wide PK economic calendar. Holidays are not actionable catalysts — drop them.
     market_events = [
         {
             "date": e.get("date"),
@@ -38,7 +38,8 @@ def build_catalysts(client: Portfolio360Client | None = None) -> dict:
             "category": e.get("category"),
             "note": e.get("note"),
         }
-        for e in events if e.get("date") and e.get("title")
+        for e in events
+        if e.get("date") and e.get("title") and e.get("category") != "market_holiday"
     ]
 
     # Per-symbol announcements + corporate actions (PSX).
