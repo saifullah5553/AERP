@@ -340,11 +340,16 @@ def cmd_export_static(args: argparse.Namespace) -> None:
         from app.services.swing import build_swing
 
         pk_macro = None
+        kse_live = None  # live KSE100 (also reused for extra_indices below)
         try:
-            pk_macro = Portfolio360Client().pk_macro()
+            _p360 = Portfolio360Client()
+            pk_macro = _p360.pk_macro()
+            kse_live = _p360.pk_index("KSE100")
         except Exception as exc:  # network optional; regime falls back to DB signals
-            log.warning("Portfolio360 PK macro fetch failed: %s", exc)
-        regime = build_macro_regime(db, pk_macro)
+            log.warning("Portfolio360 PK macro/index fetch failed: %s", exc)
+        regime = build_macro_regime(
+            db, pk_macro, (kse_live or {}).get("price") if kse_live else None
+        )
         sector_stats = build_sector_stats(db)
         # CI refreshes are PSX-only (Yahoo 429s on runners), so a fresh regime/sector run
         # only populates PSX. Preserve previously-computed regions from the committed
@@ -412,7 +417,7 @@ def cmd_export_static(args: argparse.Namespace) -> None:
         # KSE100 index level from Portfolio360 (Yahoo has no usable ^KSE). Additive strip
         # data for the World Indices ticker; best-effort so a P360 hiccup doesn't fail export.
         try:
-            kse = Portfolio360Client().pk_index("KSE100")
+            kse = kse_live
             extra = (
                 [{"provider_symbol": "KSE100", "symbol": "KSE100", "name": kse["name"],
                   "region": "psx", "price": kse["price"], "change_pct": kse["change_pct"]}]

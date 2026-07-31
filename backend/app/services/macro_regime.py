@@ -189,16 +189,19 @@ def _commodity_env(db: Session, importer: bool) -> Signal | None:
     return Signal("commodity_env", "Commodity Environment", lbl, score)
 
 
-def _pakistan_signals(pk: dict[str, list[dict]]) -> list[Signal]:
+def _pakistan_signals(pk: dict[str, list[dict]], kse_live: float | None = None) -> list[Signal]:
     out: list[Signal] = []
-    # Index trend from KSE-100 series (^KSE not on Yahoo).
+    # Index trend from KSE-100 series (^KSE not on Yahoo). Trend is computed from the
+    # monthly series, but the DISPLAYED level prefers the live index (kse_live) so it
+    # matches the World Indices ticker instead of showing a month-end value.
     kse = pk.get("kse100") or []
     if kse:
         latest, ago = _latest(kse), _value_months_ago(kse, 3)
         d = _direction(latest, ago)
         score = {"↑": 82.0, "→": 55.0, "↓": 30.0}.get(d, 55.0)
+        disp = kse_live if kse_live else latest
         out.append(Signal("index_trend", "Index Trend (KSE-100)",
-                          f"{d} {latest:,.0f}" if latest else "—", score,
+                          f"{d} {disp:,.0f}" if disp else "—", score,
                           "vs 3 months ago"))
     rate = pk.get("sbp_policy_rate_pct") or []
     if rate:
@@ -253,13 +256,17 @@ def _synthesize(region: str, signals: list[Signal]) -> Regime:
                   " ".join(parts), [asdict(s) for s in scored])
 
 
-def build_macro_regime(db: Session, pk_macro: dict[str, list[dict]] | None = None) -> dict:
+def build_macro_regime(
+    db: Session,
+    pk_macro: dict[str, list[dict]] | None = None,
+    pk_kse_live: float | None = None,
+) -> dict:
     """One regime per covered country → {'countries': {region: {...}}, ...}."""
     countries: dict[str, dict] = {}
     for region, (wb, index_sym, importer) in REGIONS.items():
         signals: list[Signal] = []
         if region == "psx" and pk_macro:
-            signals += _pakistan_signals(pk_macro)
+            signals += _pakistan_signals(pk_macro, pk_kse_live)
         elif index_sym:
             s = _index_signal(db, index_sym)
             if s:
