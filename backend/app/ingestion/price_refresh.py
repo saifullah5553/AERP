@@ -79,7 +79,7 @@ def _add_psx_quotes(rows: list[dict], quotes: dict[str, dict]) -> None:
     if not psx_map:
         return
     try:
-        from app.ingestion.psx_market import parse_market_watch
+        from app.ingestion.psx_market import parse_market_watch, parse_symbols
 
         resp = httpx.get(
             "https://dps.psx.com.pk/market-watch", headers={"User-Agent": _UA}, timeout=25
@@ -89,6 +89,19 @@ def _add_psx_quotes(rows: list[dict], quotes: dict[str, dict]) -> None:
     except Exception as exc:  # noqa: BLE001 - network optional
         log.warning("PSX market-watch fetch failed: %s", exc)
         return
+
+    # Sector per symbol from /symbols (title-cased), so PSX names get proper sectors.
+    sectors: dict[str, str] = {}
+    try:
+        sresp = httpx.get(
+            "https://dps.psx.com.pk/symbols", headers={"User-Agent": _UA}, timeout=25
+        )
+        sresp.raise_for_status()
+        for s, meta in parse_symbols(sresp.text).items():
+            if meta.sector:
+                sectors[s] = meta.sector.title()
+    except Exception as exc:  # noqa: BLE001 - network optional
+        log.warning("PSX /symbols fetch failed: %s", exc)
     for mr in marketrows:
         ps = psx_map.get(mr.symbol)
         if not ps:
@@ -106,6 +119,7 @@ def _add_psx_quotes(rows: list[dict], quotes: dict[str, dict]) -> None:
         quotes[ps] = {
             "price": price, "prev_close": prev, "change": change, "change_pct": change_pct,
             "day_open": mr.open, "day_high": mr.high, "day_low": mr.low, "volume": mr.volume,
+            "sector": sectors.get(mr.symbol),
         }
     log.info("PSX market-watch: %d symbols patched", sum(1 for k in quotes if k.endswith(".KA")))
 
@@ -153,6 +167,8 @@ def refresh_prices(
         r["change_pct"] = q["change_pct"]
         if q.get("volume") is not None:
             r["volume"] = q["volume"]
+        if q.get("sector"):  # PSX sector from /symbols
+            r["sector"] = q["sector"]
         # Keep return-since-signal in step with the fresh price (factual, not a forecast).
         pas = r.get("price_at_signal")
         if pas:
@@ -181,6 +197,8 @@ def refresh_prices(
             if q.get(k) is not None:
                 quote[k] = q[k]
         detail["quote"] = quote
+        if q.get("sector") and isinstance(detail.get("security"), dict):
+            detail["security"]["sector"] = q["sector"]
         # Keep the company signal block's return-since in step with the fresh price too.
         sigblk = detail.get("signal")
         if isinstance(sigblk, dict) and sigblk.get("price_at_signal"):
