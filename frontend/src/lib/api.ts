@@ -12,6 +12,24 @@ import type {
 import type { CompanyDetail } from "@/types/company";
 import type { RawMaterialsData } from "@/lib/rawMaterials";
 
+export interface Mover {
+  provider_symbol: string;
+  symbol: string;
+  name: string | null;
+  region: string;
+  composite: number;
+  prev: number;
+  delta: number;
+  fundamental: number | null;
+  technical: number | null;
+  date: string;
+}
+export interface MoversData {
+  generated_at: string | null;
+  upgrades: Mover[];
+  downgrades: Mover[];
+}
+
 export interface CotData {
   label: string;
   contract: string;
@@ -138,6 +156,13 @@ export const api = {
   },
   cot(signal?: AbortSignal): Promise<Record<string, CotData>> {
     return getJson<Record<string, CotData>>(`${DATA_BASE}/cot.json`, signal).catch(() => ({}));
+  },
+  movers(signal?: AbortSignal): Promise<MoversData> {
+    return getJson<MoversData>(`${DATA_BASE}/movers.json`, signal).catch(() => ({
+      generated_at: null,
+      upgrades: [],
+      downgrades: [],
+    }));
   },
   meta(signal?: AbortSignal): Promise<SnapshotMeta> {
     if (IS_STATIC) return getJson<SnapshotMeta>(`${DATA_BASE}/meta.json`, signal);

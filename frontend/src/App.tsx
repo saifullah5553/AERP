@@ -1,6 +1,7 @@
 import { HashRouter, Route, Routes } from "react-router-dom";
 
 import AlertsPage from "@/features/screener/AlertsPage";
+import MoversPage from "@/features/screener/MoversPage";
 import CompanyPage from "@/features/company/CompanyPage";
 import ScreenerPage from "@/features/screener/ScreenerPage";
 import SectorsPage from "@/features/sectors/SectorsPage";
@@ -17,6 +18,7 @@ export default function App() {
           <Route path="/sectors" element={<SectorsPage />} />
           <Route path="/swing" element={<SwingPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
+          <Route path="/movers" element={<MoversPage />} />
           <Route path="/company/:symbol" element={<CompanyPage />} />
         </Routes>
       </HashRouter>

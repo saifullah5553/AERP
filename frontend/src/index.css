@@ -109,6 +109,20 @@ body,
   font-variant-numeric: tabular-nums;
 }
 
+/* Auto-scrolling ticker ribbon (content is duplicated 2× → -50% loops seamlessly). */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 45s linear infinite;
+}
+.marquee-track:hover {
+  animation-play-state: paused;
+}
+
 /* Gradient brand text for the terminal header. */
 .brand-gradient {
   background: linear-gradient(90deg, #38bdf8 0%, #818cf8 55%, #c084fc 100%);

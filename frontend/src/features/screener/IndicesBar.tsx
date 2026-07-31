@@ -47,29 +47,31 @@ export default function IndicesBar() {
   // Home market (KSE100 from P360) leads the strip.
   const ordered: Idx[] = [...extra, ...yahoo];
 
+  const chip = (r: Idx, i: number) => {
+    const chg = r.change_pct;
+    const color = chg == null ? "#94a3b8" : chg > 0 ? "#22c55e" : chg < 0 ? "#ef4444" : "#94a3b8";
+    return (
+      <span key={`${r.provider_symbol}-${i}`} className="mx-3 inline-flex items-center gap-1.5 whitespace-nowrap">
+        <span className="text-xs font-semibold text-slate-300">
+          {SHORT[r.provider_symbol] ?? r.name ?? r.symbol}
+        </span>
+        <span className="num text-xs font-bold text-slate-100">{level(r.price)}</span>
+        <span className="num text-[11px] font-semibold" style={{ color }}>{fmtChangePct(chg)}</span>
+        <span className="text-slate-700">·</span>
+      </span>
+    );
+  };
+
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-base-600 bg-base-900 px-4 py-2">
-      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+    <div className="flex items-center gap-2 border-b border-base-600 bg-base-900 py-1.5">
+      <span className="shrink-0 border-r border-base-600 pl-4 pr-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
         World Indices
       </span>
-      {ordered.map((r) => {
-        const chg = r.change_pct;
-        const color = chg == null ? "#94a3b8" : chg > 0 ? "#22c55e" : chg < 0 ? "#ef4444" : "#94a3b8";
-        return (
-          <div
-            key={r.provider_symbol}
-            className="flex items-center gap-1.5 rounded-md border border-base-600 bg-base-800 px-2.5 py-1"
-          >
-            <span className="text-xs font-semibold text-slate-200">
-              {SHORT[r.provider_symbol] ?? r.name ?? r.symbol}
-            </span>
-            <span className="num text-xs font-bold text-slate-100">{level(r.price)}</span>
-            <span className="num text-[11px] font-semibold" style={{ color }}>
-              {fmtChangePct(chg)}
-            </span>
-          </div>
-        );
-      })}
+      <div className="relative flex-1 overflow-hidden">
+        <div className="marquee-track">
+          {[...ordered, ...ordered].map((r, i) => chip(r, i))}
+        </div>
+      </div>
     </div>
   );
 }

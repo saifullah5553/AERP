@@ -273,7 +273,7 @@ def _merge_sector_stats(fresh: dict, path) -> dict:
 def cmd_export_static(args: argparse.Namespace) -> None:
     """Export the computed data as static JSON for a backend-less Pages demo."""
     import json
-    from datetime import UTC, datetime
+    from datetime import UTC, datetime, timedelta
     from pathlib import Path
 
     from app.db.session import session_scope
@@ -391,6 +391,45 @@ def cmd_export_static(args: argparse.Namespace) -> None:
             r["signal_return_pct"] = (
                 round((price - pas) / pas * 100.0, 2) if pas and price else None
             )
+
+        # Score movers (upgrades/downgrades): composite change vs the prior snapshot,
+        # accumulated into a rolling 7-day feed (upsert per symbol, prune old). PSX recomputes
+        # every refresh so its moves show here; non-PSX moves appear once its scores recompute.
+        movers_path = out / "movers.json"
+        recent: dict[str, dict] = {}
+        if merge and movers_path.exists():
+            try:
+                prevmov = json.loads(movers_path.read_text(encoding="utf-8"))
+                for m in prevmov.get("all", []):
+                    recent[m.get("provider_symbol")] = m
+            except (json.JSONDecodeError, OSError):
+                pass
+        cutoff = (datetime.now(UTC).date() - timedelta(days=7)).isoformat()
+        recent = {k: v for k, v in recent.items() if (v.get("date") or "") >= cutoff}
+        for r in merged:
+            prev = prior_by_symbol.get(r.get("provider_symbol"))
+            if not prev:
+                continue
+            c, pc = r.get("composite_score"), prev.get("composite_score")
+            if c is None or pc is None:
+                continue
+            delta = round(c - pc, 2)
+            if abs(delta) < 1.0:  # ignore refresh noise
+                continue
+            recent[r.get("provider_symbol")] = {
+                "provider_symbol": r.get("provider_symbol"), "symbol": r.get("symbol"),
+                "name": r.get("name"), "region": r.get("region"),
+                "composite": c, "prev": pc, "delta": delta,
+                "fundamental": r.get("fundamental_score"), "technical": r.get("technical_score"),
+                "date": today,
+            }
+        allm = sorted(recent.values(), key=lambda m: (m.get("date") or ""), reverse=True)
+        movers_path.write_text(json.dumps({
+            "generated_at": datetime.now(UTC).isoformat(),
+            "upgrades": sorted([m for m in allm if m["delta"] > 0], key=lambda m: -m["delta"]),
+            "downgrades": sorted([m for m in allm if m["delta"] < 0], key=lambda m: m["delta"]),
+            "all": allm,
+        }), encoding="utf-8")
 
         # Merge swing.json the same way (this run's entries win; others preserved).
         swing_path = out / "swing.json"
