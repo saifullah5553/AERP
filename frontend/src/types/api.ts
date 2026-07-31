@@ -157,6 +157,7 @@ export interface ScreenerQuery {
   asset_class?: AssetClass;
   sector?: string;
   min_composite?: number;
+  sentiment?: "bullish" | "bearish" | "neutral";
   sort_by?: string;
   sort_dir?: "asc" | "desc";
 }

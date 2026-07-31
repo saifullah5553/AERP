@@ -102,6 +102,16 @@ function applyScreener(all: ScreenerRow[], q: ScreenerQuery): Page<ScreenerRow> 
   if (q.sector) rows = rows.filter((r) => r.sector === q.sector);
   if (q.min_composite != null)
     rows = rows.filter((r) => r.composite_score != null && r.composite_score >= q.min_composite!);
+  if (q.sentiment) {
+    // Matches pulse.py per-name cutoffs: bullish ≥60, bearish ≤40, neutral between.
+    rows = rows.filter((r) => {
+      const c = r.composite_score;
+      if (c == null) return false;
+      if (q.sentiment === "bullish") return c >= 60;
+      if (q.sentiment === "bearish") return c <= 40;
+      return c > 40 && c < 60;
+    });
+  }
 
   const key = (q.sort_by ?? "composite_score") as keyof ScreenerRow;
   const dir = q.sort_dir === "asc" ? 1 : -1;
