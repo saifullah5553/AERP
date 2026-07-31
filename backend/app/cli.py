@@ -314,11 +314,13 @@ def cmd_export_static(args: argparse.Namespace) -> None:
         # free CI refresh (PSX-only, since Yahoo 429s on datacenter IPs) update PSX
         # without wiping US rows that were populated locally from a residential IP.
         screener_path = out / "screener.json"
+        prior_by_symbol: dict = {}
         if merge and screener_path.exists():
             try:
                 old = json.loads(screener_path.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
                 old = []
+            prior_by_symbol = {r.get("provider_symbol"): r for r in old}
             by_symbol = {r.get("provider_symbol"): r for r in old}
             for r in fresh:
                 by_symbol[r.get("provider_symbol")] = r
@@ -363,6 +365,28 @@ def cmd_export_static(args: argparse.Namespace) -> None:
             elif "swing_score" not in r:
                 r["swing_score"] = None
 
+        # Signal inception date + return-since. We can't fabricate a past signal we never
+        # recorded, so a signal's "since" date is the first refresh we observed it: carried
+        # forward while the signal is unchanged, reset to today when it flips (merge-preserve,
+        # same pattern as swing/regime). Return-since is a factual price move, not a forecast.
+        today = datetime.now(UTC).date().isoformat()
+        for r in merged:
+            sig = r.get("signal")
+            prev = prior_by_symbol.get(r.get("provider_symbol"))
+            if sig and prev and prev.get("signal") == sig and prev.get("signal_since"):
+                r["signal_since"] = prev["signal_since"]
+                r["price_at_signal"] = prev.get("price_at_signal")
+            elif sig:
+                r["signal_since"] = today
+                r["price_at_signal"] = r.get("price")
+            else:
+                r["signal_since"] = None
+                r["price_at_signal"] = None
+            pas, price = r.get("price_at_signal"), r.get("price")
+            r["signal_return_pct"] = (
+                round((price - pas) / pas * 100.0, 2) if pas and price else None
+            )
+
         # Merge swing.json the same way (this run's entries win; others preserved).
         swing_path = out / "swing.json"
         ranked = swing["ranked"]
@@ -393,13 +417,20 @@ def cmd_export_static(args: argparse.Namespace) -> None:
         except Exception as exc:  # network optional
             log.warning("catalysts export failed: %s", exc)
 
+        sig_map = {r.get("provider_symbol"): r for r in merged}
         exported = 0
         for r in rows:
             detail = get_company(db, r.provider_symbol)
             if detail is None:
                 continue
+            d = detail.model_dump(mode="json")
+            row = sig_map.get(r.provider_symbol)
+            if row and isinstance(d.get("signal"), dict):
+                d["signal"]["signal_since"] = row.get("signal_since")
+                d["signal"]["signal_return_pct"] = row.get("signal_return_pct")
+                d["signal"]["price_at_signal"] = row.get("price_at_signal")
             (out / "company" / f"{r.provider_symbol}.json").write_text(
-                json.dumps(detail.model_dump(mode="json")), encoding="utf-8"
+                json.dumps(d), encoding="utf-8"
             )
             exported += 1
         # Company files for securities only in the old snapshot are left in place.

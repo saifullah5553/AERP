@@ -107,6 +107,10 @@ def refresh_prices(
         r["change_pct"] = q["change_pct"]
         if q.get("volume") is not None:
             r["volume"] = q["volume"]
+        # Keep return-since-signal in step with the fresh price (factual, not a forecast).
+        pas = r.get("price_at_signal")
+        if pas:
+            r["signal_return_pct"] = round((q["price"] - pas) / pas * 100.0, 2)
         updated += 1
     screener_path.write_text(json.dumps(rows), encoding="utf-8")
 
@@ -131,6 +135,11 @@ def refresh_prices(
             if q.get(k) is not None:
                 quote[k] = q[k]
         detail["quote"] = quote
+        # Keep the company signal block's return-since in step with the fresh price too.
+        sigblk = detail.get("signal")
+        if isinstance(sigblk, dict) and sigblk.get("price_at_signal"):
+            pas = sigblk["price_at_signal"]
+            sigblk["signal_return_pct"] = round((q["price"] - pas) / pas * 100.0, 2)
         cf.write_text(json.dumps(detail, ensure_ascii=False), encoding="utf-8")
         patched_files += 1
 

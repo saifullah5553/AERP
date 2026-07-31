@@ -338,6 +338,7 @@ export default function CompanyPage() {
       {/* Body */}
       <div className="grid gap-4 p-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
+          <SignalCard signal={data.signal} />
           <BusinessOverview summary={typeof sec.long_business_summary === "string" ? sec.long_business_summary : null} />
           <PabraiSection scores={data.scores} />
           <FundamentalSection detail={data} derived={derived} />
@@ -394,6 +395,62 @@ export default function CompanyPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Model signal (labeled, not advice) — date generated + return since ───────
+const SIGNAL_TONE: Record<string, { bg: string; fg: string; label: string }> = {
+  strong_buy: { bg: "#052e1b", fg: "#4ade80", label: "Strong Buy" },
+  buy: { bg: "#064e3b", fg: "#6ee7b7", label: "Buy" },
+  hold: { bg: "#1e293b", fg: "#cbd5e1", label: "Hold" },
+  sell: { bg: "#450a0a", fg: "#fca5a5", label: "Sell" },
+  strong_sell: { bg: "#7f1d1d", fg: "#fecaca", label: "Strong Sell" },
+};
+
+function SignalCard({ signal }: { signal: Row | null }) {
+  if (!signal) return null;
+  const type = String(signal.signal_type ?? signal.signal ?? "");
+  const tone = SIGNAL_TONE[type];
+  if (!tone) return null;
+  const since = typeof signal.signal_since === "string" ? signal.signal_since.slice(0, 10) : null;
+  const ret = num(signal.signal_return_pct);
+  const retTone = ret == null ? "#94a3b8" : ret > 0 ? "#22c55e" : ret < 0 ? "#ef4444" : "#94a3b8";
+  const conf = num(signal.confidence);
+  return (
+    <section className="overflow-hidden rounded-lg border border-base-600 bg-base-800">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 p-4" style={{ background: `${tone.bg}55` }}>
+        <div className="flex flex-col">
+          <span className="text-[10px] uppercase tracking-widest text-slate-500">Model Signal</span>
+          <span className="rounded px-3 py-1 text-lg font-black" style={{ background: tone.bg, color: tone.fg }}>
+            {tone.label}
+          </span>
+        </div>
+        {since && (
+          <div className="flex flex-col">
+            <span className="text-[10px] uppercase tracking-widest text-slate-500">Generated</span>
+            <span className="num text-sm font-semibold text-slate-200">{since}</span>
+          </div>
+        )}
+        {ret != null && (
+          <div className="flex flex-col">
+            <span className="text-[10px] uppercase tracking-widest text-slate-500">Return Since</span>
+            <span className="num text-lg font-black" style={{ color: retTone }}>
+              {ret > 0 ? "+" : ""}{ret.toFixed(2)}%
+            </span>
+          </div>
+        )}
+        {conf != null && (
+          <div className="flex flex-col">
+            <span className="text-[10px] uppercase tracking-widest text-slate-500">Confidence</span>
+            <span className="num text-sm font-semibold text-slate-200">{Math.round(conf * 100)}%</span>
+          </div>
+        )}
+      </div>
+      <div className="border-t border-base-700/50 px-4 py-1.5 text-[10px] text-slate-500">
+        Model-derived, rule-based · not investment advice. Return since is the price move from the
+        signal date, not a forecast.
+      </div>
+    </section>
   );
 }
 

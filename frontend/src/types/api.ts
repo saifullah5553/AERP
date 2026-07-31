@@ -130,6 +130,9 @@ export interface ScreenerRow {
   swing_score?: number | null;
   signal: SignalType | null;
   signal_label: string | null;
+  signal_since?: string | null;
+  price_at_signal?: number | null;
+  signal_return_pct?: number | null;
   top_pattern: string | null;
   top_candlestick: string | null;
   top_chart_pattern: string | null;
