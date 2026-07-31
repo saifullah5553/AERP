@@ -12,6 +12,19 @@ import type {
 import type { CompanyDetail } from "@/types/company";
 import type { RawMaterialsData } from "@/lib/rawMaterials";
 
+export interface InsiderTx {
+  symbol: string;
+  provider_symbol: string;
+  region: string;
+  company: string | null;
+  insider: string | null;
+  title: string | null;
+  type: string; // buy / sell
+  shares: number | null;
+  value: number | null;
+  date: string;
+}
+
 export interface Mover {
   provider_symbol: string;
   symbol: string;
@@ -166,6 +179,9 @@ export const api = {
   },
   cot(signal?: AbortSignal): Promise<Record<string, CotData>> {
     return getJson<Record<string, CotData>>(`${DATA_BASE}/cot.json`, signal).catch(() => ({}));
+  },
+  insiderFeed(signal?: AbortSignal): Promise<InsiderTx[]> {
+    return getJson<InsiderTx[]>(`${DATA_BASE}/insider.json`, signal).catch(() => []);
   },
   movers(signal?: AbortSignal): Promise<MoversData> {
     return getJson<MoversData>(`${DATA_BASE}/movers.json`, signal).catch(() => ({

@@ -1,6 +1,6 @@
 // Shared market-alerts builder used by the header bell and the /alerts page.
 
-import type { CatalystsData, ScreenerRow } from "@/types/api";
+import type { CatalystsData } from "@/types/api";
 
 export interface Alert {
   id: string;
@@ -13,7 +13,7 @@ export interface Alert {
   url?: string | null; // original PSX PDF / source document, when available
 }
 
-export function buildAlerts(cat: CatalystsData | null, rows: ScreenerRow[]): Alert[] {
+export function buildAlerts(cat: CatalystsData | null): Alert[] {
   const out: Alert[] = [];
 
   // Company announcements + corporate actions (results, board meetings, disclosures…).
@@ -46,22 +46,8 @@ export function buildAlerts(cat: CatalystsData | null, rows: ScreenerRow[]): Ale
     });
   }
 
-  // Notable insider activity.
-  for (const r of rows) {
-    const act = r.insider_activity;
-    if (act === "strong_buying" || act === "strong_selling") {
-      const buy = act === "strong_buying";
-      out.push({
-        id: `ins:${r.symbol}:${act}`,
-        kind: "Insider",
-        icon: buy ? "🟢" : "🔴",
-        color: buy ? "#22c55e" : "#ef4444",
-        title: r.symbol,
-        sub: buy ? "Strong insider buying" : "Strong insider selling",
-        date: typeof r.scored_on === "string" ? r.scored_on.slice(0, 10) : null,
-      });
-    }
-  }
+  // (Detailed insider transactions are shown as a dedicated table on the Alerts page,
+  //  sourced from insider.json — not the screener's coarse activity flag.)
 
   out.sort((a, b) => (b.date ?? "0").localeCompare(a.date ?? "0"));
   return out;

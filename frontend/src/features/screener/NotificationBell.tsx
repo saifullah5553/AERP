@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { api } from "@/lib/api";
 import { type Alert, buildAlerts } from "@/lib/alerts";
-import type { CatalystsData, ScreenerRow } from "@/types/api";
+import type { CatalystsData } from "@/types/api";
 
 const SEEN_KEY = "aerp-seen-alerts";
 
@@ -41,21 +41,16 @@ export function AlertRow({ a }: { a: Alert }) {
 
 export default function NotificationBell() {
   const [cat, setCat] = useState<CatalystsData | null>(null);
-  const [rows, setRows] = useState<ScreenerRow[]>([]);
   const [open, setOpen] = useState(false);
   const [seen, setSeen] = useState<Set<string>>(() => loadSeen());
 
   useEffect(() => {
     const ctrl = new AbortController();
     api.catalysts(ctrl.signal).then(setCat).catch(() => setCat(null));
-    api
-      .screener({ page: 1, page_size: 5000 }, ctrl.signal)
-      .then((p) => setRows(p.items))
-      .catch(() => setRows([]));
     return () => ctrl.abort();
   }, []);
 
-  const alerts = useMemo(() => buildAlerts(cat, rows).slice(0, 40), [cat, rows]);
+  const alerts = useMemo(() => buildAlerts(cat).slice(0, 40), [cat]);
   const unread = alerts.filter((a) => !seen.has(a.id)).length;
 
   const toggle = () => {

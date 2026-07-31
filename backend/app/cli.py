@@ -503,6 +503,16 @@ def cmd_export_static(args: argparse.Namespace) -> None:
             exported += 1
         # Company files for securities only in the old snapshot are left in place.
         company_files = len(list((out / "company").glob("*.json")))
+
+        # Cross-market insider transactions feed (aggregated from the company files above,
+        # so it spans US / India / Australia / PSX — not just the CI DB's PSX rows).
+        try:
+            from app.services.insider_feed import build_insider_feed
+            (out / "insider.json").write_text(
+                json.dumps(build_insider_feed(out / "company")), encoding="utf-8"
+            )
+        except Exception as exc:  # noqa: BLE001 - optional
+            log.warning("insider feed export failed: %s", exc)
         (out / "meta.json").write_text(
             json.dumps({
                 "generated_at": datetime.now(UTC).isoformat(),
