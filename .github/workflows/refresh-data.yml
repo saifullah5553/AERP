@@ -64,6 +64,30 @@ jobs:
           # Patches only price fields in the snapshot; never touches scores/fundamentals.
           python -m app.cli refresh-prices || true
 
+      - name: Detect new alerts (for email)
+        run: |
+          git show HEAD:frontend/public/data/catalysts.json > /tmp/old_cat.json 2>/dev/null || echo '{}' > /tmp/old_cat.json
+          COUNT=$(python scripts/diff_new_alerts.py /tmp/old_cat.json /tmp/alert_body.txt || echo 0)
+          echo "NEW_ALERTS=$COUNT" >> "$GITHUB_ENV"
+          echo "Detected $COUNT new alert(s)."
+
+      - name: Email new alerts
+        # Runs only when something new landed; no-ops harmlessly if mail secrets are unset
+        # (continue-on-error), so the refresh never fails over email.
+        if: ${{ env.NEW_ALERTS != '0' && env.NEW_ALERTS != '' }}
+        continue-on-error: true
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER || 'smtp.gmail.com' }}
+          server_port: ${{ secrets.MAIL_PORT || 465 }}
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "AERP — ${{ env.NEW_ALERTS }} new PSX alert(s)"
+          to: ${{ secrets.MAIL_TO }}
+          from: AERP Alerts <${{ secrets.MAIL_USERNAME }}>
+          body: file:///tmp/alert_body.txt
+
       - name: Commit refreshed snapshot (for the record)
         run: |
           git config user.name "github-actions[bot]"
