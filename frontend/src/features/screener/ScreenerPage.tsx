@@ -14,10 +14,10 @@ import {
 } from "@/lib/savedViews";
 import type { ScreenerQuery, ScreenerRow, SnapshotMeta } from "@/types/api";
 import FilterBar from "./FilterBar";
+import IndicesBar from "./IndicesBar";
 import MarketOverview from "./MarketOverview";
 import ThemeToggle from "./ThemeToggle";
 import MarketRegime from "./MarketRegime";
-import PulseBar from "./PulseBar";
 import ScreenerGrid from "./ScreenerGrid";
 
 type Filters = Omit<ScreenerQuery, "page" | "page_size" | "sort_by" | "sort_dir">;
@@ -138,7 +138,7 @@ export default function ScreenerPage() {
 
       <MarketRegime />
 
-      <PulseBar />
+      <IndicesBar />
 
       <FilterBar filters={filters} onChange={setFilters} />
 

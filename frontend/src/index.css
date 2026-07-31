@@ -40,6 +40,8 @@ body,
 
 /* Light-theme text remaps: the components use Tailwind's fixed slate grays (tuned
    for a dark bg); invert the common ones so text stays readable on light surfaces. */
+:root[data-theme="light"] .text-slate-50 { color: #0f172a; }
+:root[data-theme="light"] .text-slate-100 { color: #0f172a; }
 :root[data-theme="light"] .text-slate-200 { color: #0f172a; }
 :root[data-theme="light"] .text-slate-300 { color: #1e293b; }
 :root[data-theme="light"] .text-slate-400 { color: #475569; }

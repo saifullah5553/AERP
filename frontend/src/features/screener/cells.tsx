@@ -25,12 +25,11 @@ export function SignalCell(p: ICellRendererParams) {
   );
 }
 
-function scoreTones(v: number): { bg: string; border: string; text: string } {
+function scoreTones(v: number): { bg: string; border: string } {
   const hue = Math.max(0, Math.min(120, (v / 100) * 120)); // 0=red → 120=green
   return {
-    bg: `hsla(${hue}, 70%, 45%, 0.22)`,
-    border: `hsla(${hue}, 70%, 52%, 0.6)`,
-    text: `hsl(${hue}, 85%, 66%)`,
+    bg: `hsla(${hue}, 70%, 45%, 0.28)`,
+    border: `hsla(${hue}, 70%, 50%, 0.7)`,
   };
 }
 
@@ -38,10 +37,11 @@ export function ScoreCell(p: ICellRendererParams) {
   const v = p.value as number | null;
   if (v === null || v === undefined) return <span className="text-slate-600">—</span>;
   const t = scoreTones(v);
+  // Text uses the theme foreground var so it stays readable on both dark and light.
   return (
     <span
       className="num inline-flex min-w-[2.6rem] items-center justify-center rounded-md px-2 py-0.5 text-xs font-bold tabular-nums"
-      style={{ background: t.bg, color: t.text, border: `1px solid ${t.border}` }}
+      style={{ background: t.bg, color: "var(--app-fg)", border: `1px solid ${t.border}` }}
     >
       {fmtScore(v)}
     </span>
