@@ -51,6 +51,7 @@ def build_catalysts(client: Portfolio360Client | None = None) -> dict:
             "type": "announcement",
             "title": a.get("title"),
             "date": (a.get("announcedAt") or "")[:10] or a.get("date"),
+            "pdf_url": a.get("pdfUrl") or a.get("sourceUrl"),
         })
     for c in actions:
         sym = (c.get("symbol") or "").strip().upper()

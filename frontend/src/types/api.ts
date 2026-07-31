@@ -42,6 +42,7 @@ export interface CatalystEvent {
   category?: string | null;
   note?: string | null;
   type?: string;
+  pdf_url?: string | null;
 }
 export interface CatalystsData {
   market_events: CatalystEvent[];
