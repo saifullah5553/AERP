@@ -188,6 +188,15 @@ def cmd_refresh_news(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_expand_universe(args: argparse.Namespace) -> None:
+    """Add full US/India/Australia listings to the snapshot via keyless chart-v8
+    (price + technical + signal; fundamentals stay with the curated pipeline)."""
+    from app.ingestion.expand_universe import expand_universe
+
+    out = args.out or "../frontend/public/data"
+    log.info("expand-universe: %s", expand_universe(out, region=args.region, limit=args.limit))
+
+
 def cmd_ingest_profiles(args: argparse.Namespace) -> None:
     from app.db.session import session_scope
     from app.ingestion.profiles import ingest_profiles
@@ -623,6 +632,9 @@ def build_parser() -> argparse.ArgumentParser:
     rn = add("refresh-news", cmd_refresh_news, limit=True)
     rn.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
     rn.add_argument("--only-missing", action="store_true", help="only names without news yet")
+    eu = add("expand-universe", cmd_expand_universe, limit=True)
+    eu.add_argument("--region", required=True, choices=["us", "india", "australia"])
+    eu.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
     add("all", cmd_all)
     return parser
 
