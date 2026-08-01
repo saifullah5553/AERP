@@ -5,8 +5,8 @@ name: Daily Technical Refresh
 # committed fundamental/momentum/quality/risk. This is what makes signals + Movers update
 # daily across all markets. Patches the snapshot directly (no DB), commits, and deploys.
 # refresh-technicals also backfills real PSX signal-inception dates from the PSX portal EOD
-# history (dps.psx.com.pk), anchored to the committed composite — reachable from CI's IP.
-# PSX EOD fetch retries with backoff (the portal drops connections under load).
+# history (dps.psx.com.pk), anchored to the committed composite — reachable from CI's IP
+# (~122/451 dated; the rest lack enough portal history and fall back to first-observed).
 on:
   schedule:
     - cron: "15 22 * * *" # 22:15 UTC (after US close; offset from the 30-min refresh)
