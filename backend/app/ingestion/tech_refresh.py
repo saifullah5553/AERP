@@ -134,20 +134,36 @@ def _signal_since(dates, high, low, close, vol, legs, regime, de, current,
     return d, float(close[idx])
 
 
+# The PSX portal drops connections under load, so use a browser-like UA/Referer and retry
+# with backoff — that lifts the per-run success rate from ~1/4 to most of the market.
+_PSX_HDRS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120 Safari/537.36"
+    ),
+    "Referer": "https://dps.psx.com.pk/",
+    "Accept": "application/json, text/plain, */*",
+}
+
+
 def _fetch_psx_history(sym: str):
     """PSX portal EOD history → (dates, close, volume) for the last ~300 bars, or None."""
+    import time
+
     from app.ingestion.psx_market import parse_eod
 
-    try:
-        resp = httpx.get(
-            f"https://dps.psx.com.pk/timeseries/eod/{sym}",
-            headers={"User-Agent": _UA}, timeout=20,
-        )
-        resp.raise_for_status()
-        bars = parse_eod(resp.text)
-    except Exception:  # noqa: BLE001 - one bad symbol shouldn't stop the batch
-        return None
-    if len(bars) < MIN_BARS:
+    url = f"https://dps.psx.com.pk/timeseries/eod/{sym}"
+    bars = None
+    for attempt in range(3):
+        try:
+            resp = httpx.get(url, headers=_PSX_HDRS, timeout=20)
+            resp.raise_for_status()
+            bars = parse_eod(resp.text)
+            break
+        except Exception:  # noqa: BLE001 - portal disconnects under load; retry with backoff
+            if attempt < 2:
+                time.sleep(0.5 * (attempt + 1))
+    if not bars or len(bars) < MIN_BARS:
         return None
     bars = bars[-300:]
     close = np.array([float(b.close) for b in bars], dtype=float)
@@ -166,7 +182,7 @@ def _backtest_psx(rows, company, regime_map, today, limit):
         return
     syms = [r.get("symbol") or r["provider_symbol"].replace(".KA", "") for r in psx_rows]
     hist: dict[str, Any] = {}
-    with ThreadPoolExecutor(max_workers=6) as pool:
+    with ThreadPoolExecutor(max_workers=4) as pool:
         for r, h in zip(psx_rows, pool.map(_fetch_psx_history, syms), strict=False):
             if h is not None:
                 hist[r["provider_symbol"]] = h

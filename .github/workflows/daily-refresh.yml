@@ -6,6 +6,7 @@ name: Daily Technical Refresh
 # daily across all markets. Patches the snapshot directly (no DB), commits, and deploys.
 # refresh-technicals also backfills real PSX signal-inception dates from the PSX portal EOD
 # history (dps.psx.com.pk), anchored to the committed composite — reachable from CI's IP.
+# PSX EOD fetch retries with backoff (the portal drops connections under load).
 on:
   schedule:
     - cron: "15 22 * * *" # 22:15 UTC (after US close; offset from the 30-min refresh)
