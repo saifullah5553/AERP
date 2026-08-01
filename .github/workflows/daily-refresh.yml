@@ -38,8 +38,10 @@ jobs:
       - name: Refresh prices + recompute technicals (all markets, chart-v8)
         working-directory: backend
         run: |
-          python -m app.cli refresh-prices || true
-          python -m app.cli refresh-technicals || true
+          # Cap to the top names by composite (screener is composite-sorted) so the ~11k
+          # universe stays within CI budget / Yahoo rate limits; the tail keeps its values.
+          python -m app.cli refresh-prices --limit 5000 || true
+          python -m app.cli refresh-technicals --limit 5000 || true
           # Per-company news via Google News RSS (keyless). Snapshot is composite-sorted, so
           # --limit refreshes the highest-scored names first; the rest fill over subsequent runs.
           python -m app.cli refresh-news --limit 250 || true

@@ -62,7 +62,10 @@ jobs:
           # Keyless delayed-price refresh for non-PSX markets (US/India/GCC/AUS/forex/…)
           # via Yahoo's chart v8 endpoint, which — unlike yfinance — is reachable from CI.
           # Patches only price fields in the snapshot; never touches scores/fundamentals.
-          python -m app.cli refresh-prices || true
+          # Cap to the top names by composite (screener is composite-sorted) so the ~11k
+          # universe doesn't blow the 30-min budget / trip Yahoo rate limits. PSX prices come
+          # from one market-watch request regardless of the cap.
+          python -m app.cli refresh-prices --limit 3000 || true
 
       - name: Detect new alerts (for email)
         run: |
