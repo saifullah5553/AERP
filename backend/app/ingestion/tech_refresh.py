@@ -357,16 +357,33 @@ def refresh_technicals(
     return result
 
 
+_BUY_ZONE = {"strong_buy", "buy"}
+
+
 def _record_signal_move(
     dst: dict[str, dict], r: dict, old_sig, new_sig, label, composite, price, today: str
 ) -> None:
-    """Record a crossing of the strong_buy boundary: entering it = time-to-buy,
-    leaving it = time-to-sell. Ignores first-observation (no prior signal)."""
+    """Record actionable signal transitions:
+
+    * BUY  (time to buy)  = the name entered **strong_buy** from a lower rating.
+    * SELL (time to sell) = the name **left the buy zone** — dropped from strong_buy/buy to
+      hold/sell/strong_sell.
+
+    A one-notch strong_buy→buy move is deliberately NOT a sell: the name is still buy-rated,
+    and treating the 80-point boundary as a sell trigger floods the feed with jitter (a
+    composite drifting 80.1→79.9 between refreshes is noise, not a signal). Ignores
+    first-observation (no prior signal).
+    """
     if not old_sig or not new_sig or old_sig == new_sig:
         return
-    if new_sig == "strong_buy":
+    c = _f(composite)
+    if new_sig == "strong_buy" and old_sig != "strong_buy":
         direction = "buy"
-    elif old_sig == "strong_buy":
+    elif old_sig in _BUY_ZONE and new_sig not in _BUY_ZONE:
+        # Hysteresis: only a decisive drop (clearly below the 65 buy floor) counts, so a name
+        # oscillating right on the 65 boundary between refreshes doesn't spam sell alerts.
+        if c is not None and c > 63.0:
+            return
         direction = "sell"
     else:
         return

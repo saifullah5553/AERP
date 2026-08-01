@@ -341,12 +341,10 @@ def cmd_export_static(args: argparse.Namespace) -> None:
             reverse=True,
         )
 
-        # Cross-cutting engines (computed before writing the screener so the swing
-        # score can be injected into its rows). All recompute each refresh.
+        # Cross-cutting engines. All recompute each refresh.
         from app.ingestion.portfolio360 import Portfolio360Client
         from app.services.macro_regime import build_macro_regime
         from app.services.sectors import build_sector_stats
-        from app.services.swing import build_swing
 
         pk_macro = None
         kse_live = None  # live KSE100 (also reused for extra_indices below)
@@ -362,27 +360,16 @@ def cmd_export_static(args: argparse.Namespace) -> None:
         sector_stats = build_sector_stats(db)
         # CI refreshes are PSX-only (Yahoo 429s on runners), so a fresh regime/sector run
         # only populates PSX. Preserve previously-computed regions from the committed
-        # snapshot instead of blanking them (same spirit as the screener/swing merge).
+        # snapshot instead of blanking them (same spirit as the screener merge).
         if merge:
             regime = _merge_regime(regime, out / "macro_regime.json")
             sector_stats = _merge_sector_stats(sector_stats, out / "sector_stats.json")
         raw_materials = build_raw_materials(out / "company")
-        swing = build_swing(db, sector_stats, regime, raw_materials)
-
-        # Inject the swing score into each screener row, PRESERVING a prior value when
-        # this run didn't recompute it (CI is PSX-only → don't wipe other markets).
-        by_sym = swing["by_symbol"]
-        for r in merged:
-            v = by_sym.get(r.get("provider_symbol"))
-            if v is not None:
-                r["swing_score"] = v
-            elif "swing_score" not in r:
-                r["swing_score"] = None
 
         # Signal inception date + return-since. We can't fabricate a past signal we never
         # recorded, so a signal's "since" date is the first refresh we observed it: carried
         # forward while the signal is unchanged, reset to today when it flips (merge-preserve,
-        # same pattern as swing/regime). Return-since is a factual price move, not a forecast.
+        # same pattern as regime). Return-since is a factual price move, not a forecast.
         today = datetime.now(UTC).date().isoformat()
         for r in merged:
             sig = r.get("signal")
@@ -454,19 +441,6 @@ def cmd_export_static(args: argparse.Namespace) -> None:
             )
         _update_signal_moves(out, smoves, today)
 
-        # Merge swing.json the same way (this run's entries win; others preserved).
-        swing_path = out / "swing.json"
-        ranked = swing["ranked"]
-        if merge and swing_path.exists():
-            try:
-                old = json.loads(swing_path.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
-                old = []
-            by = {r.get("provider_symbol"): r for r in old}
-            for r in ranked:
-                by[r["provider_symbol"]] = r
-            ranked = sorted(by.values(), key=lambda r: r.get("swing_score") or 0, reverse=True)
-
         screener_path.write_text(json.dumps(merged), encoding="utf-8")
         (out / "pulse.json").write_text(
             json.dumps(pulse_from_screener_dicts(merged)), encoding="utf-8"
@@ -474,7 +448,6 @@ def cmd_export_static(args: argparse.Namespace) -> None:
         (out / "macro_regime.json").write_text(json.dumps(regime), encoding="utf-8")
         (out / "sector_stats.json").write_text(json.dumps(sector_stats), encoding="utf-8")
         (out / "raw_materials.json").write_text(json.dumps(raw_materials), encoding="utf-8")
-        swing_path.write_text(json.dumps(ranked), encoding="utf-8")
 
         # KSE100 index level from Portfolio360 (Yahoo has no usable ^KSE). Additive strip
         # data for the World Indices ticker; best-effort so a P360 hiccup doesn't fail export.

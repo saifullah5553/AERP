@@ -58,12 +58,24 @@ def test_record_signal_move_buy_and_sell_and_noise() -> None:
     # Entered strong_buy → time-to-buy.
     _record_signal_move(dst, row, "buy", "strong_buy", "Strong Buy", 81.0, 10.0, "2026-08-01")
     assert dst["X.KA"]["direction"] == "buy"
-    # Left strong_buy → time-to-sell (overwrites the same symbol's latest state).
+    # Left the buy zone decisively (strong_buy → hold, composite ≤ 63) → time-to-sell.
     _record_signal_move(dst, row, "strong_buy", "hold", "Hold", 55.0, 11.0, "2026-08-02")
     assert dst["X.KA"]["direction"] == "sell"
-    # A non-strong-buy flip (buy→hold) is not a boundary crossing → ignored.
+    # buy → hold below the floor is ALSO a sell (left the buy zone).
+    dst_bh: dict = {}
+    _record_signal_move(dst_bh, row, "buy", "hold", "Hold", 55.0, 11.0, "2026-08-02")
+    assert dst_bh["X.KA"]["direction"] == "sell"
+
+
+def test_record_signal_move_ignores_notch_and_jitter() -> None:
+    row = {"provider_symbol": "X.KA", "symbol": "X", "name": "X Co", "region": "psx"}
+    # A one-notch strong_buy → buy dip is NOT a sell (still buy-rated) — the old jitter bug.
+    dst: dict = {}
+    _record_signal_move(dst, row, "strong_buy", "buy", "Buy", 79.0, 11.0, "2026-08-02")
+    assert dst == {}
+    # Leaving the buy zone but only just below 65 (hysteresis) → suppressed as boundary noise.
     dst2: dict = {}
-    _record_signal_move(dst2, row, "buy", "hold", "Hold", 55.0, 11.0, "2026-08-02")
+    _record_signal_move(dst2, row, "buy", "hold", "Hold", 64.5, 11.0, "2026-08-02")
     assert dst2 == {}
     # No prior signal (first observation) → ignored.
     dst3: dict = {}

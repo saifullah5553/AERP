@@ -7,7 +7,6 @@ import type {
   ScreenerRow,
   SectorStatsData,
   SnapshotMeta,
-  SwingRow,
 } from "@/types/api";
 import type { CompanyDetail } from "@/types/company";
 import type { RawMaterialsData } from "@/lib/rawMaterials";
@@ -185,10 +184,6 @@ export const api = {
   sectorStats(signal?: AbortSignal): Promise<SectorStatsData> {
     if (IS_STATIC) return getJson<SectorStatsData>(`${DATA_BASE}/sector_stats.json`, signal);
     return getJson<SectorStatsData>(`${V1}/markets/sectors`, signal);
-  },
-  swing(signal?: AbortSignal): Promise<SwingRow[]> {
-    if (IS_STATIC) return getJson<SwingRow[]>(`${DATA_BASE}/swing.json`, signal);
-    return getJson<SwingRow[]>(`${V1}/markets/swing`, signal);
   },
   catalysts(signal?: AbortSignal): Promise<CatalystsData> {
     return getJson<CatalystsData>(`${DATA_BASE}/catalysts.json`, signal);

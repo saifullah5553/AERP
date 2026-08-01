@@ -96,8 +96,8 @@ export default function ScreenerPage() {
           <a href="#/sectors" className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2.5 py-0.5 text-xs font-semibold text-sky-300 transition-colors hover:bg-sky-500/25">
             Sector Rotation →
           </a>
-          <a href="#/swing" className="rounded-full border border-violet-500/40 bg-violet-500/10 px-2.5 py-0.5 text-xs font-semibold text-violet-300 transition-colors hover:bg-violet-500/25">
-            Swing Scanner →
+          <a href="#/signals" className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/25">
+            Buy/Sell Signals →
           </a>
           <a href="#/movers" className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-xs font-semibold text-amber-300 transition-colors hover:bg-amber-500/25">
             Movers →
