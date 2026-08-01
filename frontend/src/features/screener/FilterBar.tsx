@@ -135,6 +135,21 @@ export default function FilterBar({ filters, onChange }: Props) {
           className="w-44 accent-accent"
         />
       </div>
+
+      <label
+        className="flex cursor-pointer items-center gap-2 rounded border border-base-500 bg-base-900 px-3 py-1.5 text-sm text-slate-300"
+        title="Show only names with full fundamental data (hide the technical-only long tail)"
+      >
+        <input
+          type="checkbox"
+          checked={!!filters.has_fundamentals}
+          onChange={(e) =>
+            onChange({ ...filters, has_fundamentals: e.target.checked || undefined })
+          }
+          className="accent-accent"
+        />
+        Has fundamentals
+      </label>
     </div>
   );
 }

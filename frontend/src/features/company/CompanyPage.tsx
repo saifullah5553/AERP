@@ -341,6 +341,13 @@ export default function CompanyPage() {
       <div className="grid gap-4 p-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
           <SignalCard signal={data.signal} />
+          {num(data.scores?.fundamental) == null && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200/90">
+              <b>Technical-only coverage.</b> Fundamental statements aren&apos;t available for this
+              security yet, so the fundamental, valuation and Pabrai sections show “—”. Price,
+              technical score and the model signal are live.
+            </div>
+          )}
           <CotSection data={cot[String(sec.provider_symbol ?? "")]} />
           <BusinessOverview summary={typeof sec.long_business_summary === "string" ? sec.long_business_summary : null} />
           <PabraiSection scores={data.scores} />

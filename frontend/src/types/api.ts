@@ -140,6 +140,7 @@ export interface ScreenerQuery {
   sector?: string;
   min_composite?: number;
   sentiment?: "bullish" | "bearish" | "neutral";
+  has_fundamentals?: boolean;
   sort_by?: string;
   sort_dir?: "asc" | "desc";
 }

@@ -142,6 +142,7 @@ function applyScreener(all: ScreenerRow[], q: ScreenerQuery): Page<ScreenerRow> 
   if (q.region) rows = rows.filter((r) => r.region === q.region);
   if (q.asset_class) rows = rows.filter((r) => r.asset_class === q.asset_class);
   if (q.sector) rows = rows.filter((r) => r.sector === q.sector);
+  if (q.has_fundamentals) rows = rows.filter((r) => r.fundamental_score != null);
   if (q.min_composite != null)
     rows = rows.filter((r) => r.composite_score != null && r.composite_score >= q.min_composite!);
   if (q.sentiment) {
