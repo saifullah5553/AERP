@@ -10,6 +10,20 @@ const SIG_LABEL: Record<string, string> = {
   strong_buy: "Strong Buy", buy: "Buy", hold: "Hold", sell: "Sell", strong_sell: "Strong Sell",
 };
 
+// Buy zone = Strong Buy only. Entering it = BUY; leaving it = EXIT. Colour hints severity
+// (amber for a drop to Buy/Hold, red for an outright Sell) but the label stays "EXIT" so it
+// never contradicts the company page's model signal.
+function moveBadge(m: SignalMove): { text: string; fg: string; bg: string } {
+  if (m.direction === "buy")
+    return { text: "▲ TIME TO BUY", fg: "#22c55e", bg: "rgba(34,197,94,0.14)" };
+  const hard = m.to === "sell" || m.to === "strong_sell";
+  return {
+    text: "▼ EXIT STRONG BUY",
+    fg: hard ? "#ef4444" : "#f59e0b",
+    bg: hard ? "rgba(239,68,68,0.14)" : "rgba(245,158,11,0.14)",
+  };
+}
+
 const RANGES: [Range, string][] = [
   ["all", "All dates"], ["today", "Today"], ["7d", "Last 7 days"], ["30d", "Last 30 days"],
 ];
@@ -52,7 +66,7 @@ export default function BuySellPage() {
   }, [moves, dir, region, range]);
 
   const nBuy = rows.filter((m) => m.direction === "buy").length;
-  const nSell = rows.filter((m) => m.direction === "sell").length;
+  const nExit = rows.filter((m) => m.direction === "sell").length;
 
   const chip = (active: boolean, tone: "buy" | "sell" | "accent") =>
     `rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors ${
@@ -69,14 +83,14 @@ export default function BuySellPage() {
     <div className="flex h-full flex-col bg-base-900 text-slate-200">
       <header className="flex flex-wrap items-center gap-3 border-b border-base-600 bg-base-900 px-5 py-3">
         <Link to="/" className="text-sm text-slate-400 hover:text-accent">← Dashboard</Link>
-        <span className="text-lg font-bold text-slate-100">Buy / Sell Signals</span>
+        <span className="text-lg font-bold text-slate-100">Buy / Exit Signals</span>
         <span className="rounded-full bg-up/15 px-2 py-0.5 text-xs font-semibold text-up">{nBuy} buy</span>
-        <span className="rounded-full bg-down/15 px-2 py-0.5 text-xs font-semibold text-down">{nSell} sell</span>
+        <span className="rounded-full bg-down/15 px-2 py-0.5 text-xs font-semibold text-down">{nExit} exit</span>
 
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
           <button onClick={() => setDir("all")} className={chip(dir === "all", "accent")}>All</button>
           <button onClick={() => setDir("buy")} className={chip(dir === "buy", "buy")}>▲ Buy</button>
-          <button onClick={() => setDir("sell")} className={chip(dir === "sell", "sell")}>▼ Sell</button>
+          <button onClick={() => setDir("sell")} className={chip(dir === "sell", "sell")}>▼ Exit</button>
           <span className="mx-1 h-4 w-px bg-base-600" />
           {regions.map((r) => (
             <button
@@ -104,9 +118,10 @@ export default function BuySellPage() {
 
       <div className="mx-auto mt-3 max-w-4xl px-2">
         <div className="rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-[11px] text-slate-300">
-          <span className="font-semibold text-up">▲ Buy</span> = the stock entered <b>Strong Buy</b>.
-          <span className="ml-2 font-semibold text-down">▼ Sell</span> = it left the buy zone
-          (Strong Buy/Buy → Hold or lower). Rolling 30-day window. Research context only — not investment advice.
+          <b>Strong Buy is the buy zone.</b> <span className="font-semibold text-up">▲ Buy</span> = the
+          stock entered Strong Buy. <span className="ml-1 font-semibold text-down">▼ Exit</span> = it
+          dropped out of Strong Buy (to Buy, Hold or lower). Rolling 30-day window. Research context
+          only — not investment advice.
         </div>
       </div>
 
@@ -129,18 +144,15 @@ export default function BuySellPage() {
               </thead>
               <tbody>
                 {rows.map((m, i) => {
-                  const buy = m.direction === "buy";
+                  const b = moveBadge(m);
                   return (
                     <tr key={i} className="border-b border-base-700/40 hover:bg-base-700/40">
                       <td className="px-3 py-1.5">
                         <span
                           className="rounded px-2 py-0.5 text-[11px] font-bold"
-                          style={{
-                            color: buy ? "#22c55e" : "#ef4444",
-                            background: buy ? "rgba(34,197,94,0.14)" : "rgba(239,68,68,0.14)",
-                          }}
+                          style={{ color: b.fg, background: b.bg }}
                         >
-                          {buy ? "▲ TIME TO BUY" : "▼ TIME TO SELL"}
+                          {b.text}
                         </span>
                       </td>
                       <td className="px-3 py-1.5">

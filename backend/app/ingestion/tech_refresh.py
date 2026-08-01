@@ -357,32 +357,29 @@ def refresh_technicals(
     return result
 
 
-_BUY_ZONE = {"strong_buy", "buy"}
+_EXIT_HYSTERESIS = 77.0  # strong_buy band is >=80; require a clear drop below it to call an exit
 
 
 def _record_signal_move(
     dst: dict[str, dict], r: dict, old_sig, new_sig, label, composite, price, today: str
 ) -> None:
-    """Record actionable signal transitions:
+    """Record actionable signal transitions. **Strong Buy is the only buy zone.**
 
-    * BUY  (time to buy)  = the name entered **strong_buy** from a lower rating.
-    * SELL (time to sell) = the name **left the buy zone** — dropped from strong_buy/buy to
-      hold/sell/strong_sell.
+    * BUY  (time to buy) = the name entered **strong_buy**.
+    * EXIT (time to sell/trim) = the name **left strong_buy** (to buy, hold, sell or lower).
 
-    A one-notch strong_buy→buy move is deliberately NOT a sell: the name is still buy-rated,
-    and treating the 80-point boundary as a sell trigger floods the feed with jitter (a
-    composite drifting 80.1→79.9 between refreshes is noise, not a signal). Ignores
+    Exit uses hysteresis (composite must fall clearly below 80, i.e. <=77) so a name wobbling
+    right on the 80-point boundary between refreshes — composite drifting 80.1→79.9 — doesn't
+    spam exit alerts. Recorded with direction "sell" (the frontend labels it EXIT). Ignores
     first-observation (no prior signal).
     """
     if not old_sig or not new_sig or old_sig == new_sig:
         return
     c = _f(composite)
-    if new_sig == "strong_buy" and old_sig != "strong_buy":
-        direction = "buy"
-    elif old_sig in _BUY_ZONE and new_sig not in _BUY_ZONE:
-        # Hysteresis: only a decisive drop (clearly below the 65 buy floor) counts, so a name
-        # oscillating right on the 65 boundary between refreshes doesn't spam sell alerts.
-        if c is not None and c > 63.0:
+    if new_sig == "strong_buy":
+        direction = "buy"  # old != new (checked above) → genuinely entered the buy zone
+    elif old_sig == "strong_buy":
+        if c is not None and c > _EXIT_HYSTERESIS:
             return
         direction = "sell"
     else:

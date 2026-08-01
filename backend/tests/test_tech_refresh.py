@@ -52,30 +52,30 @@ def test_signal_since_walks_back_over_real_trajectory() -> None:
     assert float(_RISING[0]) <= price_at <= float(_RISING[-1])
 
 
-def test_record_signal_move_buy_and_sell_and_noise() -> None:
+def test_record_signal_move_buy_and_exit() -> None:
+    # Strong Buy is the only buy zone: entering = buy, leaving = exit (any lower rating).
     dst: dict = {}
     row = {"provider_symbol": "X.KA", "symbol": "X", "name": "X Co", "region": "psx"}
-    # Entered strong_buy → time-to-buy.
     _record_signal_move(dst, row, "buy", "strong_buy", "Strong Buy", 81.0, 10.0, "2026-08-01")
     assert dst["X.KA"]["direction"] == "buy"
-    # Left the buy zone decisively (strong_buy → hold, composite ≤ 63) → time-to-sell.
+    # strong_buy → hold (clear drop) = exit.
     _record_signal_move(dst, row, "strong_buy", "hold", "Hold", 55.0, 11.0, "2026-08-02")
     assert dst["X.KA"]["direction"] == "sell"
-    # buy → hold below the floor is ALSO a sell (left the buy zone).
-    dst_bh: dict = {}
-    _record_signal_move(dst_bh, row, "buy", "hold", "Hold", 55.0, 11.0, "2026-08-02")
-    assert dst_bh["X.KA"]["direction"] == "sell"
+    # strong_buy → buy that fell clearly below 80 IS an exit (buy is outside the zone now).
+    dst_sb: dict = {}
+    _record_signal_move(dst_sb, row, "strong_buy", "buy", "Buy", 76.0, 11.0, "2026-08-02")
+    assert dst_sb["X.KA"]["direction"] == "sell"
 
 
-def test_record_signal_move_ignores_notch_and_jitter() -> None:
+def test_record_signal_move_ignores_jitter_and_non_zone_moves() -> None:
     row = {"provider_symbol": "X.KA", "symbol": "X", "name": "X Co", "region": "psx"}
-    # A one-notch strong_buy → buy dip is NOT a sell (still buy-rated) — the old jitter bug.
+    # strong_buy → buy right on the 80 line (composite > 77) → suppressed as boundary jitter.
     dst: dict = {}
     _record_signal_move(dst, row, "strong_buy", "buy", "Buy", 79.0, 11.0, "2026-08-02")
     assert dst == {}
-    # Leaving the buy zone but only just below 65 (hysteresis) → suppressed as boundary noise.
+    # buy → hold is NOT an exit — buy was never in the (Strong-Buy-only) buy zone.
     dst2: dict = {}
-    _record_signal_move(dst2, row, "buy", "hold", "Hold", 64.5, 11.0, "2026-08-02")
+    _record_signal_move(dst2, row, "buy", "hold", "Hold", 55.0, 11.0, "2026-08-02")
     assert dst2 == {}
     # No prior signal (first observation) → ignored.
     dst3: dict = {}
