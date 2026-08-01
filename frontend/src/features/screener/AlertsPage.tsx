@@ -130,6 +130,8 @@ export default function AlertsPage() {
   const [moves, setMoves] = useState<SignalMove[]>([]);
   const [tab, setTab] = useState<Tab>("signals");
   const [region, setRegion] = useState("all");
+  const [sigDir, setSigDir] = useState<"all" | "buy" | "sell">("all");
+  const [sigRegion, setSigRegion] = useState("all");
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -147,6 +149,20 @@ export default function AlertsPage() {
   const results = useMemo(() => resultsFiled(cat, since), [cat, since]);
   const regions = useMemo(() => ["all", ...[...new Set(ins.map((t) => t.region))].sort()], [ins]);
   const insider = region === "all" ? ins : ins.filter((t) => t.region === region);
+
+  const sigRegions = useMemo(
+    () => ["all", ...[...new Set(moves.map((m) => m.region))].sort()],
+    [moves],
+  );
+  const sigMoves = useMemo(
+    () =>
+      moves.filter(
+        (m) =>
+          (sigDir === "all" || m.direction === sigDir) &&
+          (sigRegion === "all" || m.region === sigRegion),
+      ),
+    [moves, sigDir, sigRegion],
+  );
 
   const tabBtn = (id: Tab, label: string) => (
     <button
@@ -185,6 +201,43 @@ export default function AlertsPage() {
             ))}
           </div>
         )}
+        {tab === "signals" && (
+          <div className="ml-auto flex flex-wrap items-center gap-1.5">
+            {([
+              ["all", "All"],
+              ["buy", "▲ Buy"],
+              ["sell", "▼ Sell"],
+            ] as const).map(([d, label]) => (
+              <button
+                key={d}
+                onClick={() => setSigDir(d)}
+                className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
+                  sigDir === d
+                    ? d === "buy"
+                      ? "border-up bg-up/15 text-up"
+                      : d === "sell"
+                        ? "border-down bg-down/15 text-down"
+                        : "border-accent bg-accent/20 text-accent"
+                    : "border-base-500 bg-base-700 text-slate-300 hover:bg-base-600"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+            <span className="mx-1 h-4 w-px bg-base-600" />
+            {sigRegions.map((r) => (
+              <button
+                key={r}
+                onClick={() => setSigRegion(r)}
+                className={`rounded-full border px-2.5 py-0.5 text-xs font-medium uppercase ${
+                  sigRegion === r ? "border-accent bg-accent/20 text-accent" : "border-base-500 bg-base-700 text-slate-300 hover:bg-base-600"
+                }`}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        )}
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -197,7 +250,7 @@ export default function AlertsPage() {
                 over the last 30 days. Research context only — not investment advice.
               </div>
             </div>
-            <SignalMovesTable rows={moves} />
+            <SignalMovesTable rows={sigMoves} />
           </div>
         )}
         {tab === "events" && (
