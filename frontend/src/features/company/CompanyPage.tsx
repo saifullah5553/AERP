@@ -381,7 +381,8 @@ export default function CompanyPage() {
           <Card title="AI Research Summary">
             <p className="p-4 text-sm leading-relaxed text-slate-300">
               {/* Strip any legacy buy/sell/hold signal clause — research only. */}
-              {data.ai_summary.replace(/\s*Current signal:[^.]*\.\s*/i, " ").trim()}
+              {(data.ai_summary ?? "").replace(/\s*Current signal:[^.]*\.\s*/i, " ").trim() ||
+                "No research summary available for this security yet."}
             </p>
           </Card>
           <EstimatesSection sec={data.security as Row} />
