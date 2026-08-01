@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { api, type InsiderTx } from "@/lib/api";
+import { api, type InsiderTx, type NewsFeedItem } from "@/lib/api";
 import { buildAlerts, resultsFiled } from "@/lib/alerts";
 import { fmtCompact } from "@/lib/format";
 import type { CatalystsData } from "@/types/api";
 import { AlertRow } from "./NotificationBell";
 
-type Tab = "events" | "insider" | "results";
+type Tab = "events" | "news" | "insider" | "results";
 
 function shares(n: number | null): string {
   return n == null ? "—" : Math.round(n).toLocaleString();
@@ -65,6 +65,7 @@ function InsiderTable({ rows }: { rows: InsiderTx[] }) {
 export default function AlertsPage() {
   const [cat, setCat] = useState<CatalystsData | null>(null);
   const [ins, setIns] = useState<InsiderTx[]>([]);
+  const [news, setNews] = useState<NewsFeedItem[]>([]);
   const [tab, setTab] = useState<Tab>("events");
   const [region, setRegion] = useState("all");
 
@@ -72,6 +73,7 @@ export default function AlertsPage() {
     const ctrl = new AbortController();
     api.catalysts(ctrl.signal).then(setCat).catch(() => setCat(null));
     api.insiderFeed(ctrl.signal).then(setIns).catch(() => setIns([]));
+    api.news(ctrl.signal).then(setNews).catch(() => setNews([]));
     return () => ctrl.abort();
   }, []);
 
@@ -99,6 +101,7 @@ export default function AlertsPage() {
         <span className="text-lg font-bold text-slate-100">Market Alerts</span>
         <div className="flex items-center gap-1 rounded-full border border-base-600 p-0.5">
           {tabBtn("events", `Announcements (${alerts.length})`)}
+          {tabBtn("news", `News (${news.length})`)}
           {tabBtn("insider", `Insider (${ins.length})`)}
           {tabBtn("results", `Results Filed (${results.length})`)}
         </div>
@@ -126,6 +129,34 @@ export default function AlertsPage() {
           ) : (
             <div className="mx-auto max-w-3xl divide-y divide-base-700/50 p-2">
               {alerts.map((a) => <AlertRow key={a.id} a={a} />)}
+            </div>
+          )
+        )}
+        {tab === "news" && (
+          news.length === 0 ? (
+            <div className="p-8 text-center text-sm text-slate-500">No news.</div>
+          ) : (
+            <div className="mx-auto max-w-3xl divide-y divide-base-700/50 p-2">
+              {news.map((n, i) => (
+                <div key={i} className="flex items-start gap-3 px-3 py-2">
+                  <Link
+                    to={`/company/${encodeURIComponent(n.provider_symbol)}`}
+                    className="mt-0.5 shrink-0 rounded bg-base-700 px-1.5 py-0.5 text-[11px] font-semibold text-accent"
+                  >
+                    {n.symbol}
+                  </Link>
+                  <div className="min-w-0">
+                    <a href={n.url} target="_blank" rel="noreferrer" className="text-sm text-slate-200 hover:text-accent">
+                      {n.title}
+                    </a>
+                    <div className="text-[11px] text-slate-500">
+                      {n.source ?? "—"}
+                      {n.published_at ? ` · ${n.published_at.slice(0, 10)}` : ""}
+                      <span className="ml-1 uppercase">· {n.region}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           )
         )}

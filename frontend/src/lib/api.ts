@@ -61,6 +61,17 @@ export interface SignalMovesData {
   sell: SignalMove[];
 }
 
+export interface NewsFeedItem {
+  provider_symbol: string;
+  symbol: string;
+  name: string | null;
+  region: string;
+  title: string;
+  url: string;
+  source: string | null;
+  published_at: string | null;
+}
+
 export interface CotData {
   label: string;
   contract: string;
@@ -210,6 +221,11 @@ export const api = {
       buy: [],
       sell: [],
     }));
+  },
+  news(signal?: AbortSignal): Promise<NewsFeedItem[]> {
+    return getJson<{ items: NewsFeedItem[] }>(`${DATA_BASE}/news.json`, signal)
+      .then((d) => d.items || [])
+      .catch(() => []);
   },
   meta(signal?: AbortSignal): Promise<SnapshotMeta> {
     if (IS_STATIC) return getJson<SnapshotMeta>(`${DATA_BASE}/meta.json`, signal);

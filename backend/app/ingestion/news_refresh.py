@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -113,6 +114,57 @@ def refresh_news(
         cf.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
         patched += 1
 
-    result = {"targets": len(targets), "with_news": len(results), "patched": patched}
+    n_index = _write_news_index(out, rows)
+    result = {
+        "targets": len(targets), "with_news": len(results),
+        "patched": patched, "index": n_index,
+    }
     log.info("refresh-news: %s", result)
     return result
+
+
+# Auto-generated ticker/quote spam that Google News sometimes returns — not real news.
+_JUNK_RE = re.compile(r"\|\s*Price:|Chg%|\|\s*Chg|Trading at |Stock Price, Quote")
+
+
+def _write_news_index(out: Path, rows: list[dict], cap: int = 200) -> int:
+    """Aggregate a cross-market recent-headlines feed (news.json) from all company files,
+    balanced across markets (round-robin) so one market doesn't dominate the default view."""
+    meta = {
+        r.get("provider_symbol"): (r.get("symbol"), r.get("name"), r.get("region"))
+        for r in rows
+    }
+    company_dir = out / "company"
+    by_region: dict[str, list[dict]] = {}
+    for ps, (sym, name, region) in meta.items():
+        cf = company_dir / f"{ps}.json"
+        if not cf.exists():
+            continue
+        try:
+            arts = (json.loads(cf.read_text(encoding="utf-8")).get("news")) or []
+        except (OSError, json.JSONDecodeError):
+            continue
+        for a in arts[:3]:  # a few per company so the feed isn't dominated by one name
+            title = a.get("title") or ""
+            if not title or _JUNK_RE.search(title):
+                continue
+            by_region.setdefault(region, []).append({
+                "provider_symbol": ps, "symbol": sym, "name": name, "region": region,
+                "title": title, "url": a.get("url"),
+                "source": a.get("source"), "published_at": a.get("published_at"),
+            })
+    for lst in by_region.values():
+        lst.sort(key=lambda x: x.get("published_at") or "", reverse=True)
+    # Round-robin across markets so the default feed is balanced, not all one region.
+    items: list[dict] = []
+    i = 0
+    while len(items) < cap and any(i < len(v) for v in by_region.values()):
+        for lst in by_region.values():
+            if i < len(lst):
+                items.append(lst[i])
+        i += 1
+    items.sort(key=lambda x: x.get("published_at") or "", reverse=True)
+    (out / "news.json").write_text(
+        json.dumps({"items": items[:cap]}, ensure_ascii=False), encoding="utf-8"
+    )
+    return len(items[:cap])
