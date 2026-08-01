@@ -372,7 +372,7 @@ export default function CompanyPage() {
             {tab === "income" && <StatementsTable rows={data.statements.income} fields={INCOME_FIELDS} />}
             {tab === "balance" && <StatementsTable rows={data.statements.balance} fields={BALANCE_FIELDS} />}
             {tab === "cashflow" && <StatementsTable rows={data.statements.cashflow} fields={CASHFLOW_FIELDS} />}
-            {tab === "technicals" && <MetricGrid row={data.technical} items={TECHNICALS} />}
+            {tab === "technicals" && <MetricGrid row={data.technical ?? {}} items={TECHNICALS} />}
             {tab === "patterns" && <PatternsList patterns={data.patterns} />}
           </Card>
         </div>

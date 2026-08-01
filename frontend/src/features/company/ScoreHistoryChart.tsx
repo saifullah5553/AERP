@@ -1,8 +1,8 @@
 import type { ScorePoint } from "@/types/company";
 
 // A dependency-free inline-SVG line chart of the composite score over time.
-export default function ScoreHistoryChart({ history }: { history: ScorePoint[] }) {
-  const points = history
+export default function ScoreHistoryChart({ history }: { history: ScorePoint[] | null | undefined }) {
+  const points = (history ?? [])
     .filter((p) => p.composite !== null)
     .map((p) => ({ date: p.as_of, value: p.composite as number }));
 
