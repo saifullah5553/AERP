@@ -54,3 +54,4 @@ redisdata/
 # ...but DO version the compressed PSX inputs so the free CI refresh is self-contained.
 !/data/psx_csv.tar.gz
 !/data/psx_insider.csv
+data/fund_cache/

@@ -10,6 +10,7 @@ skipped, so it can run in chunks. Names yfinance has no statements for stay tech
 
 from __future__ import annotations
 
+import contextlib
 import json
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -21,6 +22,7 @@ from app.engines.composite.signals import derive_signal
 from app.engines.fundamental.health import altman_z_score, piotroski_f_score
 from app.engines.fundamental.ratios import MarketInputs, compute_ratios
 from app.engines.fundamental.scoring import score_fundamentals
+from app.ingestion.providers.base import StatementDTO
 from app.ingestion.providers.yahoo import YahooProvider
 from app.ingestion.tech_refresh import _f, _reblend
 from app.models.enums import StatementPeriod
@@ -28,8 +30,12 @@ from app.models.enums import StatementPeriod
 log = get_logger(__name__)
 
 
+# Per-share / share-count fields are NOT flows — carry the latest, don't sum over 4 quarters.
+_SHARE_FIELDS = {"weighted_shares", "shares_diluted", "shares_basic", "shares_outstanding"}
+
+
 class _Row:
-    """Attribute view over a StatementDTO.values dict (missing field → None)."""
+    """Attribute view over a values dict (missing field → None)."""
 
     def __init__(self, values: dict, fiscal_date):
         object.__setattr__(self, "_v", values)
@@ -39,19 +45,86 @@ class _Row:
         return self._v.get(k)
 
 
-def _score_one(sym: str, price: float | None, regime, provider: YahooProvider):
-    """Return (fund_score, ratios, metrics, statements_by_type) for a symbol, or None."""
-    dtos = provider.get_statements(sym, StatementPeriod.ANNUAL, limit=5)
-    if not dtos:
-        return None
+def _dtos_to_cache(dtos: list) -> list:
+    return [[d.statement_type, d.fiscal_date.isoformat(), d.values] for d in dtos]
+
+
+def _cache_to_dtos(raw: list) -> list:
+    from datetime import date
+    out = []
+    for t, fd, v in raw:
+        try:
+            out.append(StatementDTO(statement_type=t, fiscal_date=date.fromisoformat(fd),
+                                    period=StatementPeriod.QUARTER, values=v))
+        except Exception:  # noqa: BLE001
+            continue
+    return out
+
+
+def _get_statements(sym: str, provider: YahooProvider, cache_dir: Path | None):
+    """(quarterly, annual) statement DTOs — from the local cache if present, else yfinance
+    (and cached). Caching avoids re-hitting yfinance on re-runs / re-scoring."""
+    cf = (cache_dir / f"{sym}.json") if cache_dir else None
+    if cf and cf.exists():
+        try:
+            raw = json.loads(cf.read_text(encoding="utf-8"))
+            return _cache_to_dtos(raw.get("q", [])), _cache_to_dtos(raw.get("a", []))
+        except (OSError, json.JSONDecodeError):
+            pass
+    q = provider.get_statements(sym, StatementPeriod.QUARTER, limit=12)
+    a = provider.get_statements(sym, StatementPeriod.ANNUAL, limit=5)
+    if cf and (q or a):  # only cache real hits, so a transient 429 can be retried
+        # OSError e.g. on a Windows-reserved filename — just skip the cache.
+        with contextlib.suppress(OSError):
+            cf.write_text(json.dumps({"q": _dtos_to_cache(q), "a": _dtos_to_cache(a)}),
+                          encoding="utf-8")
+    return q, a
+
+
+def _group(dtos: list) -> dict[str, list]:
     by_type: dict[str, list] = {"income": [], "balance": [], "cashflow": []}
     for d in dtos:
         by_type.setdefault(d.statement_type, []).append(d)
     for lst in by_type.values():
-        lst.sort(key=lambda d: d.fiscal_date)  # ascending, as the engine expects
-    inc = [_Row(d.values, d.fiscal_date) for d in by_type.get("income", [])]
-    bal = [_Row(d.values, d.fiscal_date) for d in by_type.get("balance", [])]
-    cf = [_Row(d.values, d.fiscal_date) for d in by_type.get("cashflow", [])]
+        lst.sort(key=lambda d: d.fiscal_date)  # ascending
+    return by_type
+
+
+def _roll_ttm(dtos: list) -> tuple[list, list, list]:
+    """Quarterly StatementDTOs → TTM series (same rule as ingestion.ttm.build_ttm_for_security):
+    income & cash-flow flows summed over each trailing 4 quarters; balance carried per-quarter."""
+    by_type = _group(dtos)
+    inc: list = []
+    cf: list = []
+    for st, dst in (("income", inc), ("cashflow", cf)):
+        rows = by_type.get(st, [])
+        for i in range(3, len(rows)):
+            window = rows[i - 3: i + 1]
+            keys: set = set().union(*(w.values.keys() for w in window)) if window else set()
+            vals: dict = {}
+            for k in keys:
+                present = [float(w.values[k]) for w in window if w.values.get(k) is not None]
+                if len(present) == 4:  # only a clean 4-quarter TTM
+                    vals[k] = present[-1] if k in _SHARE_FIELDS else sum(present)
+            if vals:
+                dst.append(_Row(vals, rows[i].fiscal_date))
+    bal = [_Row(dict(r.values), r.fiscal_date) for r in by_type.get("balance", [])]
+    return inc, bal, cf
+
+
+def _score_one(price: float | None, regime, q: list, a: list):
+    """Return (fund_score, ratios, metrics, (inc,bal,cf), period_label), or None.
+
+    Prefers TTM (rolled from quarterly) for current-through-latest-quarter figures; falls back
+    to annual when there aren't 4 clean quarters."""
+    period_label = "ttm"
+    inc, bal, cf = _roll_ttm(q) if q else ([], [], [])
+    if not inc or not bal:  # not enough quarters → annual fallback
+        ag = _group(a)
+        inc = [_Row(d.values, d.fiscal_date) for d in ag.get("income", [])]
+        bal = [_Row(d.values, d.fiscal_date) for d in ag.get("balance", [])]
+        cf = [_Row(d.values, d.fiscal_date) for d in ag.get("cashflow", [])]
+        period_label = "annual"
     if not inc or not bal:
         return None
 
@@ -70,17 +143,17 @@ def _score_one(sym: str, price: float | None, regime, provider: YahooProvider):
         "altman_z": ratios.altman_z,
     }
     result = score_fundamentals(metrics)
-    return result.score, ratios, metrics, by_type
+    return result.score, ratios, metrics, (inc, bal, cf), period_label
 
 
-def _statements_json(by_type: dict[str, list]) -> dict:
+def _statements_json(inc: list, bal: list, cf: list, period: str) -> dict:
     """Newest-first statement lists for the company page (matches the DB export shape)."""
     out: dict[str, list] = {}
-    for st in ("income", "balance", "cashflow"):
-        rows = sorted(by_type.get(st, []), key=lambda d: d.fiscal_date, reverse=True)
+    for st, rows in (("income", inc), ("balance", bal), ("cashflow", cf)):
+        srt = sorted(rows, key=lambda r: r.fiscal_date, reverse=True)
         out[st] = [
-            {**d.values, "period": "annual", "fiscal_date": d.fiscal_date.isoformat()}
-            for d in rows
+            {**r._v, "period": period, "fiscal_date": r.fiscal_date.isoformat()}
+            for r in srt
         ]
     return out
 
@@ -95,10 +168,15 @@ def _ratios_json(ratios) -> dict:
 
 
 def refresh_fundamentals_web(
-    data_dir: str | Path, region: str, workers: int = 6, limit: int | None = None
+    data_dir: str | Path, region: str, workers: int = 6, limit: int | None = None,
+    cache_dir: str | Path | None = None,
 ) -> dict[str, int]:
     out = Path(data_dir)
     cdir = out / "company"
+    # Repo-root data/fund_cache/ (outside the deployed snapshot): backend/app/ingestion → AERP.
+    cache = (Path(cache_dir) if cache_dir
+             else Path(__file__).resolve().parents[3] / "data" / "fund_cache")
+    cache.mkdir(parents=True, exist_ok=True)
     rows: list[dict] = json.loads((out / "screener.json").read_text(encoding="utf-8"))
     try:
         reg = json.loads((out / "macro_regime.json").read_text(encoding="utf-8"))
@@ -119,7 +197,8 @@ def refresh_fundamentals_web(
 
     def work(r: dict):
         try:
-            return r, _score_one(r["provider_symbol"], _f(r.get("price")), regime, provider)
+            q, a = _get_statements(r["provider_symbol"], provider, cache)
+            return r, _score_one(_f(r.get("price")), regime, q, a)
         except Exception:  # noqa: BLE001 - one bad ticker shouldn't stop the batch
             return r, None
 
@@ -128,7 +207,7 @@ def refresh_fundamentals_web(
         for r, res in pool.map(work, targets):
             if res is None:
                 continue
-            fund, ratios, metrics, by_type = res
+            fund, ratios, metrics, (inc, bal, cf_rows), period_label = res
             if fund is None:
                 continue
             tech = _f(r.get("technical_score"))
@@ -149,11 +228,11 @@ def refresh_fundamentals_web(
             r["eps_growth"] = ratios.eps_growth
             r["pe_ttm"] = ratios.pe_ratio
 
-            cf = cdir / f"{r['provider_symbol']}.json"
-            if cf.exists():
+            cjson = cdir / f"{r['provider_symbol']}.json"
+            if cjson.exists():
                 try:
-                    d = json.loads(cf.read_text(encoding="utf-8"))
-                    d["statements"] = _statements_json(by_type)
+                    d = json.loads(cjson.read_text(encoding="utf-8"))
+                    d["statements"] = _statements_json(inc, bal, cf_rows, period_label)
                     d["ratios"] = _ratios_json(ratios)
                     d["fundamentals"] = {
                         "pe_ttm": ratios.pe_ratio, "roe": ratios.roe,
@@ -168,7 +247,7 @@ def refresh_fundamentals_web(
                     if isinstance(d.get("signal"), dict):
                         d["signal"]["signal_type"] = sig.signal.value
                         d["signal"]["label"] = sig.label
-                    cf.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+                    cjson.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
                 except (OSError, json.JSONDecodeError):
                     pass
             updated += 1
