@@ -197,6 +197,18 @@ def cmd_expand_universe(args: argparse.Namespace) -> None:
     log.info("expand-universe: %s", expand_universe(out, region=args.region, limit=args.limit))
 
 
+def cmd_refresh_fundamentals_web(args: argparse.Namespace) -> None:
+    """Backfill real fundamentals for the expanded technical-only universe via yfinance
+    (residential IP only). Reuses the fundamental engine; patches the snapshot. Resumable."""
+    from app.ingestion.fundamentals_web import refresh_fundamentals_web
+
+    out = args.out or "../frontend/public/data"
+    log.info(
+        "refresh-fundamentals-web: %s",
+        refresh_fundamentals_web(out, region=args.region, limit=args.limit),
+    )
+
+
 def cmd_ingest_profiles(args: argparse.Namespace) -> None:
     from app.db.session import session_scope
     from app.ingestion.profiles import ingest_profiles
@@ -635,6 +647,9 @@ def build_parser() -> argparse.ArgumentParser:
     eu = add("expand-universe", cmd_expand_universe, limit=True)
     eu.add_argument("--region", required=True, choices=["us", "india", "australia"])
     eu.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
+    fw = add("refresh-fundamentals-web", cmd_refresh_fundamentals_web, limit=True)
+    fw.add_argument("--region", required=True, choices=["us", "india", "australia"])
+    fw.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
     add("all", cmd_all)
     return parser
 

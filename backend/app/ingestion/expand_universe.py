@@ -22,6 +22,7 @@ from typing import Any
 import httpx
 
 from app.core.logging import get_logger
+from app.engines.composite.engine import WEIGHTS
 from app.engines.composite.signals import derive_signal
 from app.engines.technical.engine import _scoring_metrics
 from app.engines.technical.indicators import compute_indicators
@@ -29,6 +30,16 @@ from app.engines.technical.scoring import score_technical
 from app.ingestion.tech_refresh import fetch_history
 
 log = get_logger(__name__)
+
+# Technical-only names know just 1 of the 5 composite factors, so we don't let a raw technical
+# score masquerade as a full composite (which would flood the top of the composite-sorted
+# screener above fully-analyzed names). Shrink toward neutral 50 by the technical weight:
+# only ~35% of the way from 50 to the technical reading — honest low-conviction scoring.
+_TECH_W = WEIGHTS["technical"]
+
+
+def _tech_only_composite(tech: float) -> float:
+    return round(50.0 + (tech - 50.0) * _TECH_W, 2)
 
 _UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)"
 
@@ -97,7 +108,7 @@ def _reserved(provider_symbol: str) -> bool:
     return provider_symbol.split(".", 1)[0].upper() in _RESERVED
 
 
-def _company_json(row: dict, price: float | None, tech: float, sig, dates) -> dict:
+def _company_json(row: dict, price: float | None, tech: float, comp: float, sig, dates) -> dict:
     """A lean company detail (technical-only) that the company page renders without errors."""
     return {
         "security": {
@@ -106,7 +117,7 @@ def _company_json(row: dict, price: float | None, tech: float, sig, dates) -> di
             "asset_class": "equity", "sector": None, "currency": None,
         },
         "quote": {"price": price},
-        "scores": {"technical": round(tech, 2), "composite": round(tech, 2)},
+        "scores": {"technical": round(tech, 2), "composite": comp},
         "signal": {"signal_type": sig.signal.value, "label": sig.label,
                    "signal_since": dates[-1] if dates else None},
         "fundamentals": {}, "ratios": {},
@@ -155,19 +166,20 @@ def expand_universe(
         tech = score_technical(_scoring_metrics(compute_indicators(high, low, close, vol))).score
         if tech is None:
             continue
-        sig = derive_signal(tech, 0.35, {"technical": tech})
+        comp = _tech_only_composite(tech)
+        sig = derive_signal(comp, _TECH_W, {"technical": tech})
         price = float(close[-1])
         row = {
             "provider_symbol": c["provider_symbol"], "symbol": c["symbol"],
             "name": c["name"], "region": c["region"], "market_code": c["market_code"],
             "sector": None, "price": round(price, 4),
-            "technical_score": round(tech, 2), "composite_score": round(tech, 2),
+            "technical_score": round(tech, 2), "composite_score": comp,
             "signal": sig.signal.value, "signal_label": sig.label,
             "signal_since": dates[-1] if dates else None,
         }
         rows.append(row)
         (company_dir / f"{c['provider_symbol']}.json").write_text(
-            json.dumps(_company_json(c, price, tech, sig, dates), ensure_ascii=False),
+            json.dumps(_company_json(c, price, tech, comp, sig, dates), ensure_ascii=False),
             encoding="utf-8",
         )
         added += 1
