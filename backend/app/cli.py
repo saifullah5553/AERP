@@ -176,6 +176,18 @@ def cmd_refresh_prices(args: argparse.Namespace) -> None:
     log.info("refresh-prices: %s", refresh_prices(out, limit=args.limit))
 
 
+def cmd_refresh_news(args: argparse.Namespace) -> None:
+    """Patch per-company news in the snapshot via Google News RSS (keyless, CI-friendly).
+    Touches only the news field of company/*.json — never scores/fundamentals."""
+    from app.ingestion.news_refresh import refresh_news
+
+    out = args.out or "../frontend/public/data"
+    log.info(
+        "refresh-news: %s",
+        refresh_news(out, limit=args.limit, only_missing=args.only_missing),
+    )
+
+
 def cmd_ingest_profiles(args: argparse.Namespace) -> None:
     from app.db.session import session_scope
     from app.ingestion.profiles import ingest_profiles
@@ -608,6 +620,9 @@ def build_parser() -> argparse.ArgumentParser:
     rp.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
     rt = add("refresh-technicals", cmd_refresh_technicals, limit=True)
     rt.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
+    rn = add("refresh-news", cmd_refresh_news, limit=True)
+    rn.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
+    rn.add_argument("--only-missing", action="store_true", help="only names without news yet")
     add("all", cmd_all)
     return parser
 

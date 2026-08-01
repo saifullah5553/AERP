@@ -40,6 +40,33 @@ jobs:
         run: |
           python -m app.cli refresh-prices || true
           python -m app.cli refresh-technicals || true
+          # Per-company news via Google News RSS (keyless). Snapshot is composite-sorted, so
+          # --limit refreshes the highest-scored names first; the rest fill over subsequent runs.
+          python -m app.cli refresh-news --limit 250 || true
+
+      - name: Detect new Buy/Exit signals (for email)
+        run: |
+          git show HEAD:frontend/public/data/signal_moves.json > /tmp/old_sig.json 2>/dev/null || echo '{}' > /tmp/old_sig.json
+          COUNT=$(python scripts/diff_new_signals.py /tmp/old_sig.json /tmp/signal_body.txt || echo 0)
+          echo "NEW_SIGNALS=$COUNT" >> "$GITHUB_ENV"
+          echo "Detected $COUNT new buy/exit signal(s)."
+
+      - name: Email new Buy/Exit signals
+        # No-ops harmlessly if mail secrets are unset (continue-on-error), so the refresh
+        # never fails over email.
+        if: ${{ env.NEW_SIGNALS != '0' && env.NEW_SIGNALS != '' }}
+        continue-on-error: true
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER || 'smtp.gmail.com' }}
+          server_port: ${{ secrets.MAIL_PORT || 465 }}
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "AERP — ${{ env.NEW_SIGNALS }} new Buy/Exit signal(s)"
+          to: ${{ secrets.MAIL_TO }}
+          from: AERP Alerts <${{ secrets.MAIL_USERNAME }}>
+          body: file:///tmp/signal_body.txt
 
       - name: Commit refreshed snapshot
         run: |
