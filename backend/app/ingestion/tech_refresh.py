@@ -297,13 +297,19 @@ def refresh_technicals(
         fund = _f(sc.get("fundamental"))
         if fund is None:
             fund = _f(r.get("fundamental_score"))
-        base, coverage, present = _reblend(fund, _f(tech), _f(sc.get("momentum")),
-                                           _f(sc.get("quality")), _f(sc.get("risk")))
-        if base is None:
-            continue
+        mom, qual, risk = _f(sc.get("momentum")), _f(sc.get("quality")), _f(sc.get("risk"))
         regime = regime_map.get(r.get("region"))
         de = _f(r.get("debt_to_equity"))
-        composite, _bd = apply_regime_modifier(base, regime, de)
+        if fund is None and mom is None and qual is None and risk is None:
+            # Technical-only name: shrink toward neutral so a raw technical score can't
+            # masquerade as a full composite (keeps the expanded tail from flooding the top).
+            composite = round(50.0 + (tech - 50.0) * WEIGHTS["technical"], 2)
+            coverage, present = WEIGHTS["technical"], {"technical": tech}
+        else:
+            base, coverage, present = _reblend(fund, _f(tech), mom, qual, risk)
+            if base is None:
+                continue
+            composite, _bd = apply_regime_modifier(base, regime, de)
         sig = derive_signal(composite, coverage, present)
 
         # Backtest the real signal-inception date + return-since (fixes "all show today").
