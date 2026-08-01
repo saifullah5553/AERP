@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import json
+
 import numpy as np
 from app.ingestion.tech_refresh import (
+    _MAX_MOVES_PER_RUN,
     _composite_at,
     _record_signal_move,
     _signal_since,
     _signal_value_at,
+    _update_signal_moves,
 )
 
 # A rising close series (long enough for the indicators + lookback walk).
@@ -81,3 +85,24 @@ def test_record_signal_move_ignores_jitter_and_non_zone_moves() -> None:
     dst3: dict = {}
     _record_signal_move(dst3, row, None, "strong_buy", "Strong Buy", 81.0, 10.0, "2026-08-01")
     assert dst3 == {}
+
+
+def _move(i: int, direction: str = "sell") -> dict:
+    return {"provider_symbol": f"S{i}.KA", "symbol": f"S{i}", "name": None, "region": "psx",
+            "direction": direction, "from": "strong_buy", "to": "hold", "label": "Hold",
+            "composite": 55.0, "price": 1.0, "date": "2026-08-01"}
+
+
+def test_update_signal_moves_drops_recompute_batch(tmp_path) -> None:
+    # A flood of same-run crossings (> the cap) is a score re-baseline, not real events → dropped.
+    batch = {f"S{i}.KA": _move(i) for i in range(_MAX_MOVES_PER_RUN + 5)}
+    _update_signal_moves(tmp_path, batch, "2026-08-01")
+    saved = json.loads((tmp_path / "signal_moves.json").read_text(encoding="utf-8"))
+    assert saved["all"] == []
+
+
+def test_update_signal_moves_keeps_small_genuine_batch(tmp_path) -> None:
+    few = {f"S{i}.KA": _move(i) for i in range(3)}
+    _update_signal_moves(tmp_path, few, "2026-08-01")
+    saved = json.loads((tmp_path / "signal_moves.json").read_text(encoding="utf-8"))
+    assert len(saved["sell"]) == 3

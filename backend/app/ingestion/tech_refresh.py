@@ -392,8 +392,21 @@ def _record_signal_move(
     }
 
 
+_MAX_MOVES_PER_RUN = 10  # more crossings than this in one run = a score-recompute batch, not real
+
+
 def _update_signal_moves(out: Path, moves: dict[str, dict], today: str) -> None:
-    """Rolling 30-day feed of strong-buy crossings (buy/sell timing alerts)."""
+    """Rolling 30-day feed of strong-buy crossings (buy/exit timing alerts)."""
+    # A genuine trading day flips only a handful of names across the Strong-Buy line. A big
+    # batch means the composite was re-baselined (formula/fundamentals rebuild), so every
+    # prior-vs-new diff fires on the same run date — a misleading cluster, not real events.
+    # Drop the whole batch rather than stamp dozens of fake same-day transitions.
+    if len(moves) > _MAX_MOVES_PER_RUN:
+        log.info(
+            "signal-moves: %d crossings in one run (> %d) — treating as a recompute batch, "
+            "not recording", len(moves), _MAX_MOVES_PER_RUN
+        )
+        moves = {}
     path = out / "signal_moves.json"
     recent: dict[str, dict] = {}
     if path.exists():
