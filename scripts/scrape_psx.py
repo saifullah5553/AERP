@@ -27,6 +27,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 DATA_DIR = os.environ.get("AERP_PSX_CSV_DIR", "data/psx_csv")
 os.makedirs(DATA_DIR, exist_ok=True)
 
+# Targeted refresh: AERP_PSX_SYMBOLS="LUCK,SYS,FFC" scrapes only those (skips the full-list
+# harvest); AERP_PSX_FORCE=1 re-downloads even if a CSV already exists (for fresh filings).
+_ONLY = [s.strip().upper() for s in os.environ.get("AERP_PSX_SYMBOLS", "").split(",") if s.strip()]
+_FORCE = os.environ.get("AERP_PSX_FORCE", "").lower() in {"1", "true", "yes"}
+
 LIST_URL = "https://stockanalysis.com/list/pakistan-stock-exchange/"
 STATEMENTS = {
     "Income_Statement": "financials",
@@ -88,8 +93,8 @@ def scrape_table(page, url: str) -> pd.DataFrame | None:
 def process_symbol(page, symbol: str) -> None:
     for name, path in STATEMENTS.items():
         csv_file = os.path.join(DATA_DIR, f"{symbol}_{name}.csv")
-        if os.path.exists(csv_file) and os.path.getsize(csv_file) > 10:
-            continue  # incremental cache: skip already-downloaded files
+        if not _FORCE and os.path.exists(csv_file) and os.path.getsize(csv_file) > 10:
+            continue  # incremental cache: skip already-downloaded files (unless forced)
         url = f"https://stockanalysis.com/quote/psx/{symbol}/{path}/?p=trailing"
         df = scrape_table(page, url)
         if df is not None and not df.empty:
@@ -111,8 +116,10 @@ def main() -> None:
                         "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"),
         )
         page = context.new_page()
-        symbols = harvest_symbols(page)
-        logging.info("Processing %d symbols → %s", len(symbols), DATA_DIR)
+        symbols = _ONLY or harvest_symbols(page)
+        if _ONLY:
+            logging.info("Targeted refresh of %d symbol(s): %s", len(_ONLY), ", ".join(_ONLY))
+        logging.info("Processing %d symbols → %s (force=%s)", len(symbols), DATA_DIR, _FORCE)
         for i, symbol in enumerate(symbols, 1):
             logging.info("[%d/%d] %s", i, len(symbols), symbol)
             try:

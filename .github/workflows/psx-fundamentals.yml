@@ -1,0 +1,74 @@
+name: PSX Fundamentals Refresh
+
+# Twice a week during results season, re-scrape the stockanalysis financials for ONLY the
+# PSX companies that recently announced results (from catalysts.json), refresh their CSVs,
+# and commit the updated data/psx_csv.tar.gz. The 30-min "Refresh Demo Data" pipeline then
+# re-ingests those CSVs (ingest-psx → compute → export) automatically.
+#
+# Why Playwright: stockanalysis renders the full statement tables client-side, so a keyless
+# httpx fetch only sees condensed summaries — the browser scrape is the only way to get the
+# full income/balance/cash-flow detail the fundamental engine needs.
+#
+# Safe by construction: the scraper writes complete CSVs or nothing, and we commit only when
+# something actually changed — a blocked/empty run is a harmless no-op (no bad data).
+on:
+  schedule:
+    - cron: "20 2 * * 1,4" # Mon & Thu 02:20 UTC
+  workflow_dispatch:
+    inputs:
+      symbols:
+        description: "Comma-separated PSX symbols to refresh (blank = auto from recent results)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install playwright pandas && python -m playwright install --with-deps chromium
+
+      - name: Unpack existing PSX CSVs
+        run: |
+          mkdir -p data/psx_csv
+          tar xzf data/psx_csv.tar.gz -C data 2>/dev/null || true
+
+      - name: Pick symbols that filed results recently
+        id: pick
+        run: |
+          MANUAL="${{ github.event.inputs.symbols }}"
+          if [ -n "$MANUAL" ]; then
+            SYMS="$MANUAL"
+          else
+            SYMS=$(python scripts/psx_result_symbols.py 45 40)
+          fi
+          echo "SYMS=$SYMS" >> "$GITHUB_ENV"
+          echo "Symbols to refresh: $SYMS"
+
+      - name: Scrape refreshed fundamentals (targeted, forced)
+        if: ${{ env.SYMS != '' }}
+        env:
+          AERP_PSX_CSV_DIR: data/psx_csv
+          AERP_PSX_SYMBOLS: ${{ env.SYMS }}
+          AERP_PSX_FORCE: "1"
+        run: python scripts/scrape_psx.py || true
+
+      - name: Re-pack and commit if changed
+        if: ${{ env.SYMS != '' }}
+        run: |
+          tar czf data/psx_csv.tar.gz -C data psx_csv
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/psx_csv.tar.gz
+          if git diff --cached --quiet; then
+            echo "No fundamentals changed."
+          else
+            git commit -m "chore: refresh PSX fundamentals CSVs (recent results)"
+            git push || echo "push skipped"
+          fi
