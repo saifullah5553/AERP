@@ -76,13 +76,12 @@ Free building blocks:
    - Add secret `DATABASE_URL` = the Neon string.
 3. **Populate the database**: Actions tab → *Populate Live Backend* → *Run
    workflow*. (It also runs every 6h.) This migrates + ingests + computes into Neon.
-4. **Render** → *New → Blueprint* → point at `infra/render.yaml` **or** create a
-   single free Web Service from `backend/Dockerfile` with env:
-   - `DATABASE_URL` = the Neon string
-   - `RUN_MIGRATIONS` = `1`
-   - `AERP_CORS_ORIGINS` = `https://saifullah5553.github.io`
-   - `AERP_SECRET_KEY` = any long random string
-   Copy the service URL, e.g. `https://aerp-api.onrender.com`.
+4. **Render** → *New → Blueprint* → point at **`infra/render-free.yaml`** (the lean
+   free-tier blueprint: one Web Service, no paid Postgres/Redis/workers). When prompted,
+   paste the Neon string as `DATABASE_URL`; `AERP_SECRET_KEY` is auto-generated and
+   `AERP_CORS_ORIGINS` is preset to the Pages origin.
+   (Use `infra/render.yaml` instead only if you want the full paid stack with Render
+   Postgres + Redis + Celery.) Copy the service URL, e.g. `https://aerp-api.onrender.com`.
 5. **Point the frontend at it**: repo *Settings → Secrets and variables → Actions →
    Variables* → add variable `VITE_API_BASE` = the Render URL. Then Actions →
    *Deploy Pages* → *Run workflow*.

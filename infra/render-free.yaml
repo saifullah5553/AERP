@@ -1,0 +1,38 @@
+# Lean FREE-tier Render blueprint for AERP — one Web Service, no paid add-ons.
+#
+# Deploy: Render dashboard → "New +" → "Blueprint" → point at this file.
+# Bring your own free Postgres from Neon (neon.tech): create a project, copy the
+# connection string, and set DATABASE_URL in the Render dashboard when prompted.
+#
+# What this intentionally OMITS vs infra/render.yaml (the full, paid blueprint):
+#   - Render Postgres  → use Neon's free tier instead (DATABASE_URL below)
+#   - Redis            → the app fails open without it (rate-limit + cache degrade gracefully)
+#   - Celery worker/beat → GitHub Actions (populate-backend.yml) is the scheduler
+# The frontend stays on GitHub Pages (free); point it here via the VITE_API_BASE repo
+# variable (see docs/DEPLOY-FREE.md, Option B).
+
+services:
+  - type: web
+    name: aerp-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: RUN_MIGRATIONS
+        value: "1"
+      - key: AERP_ENV
+        value: production
+      - key: AERP_DEBUG
+        value: "false"
+      - key: AERP_SECRET_KEY
+        generateValue: true
+      # Paste your Neon connection string (postgresql://…) in the Render dashboard.
+      - key: DATABASE_URL
+        sync: false
+      # Your deployed frontend origin (GitHub Pages).
+      - key: AERP_CORS_ORIGINS
+        value: https://saifullah5553.github.io
+      - key: AERP_RATE_LIMIT_PER_MINUTE
+        value: "120"
