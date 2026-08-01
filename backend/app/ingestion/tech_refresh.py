@@ -86,8 +86,8 @@ def _reblend(fund, tech, mom, qual, risk) -> tuple[float | None, float, dict]:
     return base, round(total_w, 4), present
 
 
-def _signal_value_at(high, low, close, vol, k, legs, regime, de) -> str | None:
-    """The derived signal value using only the first k bars (for inception backtesting)."""
+def _composite_at(high, low, close, vol, k, legs, regime, de):
+    """Recomputed (composite, coverage, present) using only the first k bars, or None."""
     ind = compute_indicators(high[:k], low[:k], close[:k], vol[:k])
     tech = score_technical(_scoring_metrics(ind)).score
     if tech is None:
@@ -97,17 +97,34 @@ def _signal_value_at(high, low, close, vol, k, legs, regime, de) -> str | None:
     if base is None:
         return None
     comp, _ = apply_regime_modifier(base, regime, de)
-    return derive_signal(comp, cov, present).signal.value
+    return comp, cov, present
 
 
-def _signal_since(dates, high, low, close, vol, legs, regime, de, current, lookback=250):
+def _signal_value_at(high, low, close, vol, k, legs, regime, de, comp_offset=0.0) -> str | None:
+    """The derived signal value using only the first k bars (for inception backtesting).
+
+    ``comp_offset`` is a constant added to the recomputed composite so the series can be
+    calibrated to a committed score (see ``_backtest_psx``): our close-only EOD history
+    scores the technical leg a little differently than the live pipeline (which also folds
+    in today's real OHLC bar), so we anchor the recompute to the shown score and let the
+    real price trajectory decide only *when* the signal changed.
+    """
+    c = _composite_at(high, low, close, vol, k, legs, regime, de)
+    if c is None:
+        return None
+    comp, cov, present = c
+    return derive_signal(comp + comp_offset, cov, present).signal.value
+
+
+def _signal_since(dates, high, low, close, vol, legs, regime, de, current,
+                  lookback=250, comp_offset=0.0):
     """Walk back over history to the earliest day the current signal has held → (date, close).
     Real inception, not fabricated — capped at `lookback` trading days."""
     n = len(close)
     floor = max(MIN_BARS - 1, n - 1 - lookback)
     inception = floor
     for j in range(n - 1, floor - 1, -1):
-        s = _signal_value_at(high, low, close, vol, j + 1, legs, regime, de)
+        s = _signal_value_at(high, low, close, vol, j + 1, legs, regime, de, comp_offset)
         if s != current:  # includes None → treat as boundary
             inception = j + 1
             break
@@ -173,10 +190,27 @@ def _backtest_psx(rows, company, regime_map, today, limit):
             fund = _f(r.get("fundamental_score"))
         legs = (fund, _f(sc.get("momentum")), _f(sc.get("quality")), _f(sc.get("risk")))
         de = _f(r.get("debt_to_equity"))
-        if _signal_value_at(close, close, close, vol, len(close), legs, regime, de) != committed:
-            continue  # only date it when our EOD-recomputed signal agrees with the shown one
+
+        # Anchor the EOD recompute to the committed composite: our close-only history scores
+        # the technical leg a touch differently than the live pipeline, so instead of
+        # rejecting every small mismatch we shift the whole recomputed series by a constant
+        # so "today" reproduces the shown score, then let the real price trajectory decide
+        # WHEN the signal last changed. Skip only when even the anchored signal can't match
+        # the shown one (coverage/legs genuinely diverged) or the shift is implausibly large.
+        cur = _composite_at(close, close, close, vol, len(close), legs, regime, de)
+        committed_comp = _f(r.get("composite_score"))
+        if cur is None or committed_comp is None:
+            continue
+        offset = committed_comp - cur[0]
+        if abs(offset) > 40:
+            continue
+        anchored = _signal_value_at(
+            close, close, close, vol, len(close), legs, regime, de, offset
+        )
+        if anchored != committed:
+            continue
         since, price_at = _signal_since(
-            dates, close, close, close, vol, legs, regime, de, committed
+            dates, close, close, close, vol, legs, regime, de, committed, comp_offset=offset
         )
         cur_price = _f(r.get("price")) or float(close[-1])
         ret = round((cur_price - price_at) / price_at * 100.0, 2) if price_at else None
