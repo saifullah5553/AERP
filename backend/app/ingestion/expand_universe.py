@@ -87,6 +87,15 @@ def fetch_asx_symbols() -> list[dict]:
 
 _SOURCES = {"us": fetch_us_symbols, "india": fetch_nse_symbols, "australia": fetch_asx_symbols}
 
+# Windows can't create files whose base name is a reserved device (PRN.AX.json fails). The
+# snapshot is authored on Windows, so skip those few tickers rather than crash the batch.
+_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(10)),
+             *(f"LPT{i}" for i in range(10))}
+
+
+def _reserved(provider_symbol: str) -> bool:
+    return provider_symbol.split(".", 1)[0].upper() in _RESERVED
+
 
 def _company_json(row: dict, price: float | None, tech: float, sig, dates) -> dict:
     """A lean company detail (technical-only) that the company page renders without errors."""
@@ -115,7 +124,10 @@ def expand_universe(
     have = {r.get("provider_symbol") for r in rows}
 
     source = _SOURCES[region]
-    candidates = [c for c in source() if c["provider_symbol"] not in have]
+    candidates = [
+        c for c in source()
+        if c["provider_symbol"] not in have and not _reserved(c["provider_symbol"])
+    ]
     if limit is not None:
         candidates = candidates[:limit]
     log.info("expand-universe[%s]: %d new candidates", region, len(candidates))
