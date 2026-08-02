@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { api, type CotData } from "@/lib/api";
+import { api, type CotData, type SignalMove } from "@/lib/api";
 import {
   fmtChangePct,
   fmtCompact,
@@ -193,6 +193,7 @@ export default function CompanyPage() {
   const [catalysts, setCatalysts] = useState<CatalystsData | null>(null);
   const [meta, setMeta] = useState<SnapshotMeta | null>(null);
   const [cot, setCot] = useState<Record<string, CotData>>({});
+  const [moves, setMoves] = useState<SignalMove[]>([]);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -217,6 +218,9 @@ export default function CompanyPage() {
     api.catalysts(ctrl.signal).then(setCatalysts).catch(() => setCatalysts(null));
     api.meta(ctrl.signal).then(setMeta).catch(() => setMeta(null));
     api.cot(ctrl.signal).then(setCot).catch(() => setCot({}));
+    api.signalMoves(ctrl.signal)
+      .then((d) => setMoves([...d.buy, ...d.sell]))
+      .catch(() => setMoves([]));
     return () => ctrl.abort();
   }, []);
 
@@ -341,6 +345,9 @@ export default function CompanyPage() {
       <div className="grid gap-4 p-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
           <SignalCard signal={data.signal} />
+          <SignalEventsCard
+            events={moves.filter((m) => m.provider_symbol === String(sec.provider_symbol ?? ""))}
+          />
           {num(data.scores?.fundamental) == null && (
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200/90">
               <b>Technical-only coverage.</b> Fundamental statements aren&apos;t available for this
@@ -419,6 +426,31 @@ const SIGNAL_TONE: Record<string, { color: string; label: string }> = {
   sell: { color: "#ef4444", label: "Sell" },
   strong_sell: { color: "#b91c1c", label: "Strong Sell" },
 };
+
+// This name's own Buy/Exit transitions from the rolling 30-day feed (hidden when none).
+function SignalEventsCard({ events }: { events: SignalMove[] }) {
+  if (!events.length) return null;
+  const sorted = [...events].sort((a, b) => (a.date < b.date ? 1 : -1));
+  return (
+    <Card title="Recent Signal Events">
+      <div className="divide-y divide-base-700/50">
+        {sorted.map((e, i) => {
+          const buy = e.direction === "buy";
+          return (
+            <div key={i} className="flex items-center justify-between px-4 py-2 text-sm">
+              <span className="font-semibold" style={{ color: buy ? "#22c55e" : "#f59e0b" }}>
+                {buy ? "▲ Entered Strong Buy" : "▼ Exited Strong Buy"}
+              </span>
+              <span className="text-xs text-slate-400">
+                {e.from} → {e.to} · {e.date}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
 
 function SignalCard({ signal }: { signal: Row | null }) {
   if (!signal) return null;
