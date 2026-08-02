@@ -41,6 +41,7 @@ CURRENCY_COUNTRY: dict[str, str] = {
     "USD": "US", "EUR": "EMU", "GBP": "GB", "JPY": "JP", "AUD": "AU", "CAD": "CA",
     "CHF": "CH", "INR": "IN", "PKR": "PK", "SAR": "SA", "AED": "AE", "CNY": "CN",
     "NZD": "NZ", "ZAR": "ZA", "TRY": "TR", "BRL": "BR", "MXN": "MX",
+    "HKD": "HK", "QAR": "QA", "SGD": "SG",  # closes USDHKD/USDQAR/USDSGD fundamentals
 }
 
 
