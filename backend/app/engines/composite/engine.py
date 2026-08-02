@@ -30,12 +30,21 @@ from app.models.technical import TechnicalIndicator
 
 log = get_logger(__name__)
 
+# Weights are renormalised over whichever components a security actually has, so a component
+# set to 0.0 simply stops influencing the composite (it is still computed and displayed).
+#
+# 2026-08-02 re-weighting: the factor backtest measured every technical input as a NEGATIVE
+# predictor over 60d (momentum IC -0.094, pct_from_52w_high -0.087, adx -0.086), so weight was
+# moved off the measured-negative technical block and onto fundamentals. NOTE the fundamental
+# leg is itself UNVALIDATED - we have no point-in-time fundamentals to backtest it with - so
+# this is a reasoned response to the evidence, not a proven improvement. Re-run
+# `strategy-backtest` after any change here to see whether it actually helped.
 WEIGHTS = {
-    "fundamental": 0.35,
-    "technical": 0.35,
-    "momentum": 0.10,
-    "quality": 0.10,
-    "risk": 0.10,
+    "fundamental": 0.60,
+    "technical": 0.25,
+    "momentum": 0.15,
+    "quality": 0.0,
+    "risk": 0.0,
 }
 
 

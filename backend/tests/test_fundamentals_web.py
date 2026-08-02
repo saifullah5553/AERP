@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
+from app.engines.composite.engine import WEIGHTS
 from app.ingestion.expand_universe import _tech_only_composite
 from app.ingestion.fundamentals_web import _roll_ttm
 from app.ingestion.providers.base import StatementDTO
@@ -45,9 +46,11 @@ def test_roll_ttm_balance_is_snapshot_per_quarter() -> None:
 
 
 def test_tech_only_composite_shrinks_toward_neutral() -> None:
-    # 50 + (tech - 50) * 0.35 — a raw technical can't masquerade as a full composite.
+    # 50 + (tech - 50) * technical_weight — a raw technical can't masquerade as a full
+    # composite. Asserted against the live weight so re-tuning WEIGHTS doesn't break this.
+    w = WEIGHTS["technical"]
     assert _tech_only_composite(50.0) == 50.0
-    assert _tech_only_composite(100.0) == 67.5
-    assert _tech_only_composite(0.0) == 32.5
-    # A strong technical (90) lands mid-pack, below a fully-analyzed 73.
-    assert _tech_only_composite(90.0) < 73.0
+    assert _tech_only_composite(100.0) == round(50.0 + 50.0 * w, 2)
+    assert _tech_only_composite(0.0) == round(50.0 - 50.0 * w, 2)
+    # Shrunk toward neutral: a strong technical never reaches its raw value.
+    assert 50.0 < _tech_only_composite(90.0) < 90.0
