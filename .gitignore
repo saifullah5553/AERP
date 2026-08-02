@@ -55,3 +55,5 @@ redisdata/
 !/data/psx_csv.tar.gz
 !/data/psx_insider.csv
 data/fund_cache/
+
+data/earnings_refresh.log
