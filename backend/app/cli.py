@@ -212,6 +212,18 @@ def cmd_backtest(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_factor_backtest(args: argparse.Namespace) -> None:
+    """Measure each metric's individual predictive power (quintile spread + rank IC), so the
+    composite can be weighted on evidence instead of intuition."""
+    from app.ingestion.factor_backtest import factor_backtest
+
+    out = args.out or "../frontend/public/data"
+    log.info("factor-backtest: %s", factor_backtest(
+        out, horizon=args.horizon, sample=args.sample,
+        only_fundamentals=args.only_fundamentals, min_price=args.min_price,
+    ))
+
+
 def cmd_refresh_sectors(args: argparse.Namespace) -> None:
     """Fill missing sectors keylessly (ASX GICS directory + SEC SIC codes). Patches the
     snapshot; India stays unset (no free sector source) rather than guessed."""
@@ -681,6 +693,12 @@ def build_parser() -> argparse.ArgumentParser:
                     help="test only names carrying real financials (the research universe)")
     bt.add_argument("--min-price", type=float, default=0.0, help="skip sub-price penny names")
     bt.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
+    fb = add("factor-backtest", cmd_factor_backtest)
+    fb.add_argument("--horizon", type=int, default=60)
+    fb.add_argument("--sample", type=int, default=800)
+    fb.add_argument("--only-fundamentals", action="store_true")
+    fb.add_argument("--min-price", type=float, default=1.0)
+    fb.add_argument("--out", default=None)
     rs = add("refresh-sectors", cmd_refresh_sectors, limit=True)
     rs.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
     fw = add("refresh-fundamentals-web", cmd_refresh_fundamentals_web, limit=True)
