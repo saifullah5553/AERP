@@ -183,11 +183,12 @@ def refresh_fundamentals_web(
         regime_map = reg.get("countries", {})
     except (OSError, json.JSONDecodeError):
         regime_map = {}
-    regime = regime_map.get(region)
 
+    # region="all" backfills US+India+Australia concurrently in one pass (one writer, no race).
+    wanted = {"us", "india", "australia"} if region == "all" else {region}
     targets = [
         r for r in rows
-        if r.get("region") == region and r.get("fundamental_score") is None
+        if r.get("region") in wanted and r.get("fundamental_score") is None
         and r.get("technical_score") is not None and r.get("provider_symbol")
     ]
     if limit is not None:
@@ -198,7 +199,7 @@ def refresh_fundamentals_web(
     def work(r: dict):
         try:
             q, a = _get_statements(r["provider_symbol"], provider, cache)
-            return r, _score_one(_f(r.get("price")), regime, q, a)
+            return r, _score_one(_f(r.get("price")), regime_map.get(r.get("region")), q, a)
         except Exception:  # noqa: BLE001 - one bad ticker shouldn't stop the batch
             return r, None
 
@@ -215,7 +216,7 @@ def refresh_fundamentals_web(
             base, cov, present = _reblend(fund, tech, None, None, None)
             if base is None:
                 continue
-            comp, _bd = apply_regime_modifier(base, regime, de)
+            comp, _bd = apply_regime_modifier(base, regime_map.get(r.get("region")), de)
             sig = derive_signal(comp, cov, present)
 
             r["fundamental_score"] = round(fund, 2)

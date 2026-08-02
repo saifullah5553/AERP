@@ -648,7 +648,7 @@ def build_parser() -> argparse.ArgumentParser:
     eu.add_argument("--region", required=True, choices=["us", "india", "australia"])
     eu.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
     fw = add("refresh-fundamentals-web", cmd_refresh_fundamentals_web, limit=True)
-    fw.add_argument("--region", required=True, choices=["us", "india", "australia"])
+    fw.add_argument("--region", required=True, choices=["us", "india", "australia", "all"])
     fw.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
     add("all", cmd_all)
     return parser
