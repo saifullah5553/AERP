@@ -21,6 +21,7 @@ real; the regime *label* is a transparent, weighted synthesis — not a predicti
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -290,4 +291,9 @@ def build_macro_regime(
             signals.append(Signal("breadth", "Market Breadth", f"avg score {b:.0f}", b,
                                   "avg composite of market"))
         countries[region] = asdict(_synthesize(region, signals))
-    return {"countries": countries}
+    # Stamp the build time so the UI (and an operator) can verify the regime is auto-refreshing
+    # rather than silently serving a stale merge.
+    return {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "countries": countries,
+    }
