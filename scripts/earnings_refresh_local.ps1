@@ -1,4 +1,4 @@
-# Local (residential-IP) earnings-driven fundamentals refresh — the reliable counterpart to
+# Local (residential-IP) earnings-driven fundamentals refresh - the reliable counterpart to
 # .github/workflows/earnings-fundamentals.yml, which no-ops because yfinance rate-limits CI.
 #
 # Refreshes fundamentals ONLY for US/India/Australia companies whose earnings date just passed,
@@ -24,7 +24,7 @@ Log "=== earnings refresh start ==="
 Push-Location $repo
 $syms = & $py "scripts\earnings_refresh_symbols.py" 5 120
 Pop-Location
-if ([string]::IsNullOrWhiteSpace($syms)) { Log "no companies reported recently — nothing to do"; exit 0 }
+if ([string]::IsNullOrWhiteSpace($syms)) { Log "no companies reported recently - nothing to do"; exit 0 }
 $count = ($syms -split ",").Count
 Log "refreshing $count symbol(s)"
 
@@ -34,18 +34,7 @@ Push-Location (Join-Path $repo "backend")
   Select-String -Pattern "refresh-fundamentals-web:" | ForEach-Object { Log $_.Line }
 
 # 3. Regenerate market breadth + securities count so the dashboard stays consistent.
-& $py -c @"
-import json, sys
-sys.path.insert(0, '.')
-from pathlib import Path
-from app.services.pulse import pulse_from_screener_dicts
-out = Path('../frontend/public/data')
-rows = json.loads((out / 'screener.json').read_text(encoding='utf-8'))
-(out / 'pulse.json').write_text(json.dumps(pulse_from_screener_dicts(rows)), encoding='utf-8')
-m = json.loads((out / 'meta.json').read_text(encoding='utf-8')); m['securities'] = len(rows)
-(out / 'meta.json').write_text(json.dumps(m), encoding='utf-8')
-print('consolidated', len(rows), 'rows')
-"@ 2>&1 | ForEach-Object { Log $_ }
+& $py "..\scripts\consolidate_snapshot.py" 2>&1 | ForEach-Object { Log $_ }
 Pop-Location
 
 # 4. Commit + push only when something actually changed (push triggers the Pages deploy).
