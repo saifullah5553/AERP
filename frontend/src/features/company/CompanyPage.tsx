@@ -715,12 +715,16 @@ function CatalystSection({
   if (falling.length) items.push({ date: null, label: `Falling input costs: ${falling.join(", ")}`, kind: "Commodity Cycle" });
   if (rising.length) items.push({ date: null, label: `Rising input costs: ${rising.join(", ")}`, kind: "Commodity Cycle" });
 
-  if (items.length === 0) return null;
-  items.sort((a, b) => (a.date ?? "9999").localeCompare(b.date ?? "9999"));
+  // Only genuinely upcoming: drop dated items in the past (stale earnings dates etc.);
+  // keep undated "ongoing" items (commodity cycle).
+  const today = new Date().toISOString().slice(0, 10);
+  const upcoming = items.filter((it) => it.date == null || it.date >= today);
+  if (upcoming.length === 0) return null;
+  upcoming.sort((a, b) => (a.date ?? "9999").localeCompare(b.date ?? "9999"));
   return (
     <Card title="Upcoming Catalysts">
       <div className="divide-y divide-base-700/40">
-        {items.slice(0, 10).map((it, i) => (
+        {upcoming.slice(0, 10).map((it, i) => (
           <div key={i} className="flex items-start justify-between gap-3 px-4 py-2">
             <div>
               <span className="rounded bg-base-700 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-slate-400">{it.kind}</span>
@@ -989,6 +993,9 @@ function PabraiSection({ scores }: { scores: Row | null }) {
 // ── Analyst estimates & next earnings ────────────────────────────────────────
 function EstimatesSection({ sec }: { sec: Row }) {
   const nextDate = typeof sec.next_earnings_date === "string" ? sec.next_earnings_date.slice(0, 10) : null;
+  // A past earnings date means the whole estimates record is stale (it's for the quarter that
+  // already reported), so hide the section rather than show past figures as if forward-looking.
+  if (nextDate && nextDate < new Date().toISOString().slice(0, 10)) return null;
   const epsAvg = num(sec.eps_estimate_avg);
   const epsNum = num(sec.eps_estimate_num);
   const epsGrowth = num(sec.eps_estimate_growth);
