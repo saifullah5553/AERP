@@ -1,19 +1,27 @@
 """Fundamental quality gate — "is this a business worth owning at all?"
 
-Implements the six tests the strategy is built on, judged over multiple reported periods so a
-single good year can't qualify a company:
+GROWTH and CASH are the thesis; debt is only a guardrail. The tests are judged over multiple
+reported periods so a single good year can't qualify a company:
 
-    1. Revenue rising
-    2. Operating profit rising
-    3. EPS rising
-    4. Debt low or falling
-    5. Operating cash flow positive
-    6. Healthy cash reserves
+    GROWTH pillar   1. Revenue rising
+                    2. Operating profit rising
+                    3. EPS rising
+    CASH pillar     4. Operating cash flow positive        (non-negotiable)
+                    5. Free cash flow positive             (cash left after capex)
+                    6. Earnings backed by cash             (OCF/net income >= 0.7)
+                    7. Cash reserves healthy
+                    8. Cash building                       (the pile is growing)
+    GUARDRAIL       9. Debt low or falling
 
-This is a GATE first and a score second. A name either qualifies to be owned or it doesn't;
-the score only ranks the ones that already qualify. That is deliberate: the previous engine
-blended everything into one number, so a weak business could still surface on strong technicals
-- exactly the behaviour the backtests punished.
+Qualifying requires a MAJORITY OF EACH PILLAR, not just a tally of any N boxes - so a company
+can never pass on low debt and tidy ratios while its growth or cash is deteriorating. The score
+is pillar-weighted (growth 45% / cash 40% / debt 15%) and only produced once at least five
+tests have data, so a company we know almost nothing about can't render as a perfect 100.
+
+This is a GATE first and a score second: a name either qualifies to be owned or it doesn't, and
+the score only ranks the ones that already qualify. The previous engine blended everything into
+a single number, letting a weak business surface on strong technicals - exactly the behaviour
+the backtests punished.
 
 Statements arrive newest-first (see the export contract), so index 0 is the latest period.
 """
@@ -22,6 +30,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+
+# The two pillars of the thesis. Growth and cash decide whether a business is worth owning;
+# debt is a guardrail, not a reason to buy.
+_GROWTH_CHECKS = ("revenue_rising", "operating_profit_rising", "eps_rising")
+_CASH_CHECKS = (
+    "cash_flow_positive", "free_cash_flow_positive",
+    "earnings_backed_by_cash", "cash_reserves_healthy", "cash_building",
+)
+_DEBT_CHECKS = ("debt_low_or_falling",)
 
 
 def _f(v: Any) -> float | None:
@@ -68,8 +85,9 @@ class QualityResult:
 
 
 def assess_quality(statements: dict[str, list[dict]], min_checks: int = 5) -> QualityResult:
-    """Run the six quality tests. `passed` requires at least `min_checks` of the 6 to be True
-    AND the two non-negotiables (positive operating cash flow, rising EPS)."""
+    """Run the nine quality tests. `passed` requires the non-negotiables (positive operating
+    cash flow, rising EPS) plus a majority of BOTH the growth and cash pillars - growth and
+    cash are the thesis, so neither can be waved through by the other."""
     inc = statements.get("income") or []
     bal = statements.get("balance") or []
     cf = statements.get("cashflow") or []
@@ -113,6 +131,29 @@ def assess_quality(statements: dict[str, list[dict]], min_checks: int = 5) -> Qu
     checks["cash_flow_positive"] = (ocf[-1] > 0) if ocf else None
     metrics["operating_cash_flow"] = ocf[-1] if ocf else None
 
+    # 5b: free cash flow - cash left AFTER the capex needed to keep growing. A company can
+    # show positive operating cash flow and still consume cash once capex is paid for.
+    fcf = _series(cf, "free_cash_flow")
+    if not fcf:
+        capex = _series(cf, "capital_expenditure")
+        if ocf and capex and len(ocf) == len(capex):
+            fcf = [o - abs(c) for o, c in zip(ocf, capex, strict=False)]
+    checks["free_cash_flow_positive"] = (fcf[-1] > 0) if fcf else None
+    metrics["free_cash_flow"] = fcf[-1] if fcf else None
+
+    # 5c: earnings backed by cash. Profit that never becomes cash is the classic warning sign,
+    # so compare operating cash flow against net income.
+    net_income = _series(inc, "net_income")
+    conv = None
+    if ocf and net_income and net_income[-1] > 0:
+        conv = ocf[-1] / net_income[-1]
+    metrics["cash_conversion"] = conv
+    checks["earnings_backed_by_cash"] = (conv >= 0.7) if conv is not None else None
+
+    # 6b: is the cash pile actually building? A growing balance funds growth without dilution.
+    checks["cash_building"] = _rising(cash) if len(cash) >= 2 else None
+    metrics["cash_growth"] = _growth(cash)
+
     # 6: reserves - cash against short-term obligations, or a healthy current ratio.
     cash_ratio = None
     if cash and cur_liab and cur_liab[-1] not in (0, None):
@@ -136,22 +177,44 @@ def assess_quality(statements: dict[str, list[dict]], min_checks: int = 5) -> Qu
     # Non-negotiables: a business that burns cash or shrinks EPS is not "fundamentally strong"
     # however many other boxes it ticks.
     must_pass = checks.get("cash_flow_positive") is not False and checks.get("eps_rising") is True
-    passed = bool(must_pass and known >= 4 and trues >= min(min_checks, known))
+    growth_known = [checks[k] for k in _GROWTH_CHECKS if checks.get(k) is not None]
+    cash_known = [checks[k] for k in _CASH_CHECKS if checks.get(k) is not None]
+    # Growth and cash are the thesis: require a majority of each pillar, not just a count of
+    # any five boxes. A company can no longer qualify on low debt + tidy ratios alone.
+    growth_ok = bool(growth_known) and sum(growth_known) >= max(2, len(growth_known) - 1)
+    cash_ok = bool(cash_known) and sum(cash_known) >= max(2, len(cash_known) - 1)
+    passed = bool(
+        must_pass and known >= 5 and growth_ok and cash_ok
+        and trues >= min(min_checks, known)
+    )
 
     reasons = [k for k, v in checks.items() if v is False]
+    if not growth_ok:
+        reasons.append("growth_pillar_weak")
+    if not cash_ok:
+        reasons.append("cash_pillar_weak")
 
-    # Score ranks the qualifying names: how many checks passed, tilted by growth strength.
-    # Only scored when enough of the six tests actually have data - otherwise "1 of 1 check
-    # passed" would render as a perfect 100 for a company we know almost nothing about.
+    # Score is pillar-weighted, not a flat tally: growth and cash decide quality, debt is a
+    # guardrail. Only scored when enough tests have data - otherwise "1 of 1 check passed"
+    # would render as a perfect 100 for a company we know almost nothing about.
     score = None
-    if known >= 4:
-        base = 100.0 * trues / known
-        growth_bonus = 0.0
-        for key, cap in (("revenue_growth", 0.5), ("eps_growth", 1.0)):
-            g = metrics.get(key)
-            if g is not None:
-                growth_bonus += max(-1.0, min(g / cap, 1.0)) * 5.0
-        score = round(max(0.0, min(100.0, base + growth_bonus)), 2)
+    if known >= 5:
+        def _pillar(keys: tuple[str, ...]) -> float | None:
+            vals = [checks[k] for k in keys if checks.get(k) is not None]
+            return (100.0 * sum(vals) / len(vals)) if vals else None
+
+        g, c, d = _pillar(_GROWTH_CHECKS), _pillar(_CASH_CHECKS), _pillar(_DEBT_CHECKS)
+        parts = [(g, 0.45), (c, 0.40), (d, 0.15)]
+        avail = [(v, w) for v, w in parts if v is not None]
+        if avail:
+            base = sum(v * w for v, w in avail) / sum(w for _v, w in avail)
+            # Reward the magnitude of growth and cash build, not just their direction.
+            bonus = 0.0
+            for key, cap in (("revenue_growth", 0.5), ("eps_growth", 1.0), ("cash_growth", 1.0)):
+                gv = metrics.get(key)
+                if gv is not None:
+                    bonus += max(-1.0, min(gv / cap, 1.0)) * 4.0
+            score = round(max(0.0, min(100.0, base + bonus)), 2)
 
     return QualityResult(passed=passed, score=score, checks=checks,
                          metrics=metrics, reasons=reasons)
