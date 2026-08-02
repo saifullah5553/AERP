@@ -24,6 +24,7 @@ from app.engines.composite.dimensions import momentum_score
 from app.engines.composite.engine import WEIGHTS
 from app.engines.composite.regime_modifier import apply_regime_modifier
 from app.engines.composite.signals import derive_signal
+from app.engines.patterns.engine import detect_all
 from app.engines.technical.engine import _scoring_metrics
 from app.engines.technical.indicators import compute_indicators
 from app.engines.technical.scoring import score_technical
@@ -44,21 +45,23 @@ def _f(v: Any) -> float | None:
 
 
 def fetch_history(sym: str, client: httpx.Client):
-    """chart-v8 daily OHLCV → (dates, high, low, close, volume), or None.
+    """chart-v8 daily OHLCV → (dates, open, high, low, close, volume), or None.
 
-    `dates` are ISO strings aligned with the arrays (for signal-inception backtesting)."""
+    `dates` are ISO strings aligned with the arrays (for signal-inception backtesting).
+    `open` is carried so candlestick patterns can be detected from the same fetch."""
     try:
         resp = client.get(_CHART.format(sym=sym), headers={"User-Agent": _UA}, timeout=20)
         resp.raise_for_status()
         res = resp.json()["chart"]["result"][0]
         ts = res.get("timestamp") or []
         q = res["indicators"]["quote"][0]
+        opens = q.get("open")
         highs, lows, closes, vols = q.get("high"), q.get("low"), q.get("close"), q.get("volume")
         if not closes:
             return None
         bars = [
             (highs[i], lows[i], closes[i], vols[i] if vols else None,
-             ts[i] if i < len(ts) else None)
+             ts[i] if i < len(ts) else None, opens[i] if opens else None)
             for i in range(len(closes))
             if closes[i] is not None
         ]
@@ -68,10 +71,11 @@ def fetch_history(sym: str, client: httpx.Client):
         high = np.array([b[0] if b[0] is not None else b[2] for b in bars], dtype=float)
         low = np.array([b[1] if b[1] is not None else b[2] for b in bars], dtype=float)
         vol = np.array([b[3] if b[3] is not None else 0.0 for b in bars], dtype=float)
+        open_ = np.array([b[5] if b[5] is not None else b[2] for b in bars], dtype=float)
         dates = [
             datetime.fromtimestamp(b[4], UTC).date().isoformat() if b[4] else "" for b in bars
         ]
-        return dates, high, low, close, vol
+        return dates, open_, high, low, close, vol
     except Exception:  # noqa: BLE001 - one bad symbol shouldn't stop the batch
         return None
 
@@ -283,7 +287,7 @@ def refresh_technicals(
         h = hist.get(sym)
         if h is None:
             continue
-        dates, high, low, close, vol = h
+        dates, open_, high, low, close, vol = h
         ind = compute_indicators(high, low, close, vol)
         tech = score_technical(_scoring_metrics(ind)).score
         if tech is None:
@@ -327,6 +331,37 @@ def refresh_technicals(
         cur_price = _f(r.get("price")) or float(close[-1])
         ret = round((cur_price - price_at) / price_at * 100.0, 2) if price_at else None
 
+        # Candlestick / chart / harmonic patterns from the same daily OHLC fetch. The DB
+        # pipeline only detects these for the markets it ingests (PSX in CI), so doing it
+        # here keeps patterns fresh across the whole universe every day.
+        pat_rows: list[dict] = []
+        try:
+            today_d = dates[-1] if dates else today
+            for hit in detect_all(open_, high, low, close):
+                sidx = hit.start_index
+                pat_rows.append({
+                    "timeframe": "1d", "detected_on": today_d,
+                    "name": hit.name, "category": hit.category.value,
+                    "direction": hit.direction.value,
+                    "confidence": round(float(hit.confidence), 4), "is_active": True,
+                    "start_date": dates[sidx] if sidx is not None and sidx < len(dates) else None,
+                    "breakout_level": hit.breakout_level,
+                    "target_price": hit.target_price, "stop_level": hit.stop_level,
+                })
+        except Exception:  # noqa: BLE001 - pattern detection must never break the refresh
+            pat_rows = []
+        if pat_rows:
+            best = max(pat_rows, key=lambda p: p["confidence"])
+            cand = [p for p in pat_rows if p["category"] == "candlestick"]
+            chrt = [p for p in pat_rows if p["category"] == "chart"]
+            r["top_candlestick"] = (
+                max(cand, key=lambda p: p["confidence"])["name"] if cand else None
+            )
+            r["top_chart_pattern"] = (
+                max(chrt, key=lambda p: p["confidence"])["name"] if chrt else None
+            )
+            r["top_pattern"] = best["name"]
+
         old = r.get("composite_score")
         old_sig = r.get("signal")
         new_sig = sig.signal.value
@@ -354,6 +389,8 @@ def refresh_technicals(
                     d["scores"]["technical"] = round(tech, 2)
                     if mom is not None:
                         d["scores"]["momentum"] = round(mom, 2)
+                if pat_rows:
+                    d["patterns"] = pat_rows
                     d["scores"]["composite"] = composite
                 if isinstance(d.get("signal"), dict):
                     d["signal"]["signal_type"] = sig.signal.value

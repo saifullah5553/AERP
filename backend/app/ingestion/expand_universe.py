@@ -162,7 +162,7 @@ def expand_universe(
         h = hist.get(c["provider_symbol"])
         if h is None:
             continue
-        dates, high, low, close, vol = h
+        dates, _open, high, low, close, vol = h
         tech = score_technical(_scoring_metrics(compute_indicators(high, low, close, vol))).score
         if tech is None:
             continue
