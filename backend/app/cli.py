@@ -212,6 +212,16 @@ def cmd_backtest(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_psx_portfolio_backtest(args: argparse.Namespace) -> None:
+    """Quarterly top-N portfolio by point-in-time quality score, vs equal-weight buy-and-hold."""
+    from app.ingestion.psx_portfolio_backtest import psx_portfolio_backtest
+
+    out = args.out or "../frontend/public/data"
+    log.info("psx-portfolio-backtest: %s", psx_portfolio_backtest(
+        out, top_n=args.top_n, rebalance_days=args.rebalance_days, sample=args.sample,
+    ))
+
+
 def cmd_psx_pit_backtest(args: argparse.Namespace) -> None:
     """True point-in-time backtest on PSX (dated TTM fundamentals + 5y prices)."""
     from app.ingestion.psx_pit_backtest import psx_pit_backtest
@@ -740,6 +750,11 @@ def build_parser() -> argparse.ArgumentParser:
                     help="test only names carrying real financials (the research universe)")
     bt.add_argument("--min-price", type=float, default=0.0, help="skip sub-price penny names")
     bt.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
+    pb = add("psx-portfolio-backtest", cmd_psx_portfolio_backtest)
+    pb.add_argument("--top-n", type=int, default=20)
+    pb.add_argument("--rebalance-days", type=int, default=63, help="63 ~= one quarter")
+    pb.add_argument("--sample", type=int, default=400)
+    pb.add_argument("--out", default=None)
     pp = add("psx-pit-backtest", cmd_psx_pit_backtest)
     pp.add_argument("--sample", type=int, default=250)
     pp.add_argument("--step", type=int, default=10)
