@@ -43,12 +43,31 @@ def detect_candlesticks(
     if body <= 0.1 * rng:
         hits.append(PatternHit("doji", CS, NEUTRAL, clamp01(0.5 + (0.1 - body / rng) * 4), i))
 
-    # ── Marubozu ─────────────────────────────────────────────
+    # ── Marubozu (full, opening, closing) ────────────────────
+    # A full marubozu has no shadow at either end. The OPENING and CLOSING variants are
+    # standard too and were previously missed: a bar that opens exactly at its high and then
+    # sells off all day (open == high, lower shadow present) is a bearish opening marubozu -
+    # a decisive rejection signal - even though its body is only ~75% of the range.
     if body >= 0.9 * rng:
         hits.append(PatternHit(
             "bullish_marubozu" if bull else "bearish_marubozu",
             CS, BULL if bull else BEAR, clamp01(body / rng), i,
         ))
+    elif body >= 0.55 * rng:
+        # Shadow at the open end vs the close end (differs by candle direction).
+        open_shadow = upper if not bull else lower
+        close_shadow = lower if not bull else upper
+        flat = 0.05 * rng  # "no shadow" with a little tolerance for tick noise
+        if open_shadow <= flat and close_shadow > flat:
+            hits.append(PatternHit(
+                "bullish_opening_marubozu" if bull else "bearish_opening_marubozu",
+                CS, BULL if bull else BEAR, clamp01(body / rng), i,
+            ))
+        elif close_shadow <= flat and open_shadow > flat:
+            hits.append(PatternHit(
+                "bullish_closing_marubozu" if bull else "bearish_closing_marubozu",
+                CS, BULL if bull else BEAR, clamp01(body / rng), i,
+            ))
 
     # ── Hammer / Hanging man ─────────────────────────────────
     if body > 0 and lower >= 2 * body and upper <= body:
