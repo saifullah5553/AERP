@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import contextlib
 import json
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -205,7 +205,11 @@ def refresh_fundamentals_web(
 
     updated = 0
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        for r, res in pool.map(work, targets):
+        # as_completed (not map): process each result the moment it finishes, so one slow
+        # rate-limited fetch can't head-of-line-block the cached/fast ones behind it.
+        futures = [pool.submit(work, r) for r in targets]
+        for fut in as_completed(futures):
+            r, res = fut.result()
             if res is None:
                 continue
             fund, ratios, metrics, (inc, bal, cf_rows), period_label = res
