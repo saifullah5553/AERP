@@ -40,6 +40,7 @@ class StrategySignal:
             "action": self.action,
             "conviction": self.conviction,
             "quality_passed": q.passed if q else None,
+            "quality_improving": q.improving if q else None,
             "quality_score": q.score if q else None,
             "quality_checks": q.checks if q else {},
             "quality_metrics": q.metrics if q else {},
@@ -66,8 +67,9 @@ def evaluate(
 ) -> StrategySignal:
     quality = assess_quality(statements)
 
-    # No technical setup can rescue a weak business - the gate comes first.
-    if not quality.passed:
+    # Gate first: only businesses that are strong OR credibly improving earn a look at the
+    # chart. No technical setup rescues a deteriorating business.
+    if not quality.eligible:
         why = quality.reasons or ["insufficient_fundamentals"]
         return StrategySignal(
             action=AVOID, conviction=None, quality=quality, entry=None,
@@ -78,22 +80,24 @@ def evaluate(
     qs = quality.score if quality.score is not None else 50.0
     es = entry.score if entry.score is not None else 0.0
     conviction = round(0.6 * qs + 0.4 * es, 2)
+    grade = "strong" if quality.passed else "improving"
 
     if entry.triggered:
         return StrategySignal(
             action=BUY, conviction=conviction, quality=quality, entry=entry,
-            rationale=[f"quality passed ({qs:.0f})", f"entry: {', '.join(entry.triggers)}"],
+            rationale=[f"fundamentals {grade} ({qs:.0f})",
+                       f"entry: {', '.join(entry.triggers)}"],
         )
 
     # Already advancing and still strong -> hold rather than re-enter or exit.
     if _in_uptrend(close):
         return StrategySignal(
             action=HOLD, conviction=conviction, quality=quality, entry=entry,
-            rationale=["fundamentally strong and trending - hold"],
+            rationale=[f"fundamentals {grade} and trending - hold"],
         )
 
     return StrategySignal(
         action=WATCH, conviction=conviction, quality=quality, entry=entry,
-        rationale=["quality business, waiting for the move to start"]
+        rationale=[f"fundamentals {grade}, waiting for the move to start"]
         + ([f"blocked by: {', '.join(entry.vetoes)}"] if entry.vetoes else []),
     )

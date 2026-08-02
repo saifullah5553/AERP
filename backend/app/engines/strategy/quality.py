@@ -77,11 +77,22 @@ def _growth(vals: list[float]) -> float | None:
 
 @dataclass(slots=True)
 class QualityResult:
-    passed: bool
+    passed: bool                   # fully strong: majority of BOTH pillars
     score: float | None            # 0-100, only meaningful for names that pass
     checks: dict[str, bool | None] = field(default_factory=dict)
     metrics: dict[str, float | None] = field(default_factory=dict)
     reasons: list[str] = field(default_factory=list)
+    improving: bool = False        # not yet fully strong, but the trend is the right way
+
+    @property
+    def eligible(self) -> bool:
+        """Worth looking at the chart for: strong OR credibly improving.
+
+        A turnaround rarely ticks every box on the print where it turns - earnings recover
+        before the balance sheet does. Requiring perfection would mean only ever buying
+        businesses whose re-rating has already happened.
+        """
+        return self.passed or self.improving
 
 
 def assess_quality(statements: dict[str, list[dict]], min_checks: int = 5) -> QualityResult:
@@ -194,6 +205,16 @@ def assess_quality(statements: dict[str, list[dict]], min_checks: int = 5) -> Qu
     if not cash_ok:
         reasons.append("cash_pillar_weak")
 
+    # "Improving" — not yet strong enough to pass outright, but heading the right way. The
+    # business must still be growing (that's the thesis) and must not be burning cash; what it
+    # is allowed to lack is the full cash-pillar majority, which typically lags a turnaround.
+    improving = bool(
+        not passed
+        and checks.get("cash_flow_positive") is not False
+        and growth_ok
+        and (checks.get("eps_rising") is True or checks.get("operating_profit_rising") is True)
+    )
+
     # Score is pillar-weighted, not a flat tally: growth and cash decide quality, debt is a
     # guardrail. Only scored when enough tests have data - otherwise "1 of 1 check passed"
     # would render as a perfect 100 for a company we know almost nothing about.
@@ -217,4 +238,4 @@ def assess_quality(statements: dict[str, list[dict]], min_checks: int = 5) -> Qu
             score = round(max(0.0, min(100.0, base + bonus)), 2)
 
     return QualityResult(passed=passed, score=score, checks=checks,
-                         metrics=metrics, reasons=reasons)
+                         metrics=metrics, reasons=reasons, improving=improving)

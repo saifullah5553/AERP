@@ -212,6 +212,16 @@ def cmd_backtest(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_psx_pit_backtest(args: argparse.Namespace) -> None:
+    """True point-in-time backtest on PSX (dated TTM fundamentals + 5y prices)."""
+    from app.ingestion.psx_pit_backtest import psx_pit_backtest
+
+    out = args.out or "../frontend/public/data"
+    log.info("psx-pit-backtest: %s", psx_pit_backtest(
+        out, sample=args.sample, step=args.step, cost_bps=args.cost_bps, stop_pct=args.stop_pct,
+    ))
+
+
 def cmd_journal_signals(args: argparse.Namespace) -> None:
     """Append today's BUY/HOLD calls to the signal journal (idempotent per date)."""
     from app.ingestion.signal_journal import record_signals
@@ -730,6 +740,12 @@ def build_parser() -> argparse.ArgumentParser:
                     help="test only names carrying real financials (the research universe)")
     bt.add_argument("--min-price", type=float, default=0.0, help="skip sub-price penny names")
     bt.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
+    pp = add("psx-pit-backtest", cmd_psx_pit_backtest)
+    pp.add_argument("--sample", type=int, default=250)
+    pp.add_argument("--step", type=int, default=10)
+    pp.add_argument("--cost-bps", type=float, default=30.0)
+    pp.add_argument("--stop-pct", type=float, default=25.0)
+    pp.add_argument("--out", default=None)
     jr = add("journal-signals", cmd_journal_signals)
     jr.add_argument("--out", default=None)
     ev = add("evaluate-journal", cmd_evaluate_journal)

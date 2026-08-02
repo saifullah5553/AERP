@@ -44,6 +44,36 @@ def _sma(a: np.ndarray, n: int) -> float | None:
     return float(a[-n:].mean()) if len(a) >= n else None
 
 
+def _ema(a: np.ndarray, n: int) -> float | None:
+    """Exponential moving average — reacts faster than the SMA, which is what you want when
+    the point is to notice a move starting rather than confirm one that already has."""
+    if len(a) < n:
+        return None
+    k = 2.0 / (n + 1.0)
+    e = float(a[-(n * 3):][0]) if len(a) >= n * 3 else float(a[0])
+    for v in a[-(n * 3):] if len(a) >= n * 3 else a:
+        e = float(v) * k + e * (1 - k)
+    return e
+
+
+def _trendline_break(high: np.ndarray, close: np.ndarray, lookback: int = 60) -> bool:
+    """True when price closes above a falling trendline drawn across recent highs.
+
+    Fits a least-squares line through the highs of the lookback window; a negative slope means
+    the stock has been making lower highs, and a close above that line is the classic
+    downtrend-break entry.
+    """
+    if len(close) < lookback:
+        return False
+    seg = high[-lookback:]
+    x = np.arange(len(seg), dtype=float)
+    slope, intercept = np.polyfit(x, seg.astype(float), 1)
+    if slope >= 0:  # not a downtrend - a different setup, handled by the breakout trigger
+        return False
+    projected = slope * (len(seg) - 1) + intercept
+    return float(close[-1]) > projected
+
+
 def _rsi(close: np.ndarray, n: int = 14) -> float | None:
     if len(close) < n + 1:
         return None
@@ -101,32 +131,64 @@ def assess_entry(
         if len(lows) == 3 and lows[0] < lows[1] < lows[2]:
             triggers.append("higher_lows")
 
-    # --- Confirmation: volume participation ------------------------------------------
+    # --- Trigger 4: reclaiming the 20 EMA --------------------------------------------
+    # The fast average: catches a move turning up well before the 50-day confirms it.
+    ema20 = _ema(close, 20)
+    metrics["ema20"] = ema20
+    if ema20 is not None and px > ema20:
+        prev_ema20 = _ema(close[:-3], 20) if n > 23 else None
+        if prev_ema20 is not None and float(close[-4]) < prev_ema20:
+            triggers.append("crossed_above_ema20")
+        elif "base_breakout" not in triggers:
+            triggers.append("above_ema20")
+
+    # --- Trigger 5: downtrend trendline break ----------------------------------------
+    if _trendline_break(high, close):
+        triggers.append("trendline_break")
+
+    # --- Confirmation / Trigger 6: volume participation -------------------------------
     vol_ratio = None
     if len(volume) >= 50 and volume[-50:].mean() > 0:
         vol_ratio = float(volume[-5:].mean() / volume[-50:].mean())
         metrics["volume_ratio"] = vol_ratio
+        # Rising volume is itself a signal that something is happening - accumulation often
+        # shows up in the tape before it shows up in the price structure.
+        if vol_ratio >= 1.5 and px > (ema20 or px):
+            triggers.append("volume_expansion")
 
-    # --- Extension vetoes: refuse to buy a move that already happened ----------------
+    # --- Extension checks -------------------------------------------------------------
+    # HARD vetoes block the entry outright: the move is so far gone that buying it is chasing.
+    # SOFT cautions only mark the score down - being mildly extended or briefly overbought is
+    # normal early in a strong advance, and blocking on it would filter out the best entries.
+    cautions: list[str] = []
     ext = None
     if sma50:
         ext = (px - sma50) / sma50
         metrics["pct_above_sma50"] = ext
-        if ext > 0.20:
-            vetoes.append("extended_above_sma50")
-    if rsi is not None and rsi > 72:
-        vetoes.append("overbought_rsi")
+        if ext > 0.35:
+            vetoes.append("far_extended_above_sma50")   # hard: chasing
+        elif ext > 0.20:
+            cautions.append("extended_above_sma50")     # soft
+    if rsi is not None:
+        if rsi > 85:
+            vetoes.append("extremely_overbought")       # hard
+        elif rsi > 72:
+            cautions.append("overbought_rsi")           # soft
     if n >= 250:
         high_52w = float(high[-250:].max())
         metrics["pct_from_52w_high"] = (px - high_52w) / high_52w if high_52w else None
         run = (px - float(close[-250:].min())) / max(float(close[-250:].min()), 1e-9)
-        if high_52w and px >= high_52w * 0.995 and run > 1.0:
-            vetoes.append("at_52w_high_after_long_run")
+        if high_52w and px >= high_52w * 0.995 and run > 2.0:
+            vetoes.append("at_52w_high_after_parabolic_run")  # hard: tripled off the low
+        elif high_52w and px >= high_52w * 0.995 and run > 1.0:
+            cautions.append("at_52w_high_after_long_run")     # soft
 
-    # Long-term trend must not be broken.
-    if sma200 is not None and px < sma200 * 0.95:
-        vetoes.append("below_200dma")
+    # Long-term trend: a decisive break below the 200-day is a hard stop, but a stock basing
+    # just under it can still be an early entry, so only a clear break blocks.
+    if sma200 is not None and px < sma200 * 0.90:
+        vetoes.append("well_below_200dma")
 
+    metrics["cautions"] = float(len(cautions))
     triggered = bool(triggers) and not vetoes
 
     # Timing quality: reward early, well-participated entries close to the base.
@@ -140,7 +202,8 @@ def assess_entry(
         if sma200 is not None and px > sma200:
             s += 10.0
         s -= 25.0 * len(vetoes)
+        s -= 8.0 * len(cautions)  # soft: marks the entry down without blocking it
         score = round(max(0.0, min(100.0, s)), 2)
 
     return EntryResult(triggered=triggered, score=score, triggers=triggers,
-                       vetoes=vetoes, metrics=metrics)
+                       vetoes=vetoes + cautions, metrics=metrics)
