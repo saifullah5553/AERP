@@ -61,6 +61,37 @@ export interface SignalMovesData {
   sell: SignalMove[];
 }
 
+export interface PortfolioHolding {
+  provider_symbol: string;
+  symbol: string;
+  name: string | null;
+  sector: string | null;
+  entry_date: string;
+  entry_price: number | null;
+  entry_quality: number | null;
+  quality_score: number | null;
+  price?: number | null;
+  return_pct?: number | null;
+}
+export interface PortfolioChange {
+  date: string;
+  quarter: string;
+  region: string;
+  action: "add" | "drop";
+  symbol: string;
+  entry_price?: number | null;
+  exit_price?: number | null;
+  return_pct?: number | null;
+  reason: string;
+}
+export interface ModelPortfolio {
+  holdings: Record<string, PortfolioHolding[]>;
+  changes: PortfolioChange[];
+  summary?: Record<string, { holdings: number; avg_return_pct: number; winners: number }>;
+  last_rebalance?: string;
+  last_rebalance_quarter?: string;
+}
+
 export interface NewsFeedItem {
   provider_symbol: string;
   symbol: string;
@@ -222,6 +253,10 @@ export const api = {
       buy: [],
       sell: [],
     }));
+  },
+  modelPortfolio(signal?: AbortSignal): Promise<ModelPortfolio | null> {
+    return getJson<ModelPortfolio>(`${DATA_BASE}/model_portfolio.json`, signal)
+      .catch(() => null);
   },
   news(signal?: AbortSignal): Promise<NewsFeedItem[]> {
     return getJson<{ items: NewsFeedItem[] }>(`${DATA_BASE}/news.json`, signal)

@@ -233,6 +233,15 @@ def cmd_psx_pit_backtest(args: argparse.Namespace) -> None:
     ))
 
 
+def cmd_model_portfolio(args: argparse.Namespace) -> None:
+    """Rebalance the model portfolio (quarterly) and mark holdings to current prices (daily)."""
+    from app.ingestion.model_portfolio import mark, rebalance
+
+    out = args.out or "../frontend/public/data"
+    log.info("model-portfolio rebalance: %s", rebalance(out, force=args.force))
+    log.info("model-portfolio mark: %s", mark(out))
+
+
 def cmd_journal_signals(args: argparse.Namespace) -> None:
     """Append today's BUY/HOLD calls to the signal journal (idempotent per date)."""
     from app.ingestion.signal_journal import record_signals
@@ -764,6 +773,9 @@ def build_parser() -> argparse.ArgumentParser:
     pp.add_argument("--cost-bps", type=float, default=30.0)
     pp.add_argument("--stop-pct", type=float, default=25.0)
     pp.add_argument("--out", default=None)
+    mp = add("model-portfolio", cmd_model_portfolio)
+    mp.add_argument("--force", action="store_true", help="rebalance even within the same quarter")
+    mp.add_argument("--out", default=None)
     jr = add("journal-signals", cmd_journal_signals)
     jr.add_argument("--out", default=None)
     ev = add("evaluate-journal", cmd_evaluate_journal)

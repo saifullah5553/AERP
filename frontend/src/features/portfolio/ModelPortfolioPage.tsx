@@ -1,18 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { api } from "@/lib/api";
+import { api, type ModelPortfolio, type PortfolioHolding } from "@/lib/api";
 import { fmtNumber } from "@/lib/format";
-import type { ScreenerRow } from "@/types/api";
-
-// Sizing follows the backtests: PSX carried a deeper drawdown at small N (-29.5% at 10 vs
-// -20.1% at 20), so it holds more names; the other markets were steadier and hold 15.
-// Deliberately NOT tuned to whichever N scored best - that flipped between markets, which is
-// how you know it was noise rather than a parameter worth optimising.
-const SIZE_BY_MARKET: Record<string, number> = {
-  psx: 20, us: 15, india: 15, australia: 15, gcc: 15,
-};
-const DEFAULT_SIZE = 15;
 
 const MARKETS: { key: string; label: string }[] = [
   { key: "all", label: "All Markets" },
@@ -23,43 +13,35 @@ const MARKETS: { key: string; label: string }[] = [
   { key: "gcc", label: "GCC" },
 ];
 
-function ActionBadge({ action }: { action?: string | null }) {
-  const map: Record<string, { bg: string; fg: string }> = {
-    buy: { bg: "rgba(34,197,94,0.18)", fg: "#22c55e" },
-    hold: { bg: "rgba(56,189,248,0.16)", fg: "#38bdf8" },
-    watch: { bg: "rgba(245,158,11,0.16)", fg: "#f59e0b" },
-  };
-  const s = action ? map[action] : undefined;
-  if (!s) return <span className="text-slate-600">—</span>;
-  return (
-    <span style={{ background: s.bg, color: s.fg }}
-          className="rounded px-2 py-0.5 text-[11px] font-bold uppercase">
-      {action}
-    </span>
-  );
+function pctColor(v: number | null | undefined): string {
+  if (v == null) return "#94a3b8";
+  return v > 0 ? "#22c55e" : v < 0 ? "#ef4444" : "#94a3b8";
 }
 
-function Holdings({ region, rows }: { region: string; rows: ScreenerRow[] }) {
-  const size = SIZE_BY_MARKET[region] ?? DEFAULT_SIZE;
-  const picks = useMemo(
-    () =>
-      rows
-        .filter((r) => r.region === region && r.quality_score != null
-          && r.strategy_action !== "avoid")
-        .sort((a, b) => (b.quality_score ?? 0) - (a.quality_score ?? 0))
-        .slice(0, size),
-    [rows, region, size],
-  );
-  if (picks.length === 0) return null;
-
+function Holdings({
+  region, holdings, summary,
+}: {
+  region: string;
+  holdings: PortfolioHolding[];
+  summary?: { holdings: number; avg_return_pct: number; winners: number };
+}) {
+  if (!holdings?.length) return null;
   const label = MARKETS.find((m) => m.key === region)?.label ?? region.toUpperCase();
+  const weight = 100 / holdings.length;
+
   return (
     <div className="mb-6">
-      <div className="mb-2 flex items-baseline gap-3 px-1">
+      <div className="mb-2 flex flex-wrap items-baseline gap-3 px-1">
         <h2 className="text-sm font-bold uppercase tracking-wide text-slate-200">{label}</h2>
         <span className="text-xs text-slate-500">
-          top {picks.length} of {size} · equal weight
+          {holdings.length} holdings · equal weight ({weight.toFixed(1)}% each)
         </span>
+        {summary && (
+          <span className="text-xs font-semibold" style={{ color: pctColor(summary.avg_return_pct) }}>
+            {summary.avg_return_pct > 0 ? "+" : ""}{summary.avg_return_pct}% avg ·{" "}
+            {summary.winners}/{summary.holdings} winners
+          </span>
+        )}
       </div>
       <div className="overflow-x-auto rounded-lg border border-base-600">
         <table className="w-full text-sm">
@@ -70,36 +52,44 @@ function Holdings({ region, rows }: { region: string; rows: ScreenerRow[] }) {
               <th className="px-3 py-2 text-left">Company</th>
               <th className="px-3 py-2 text-left">Sector</th>
               <th className="px-3 py-2 text-right">Quality</th>
-              <th className="px-3 py-2 text-left">Action</th>
+              <th className="px-3 py-2 text-right">Entry</th>
               <th className="px-3 py-2 text-right">Price</th>
-              <th className="px-3 py-2 text-right">Weight</th>
+              <th className="px-3 py-2 text-right">Return</th>
+              <th className="px-3 py-2 text-right">Held Since</th>
             </tr>
           </thead>
           <tbody>
-            {picks.map((r, i) => (
-              <tr key={r.provider_symbol} className="border-b border-base-700/40 hover:bg-base-700/40">
+            {holdings.map((h, i) => (
+              <tr key={h.provider_symbol} className="border-b border-base-700/40 hover:bg-base-700/40">
                 <td className="px-3 py-1.5 text-slate-500">{i + 1}</td>
                 <td className="px-3 py-1.5">
-                  <Link to={`/company/${encodeURIComponent(r.provider_symbol)}`}
+                  <Link to={`/company/${encodeURIComponent(h.provider_symbol)}`}
                         className="font-semibold text-accent">
-                    {r.symbol}
+                    {h.symbol}
                   </Link>
                 </td>
                 <td className="px-3 py-1.5 text-slate-300">
-                  <span className="block max-w-[240px] truncate" title={r.name ?? ""}>
-                    {r.name ?? "—"}
+                  <span className="block max-w-[220px] truncate" title={h.name ?? ""}>
+                    {h.name ?? "—"}
                   </span>
                 </td>
-                <td className="px-3 py-1.5 text-xs text-slate-400">{r.sector ?? "—"}</td>
+                <td className="px-3 py-1.5 text-xs text-slate-400">{h.sector ?? "—"}</td>
                 <td className="num px-3 py-1.5 text-right font-semibold text-slate-200">
-                  {r.quality_score?.toFixed(1) ?? "—"}
+                  {h.quality_score?.toFixed(1) ?? "—"}
                 </td>
-                <td className="px-3 py-1.5"><ActionBadge action={r.strategy_action} /></td>
+                <td className="num px-3 py-1.5 text-right text-slate-400">
+                  {fmtNumber(h.entry_price)}
+                </td>
                 <td className="num px-3 py-1.5 text-right text-slate-300">
-                  {fmtNumber(r.price)}
+                  {fmtNumber(h.price ?? null)}
                 </td>
-                <td className="num px-3 py-1.5 text-right text-slate-500">
-                  {(100 / picks.length).toFixed(1)}%
+                <td className="num px-3 py-1.5 text-right font-semibold"
+                    style={{ color: pctColor(h.return_pct) }}>
+                  {h.return_pct == null ? "—"
+                    : `${h.return_pct > 0 ? "+" : ""}${h.return_pct}%`}
+                </td>
+                <td className="num px-3 py-1.5 text-right text-[11px] text-slate-500">
+                  {h.entry_date}
                 </td>
               </tr>
             ))}
@@ -110,32 +100,37 @@ function Holdings({ region, rows }: { region: string; rows: ScreenerRow[] }) {
   );
 }
 
-// Model Portfolio: what the strategy would hold right now — the quality-gated names ranked by
-// fundamental score, equal weight. This is the live expression of the backtested approach.
+// Model Portfolio: persisted holdings that rebalance once a quarter as results land — new top
+// scorers are added, names that fall out of the ranking are dropped. Entry prices are kept so
+// the portfolio carries a real track record rather than just today's ranking.
 export default function ModelPortfolioPage() {
-  const [rows, setRows] = useState<ScreenerRow[]>([]);
+  const [pf, setPf] = useState<ModelPortfolio | null>(null);
   const [market, setMarket] = useState("all");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const ctrl = new AbortController();
-    api
-      .screener({ page: 1, page_size: 12000 }, ctrl.signal)
-      .then((p) => setRows(p.items ?? []))
-      .catch(() => setRows([]))
+    api.modelPortfolio(ctrl.signal)
+      .then(setPf)
       .finally(() => setLoading(false));
     return () => ctrl.abort();
   }, []);
 
-  const shown = market === "all"
-    ? MARKETS.filter((m) => m.key !== "all").map((m) => m.key)
-    : [market];
+  const holdings = pf?.holdings ?? {};
+  const regions = market === "all" ? Object.keys(holdings) : [market];
+  const recent = (pf?.changes ?? []).slice(-12).reverse()
+    .filter((c) => market === "all" || c.region === market);
 
   return (
     <div className="flex h-full flex-col bg-base-900 text-slate-200">
       <header className="flex flex-wrap items-center gap-3 border-b border-base-600 bg-base-900 px-5 py-3">
         <Link to="/" className="text-sm text-slate-400 hover:text-accent">← Dashboard</Link>
         <span className="text-lg font-bold text-slate-100">Model Portfolio</span>
+        {pf?.last_rebalance_quarter && (
+          <span className="rounded bg-base-700 px-2 py-0.5 text-xs text-slate-400">
+            rebalanced {pf.last_rebalance_quarter}
+          </span>
+        )}
         <div className="ml-auto flex flex-wrap gap-1.5">
           {MARKETS.map((m) => (
             <button
@@ -155,26 +150,59 @@ export default function ModelPortfolioPage() {
 
       <div className="mx-auto w-full max-w-6xl px-4 pt-3">
         <div className="rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-[11px] text-slate-300">
-          Holdings are the highest <b>fundamental quality</b> names that pass the gate — growth
-          (45%) + cash (40%) + a debt guardrail — ranked by score, equal weight. Pakistan holds
-          20, other markets 15. Research output, not investment advice.
+          Holds the highest <b>fundamental quality</b> names that pass the gate — growth (45%) +
+          cash (40%) + a debt guardrail. <b>Rebalances once a quarter</b> as results land: new
+          top scorers are added, names that fall out are dropped. Pakistan holds 20, other
+          markets 15, equal weight. Research output, not investment advice.
         </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {loading ? (
           <div className="p-8 text-center text-sm text-slate-500">Loading…</div>
+        ) : regions.length === 0 ? (
+          <div className="p-8 text-center text-sm text-slate-500">
+            The portfolio builds on the next daily refresh.
+          </div>
         ) : (
           <>
-            {shown.map((region) => (
-              <Holdings key={region} region={region} rows={rows} />
+            {regions.map((r) => (
+              <Holdings key={r} region={r} holdings={holdings[r] ?? []}
+                        summary={pf?.summary?.[r]} />
             ))}
-            {shown.every(
-              (rg) => !rows.some((r) => r.region === rg && r.quality_score != null),
-            ) && (
-              <div className="p-8 text-center text-sm text-slate-500">
-                No quality-scored names yet for this market — the strategy engine fills these
-                on the next daily refresh.
+
+            {recent.length > 0 && (
+              <div className="mt-2">
+                <h2 className="mb-2 px-1 text-sm font-bold uppercase tracking-wide text-slate-200">
+                  Recent Rebalance Activity
+                </h2>
+                <div className="divide-y divide-base-700/50 rounded-lg border border-base-600">
+                  {recent.map((c, i) => (
+                    <div key={i} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="rounded px-2 py-0.5 text-[11px] font-bold"
+                              style={{
+                                background: c.action === "add"
+                                  ? "rgba(34,197,94,0.16)" : "rgba(239,68,68,0.16)",
+                                color: c.action === "add" ? "#22c55e" : "#ef4444",
+                              }}>
+                          {c.action === "add" ? "ADDED" : "DROPPED"}
+                        </span>
+                        <span className="font-semibold text-slate-200">{c.symbol}</span>
+                        <span className="text-xs uppercase text-slate-500">{c.region}</span>
+                        <span className="text-xs text-slate-400">{c.reason}</span>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-3 text-xs text-slate-500">
+                        {c.return_pct != null && (
+                          <span className="font-semibold" style={{ color: pctColor(c.return_pct) }}>
+                            {c.return_pct > 0 ? "+" : ""}{c.return_pct}%
+                          </span>
+                        )}
+                        <span className="num">{c.date}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </>

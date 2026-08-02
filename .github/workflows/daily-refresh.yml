@@ -49,6 +49,10 @@ jobs:
           # running record. This builds a forward-looking track record, not a backtest.
           python -m app.cli journal-signals || true
           python -m app.cli evaluate-journal || true
+          # Model portfolio: marks holdings to today's prices every run, and rebalances itself
+          # once per calendar quarter as new results land (adds the new top scorers, drops the
+          # names that fell out). The command is idempotent within a quarter.
+          python -m app.cli model-portfolio || true
 
       - name: Detect new Buy/Exit signals (for email)
         run: |

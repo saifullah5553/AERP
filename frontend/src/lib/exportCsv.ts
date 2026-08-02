@@ -4,8 +4,9 @@ import type { ScreenerQuery, ScreenerRow } from "@/types/api";
 const EXPORT_COLUMNS: (keyof ScreenerRow)[] = [
   "symbol", "name", "market_code", "sector", "industry", "price", "change_pct",
   "volume", "pe_ttm", "roe", "debt_to_equity", "revenue_growth",
-  "eps_growth", "dividend_yield", "technical_score", "fundamental_score",
-  "composite_score", "top_candlestick", "top_chart_pattern", "signal",
+  "eps_growth", "dividend_yield", "strategy_action", "quality_score",
+  "fundamental_score", "entry_score", "technical_score",
+  "top_candlestick", "top_chart_pattern",
 ];
 
 function csvCell(v: unknown): string {
