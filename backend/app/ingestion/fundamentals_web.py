@@ -251,6 +251,10 @@ def refresh_fundamentals_web(
                 except (OSError, json.JSONDecodeError):
                     pass
             updated += 1
+            # Periodic checkpoint so a long run that dies mid-way (machine sleep etc.) never
+            # loses progress — the screener rows patched so far persist and a re-run resumes.
+            if updated % 400 == 0:
+                (out / "screener.json").write_text(json.dumps(rows), encoding="utf-8")
 
     rows.sort(key=lambda r: (r.get("composite_score") is not None,
                              r.get("composite_score") or 0), reverse=True)
