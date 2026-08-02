@@ -186,22 +186,27 @@ def refresh_fundamentals_web(
 
     # region="all" backfills US+India+Australia concurrently in one pass (one writer, no race).
     wanted = {"us", "india", "australia"} if region == "all" else {region}
-    targets = [
-        r for r in rows
-        if r.get("region") in wanted and r.get("fundamental_score") is None
-        and r.get("technical_score") is not None and r.get("provider_symbol")
-    ]
-    if limit is not None:
-        targets = targets[:limit]
+
+    def _is_target(r: dict) -> bool:
+        # Skip names already scored AND names already attempted-with-no-usable-data (fund_na),
+        # so phased runs advance instead of re-processing the same dataless names each pass.
+        return (r.get("region") in wanted and r.get("fundamental_score") is None
+                and not r.get("fund_na") and r.get("technical_score") is not None
+                and r.get("provider_symbol"))
+
+    all_targets = [r for r in rows if _is_target(r)]
+    targets = all_targets[:limit] if limit is not None else all_targets
 
     provider = YahooProvider()
 
     def work(r: dict):
+        # ok=False only on a real exception (transient 429 etc.) — those stay retryable;
+        # ok=True with res=None means yfinance had no usable statements → mark fund_na.
         try:
             q, a = _get_statements(r["provider_symbol"], provider, cache)
-            return r, _score_one(_f(r.get("price")), regime_map.get(r.get("region")), q, a)
+            return r, _score_one(_f(r.get("price")), regime_map.get(r.get("region")), q, a), True
         except Exception:  # noqa: BLE001 - one bad ticker shouldn't stop the batch
-            return r, None
+            return r, None, False
 
     updated = 0
     with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -209,11 +214,14 @@ def refresh_fundamentals_web(
         # rate-limited fetch can't head-of-line-block the cached/fast ones behind it.
         futures = [pool.submit(work, r) for r in targets]
         for fut in as_completed(futures):
-            r, res = fut.result()
+            r, res, ok = fut.result()
             if res is None:
+                if ok:
+                    r["fund_na"] = True  # attempted, no usable statements — don't retry
                 continue
             fund, ratios, metrics, (inc, bal, cf_rows), period_label = res
             if fund is None:
+                r["fund_na"] = True
                 continue
             tech = _f(r.get("technical_score"))
             de = _f(ratios.debt_to_equity)
@@ -264,6 +272,7 @@ def refresh_fundamentals_web(
     rows.sort(key=lambda r: (r.get("composite_score") is not None,
                              r.get("composite_score") or 0), reverse=True)
     (out / "screener.json").write_text(json.dumps(rows), encoding="utf-8")
-    result: dict[str, Any] = {"targets": len(targets), "updated": updated}
+    remaining = sum(1 for r in rows if _is_target(r))
+    result: dict[str, Any] = {"targets": len(targets), "updated": updated, "remaining": remaining}
     log.info("refresh-fundamentals-web[%s]: %s", region, result)
     return result
