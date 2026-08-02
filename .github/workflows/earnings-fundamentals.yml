@@ -1,0 +1,77 @@
+name: Earnings Fundamentals Refresh
+
+# Twice a week, re-fetch fundamentals for ONLY the US/India/Australia companies whose earnings
+# date just passed — i.e. those that just reported, whose numbers are stale by definition.
+# Same targeted pattern as psx-fundamentals.yml (which keys off PSX filing announcements).
+#
+# Source: yfinance (quarterly → TTM). NOTE yfinance rate-limits datacenter IPs, so a CI run may
+# come back with 0 updates; that's a safe no-op (nothing is written, nothing is faked). If CI is
+# throttled, run the same command locally from a residential connection:
+#   cd backend && python -m app.cli refresh-fundamentals-web --region all \
+#       --symbols "$(python ../scripts/earnings_refresh_symbols.py 5 120)" --force
+on:
+  schedule:
+    - cron: "40 3 * * 2,5" # Tue & Fri 03:40 UTC
+  workflow_dispatch:
+    inputs:
+      symbols:
+        description: "Comma-separated tickers (blank = auto from recent earnings dates)"
+        required: false
+        default: ""
+      lookback_days:
+        description: "How many days back to treat as 'just reported'"
+        required: false
+        default: "5"
+  push:
+    paths: [".github/workflows/earnings-fundamentals.yml"] # self-test on changes
+
+permissions:
+  contents: write
+
+concurrency:
+  group: earnings-fundamentals
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r backend/requirements.txt
+
+      - name: Pick companies that just reported
+        run: |
+          MANUAL="${{ github.event.inputs.symbols }}"
+          DAYS="${{ github.event.inputs.lookback_days }}"
+          [ -z "$DAYS" ] && DAYS=5
+          if [ -n "$MANUAL" ]; then
+            SYMS="$MANUAL"
+          else
+            SYMS=$(python scripts/earnings_refresh_symbols.py "$DAYS" 120)
+          fi
+          echo "SYMS=$SYMS" >> "$GITHUB_ENV"
+          echo "Refreshing: ${SYMS:-<none>}"
+
+      - name: Refresh their fundamentals (quarterly → TTM)
+        if: ${{ env.SYMS != '' }}
+        working-directory: backend
+        run: |
+          python -m app.cli refresh-fundamentals-web \
+            --region all --symbols "$SYMS" --force || true
+
+      - name: Commit if anything changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add frontend/public/data
+          if git diff --cached --quiet; then
+            echo "No fundamentals changed (yfinance may be rate-limited from CI — safe no-op)."
+          else
+            git commit -m "chore: refresh fundamentals for companies that just reported"
+            git push || echo "push skipped"
+          fi

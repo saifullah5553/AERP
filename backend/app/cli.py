@@ -203,9 +203,12 @@ def cmd_refresh_fundamentals_web(args: argparse.Namespace) -> None:
     from app.ingestion.fundamentals_web import refresh_fundamentals_web
 
     out = args.out or "../frontend/public/data"
+    syms = [s for s in (args.symbols or "").split(",") if s.strip()] or None
     log.info(
         "refresh-fundamentals-web: %s",
-        refresh_fundamentals_web(out, region=args.region, limit=args.limit),
+        refresh_fundamentals_web(
+            out, region=args.region, limit=args.limit, symbols=syms, force=args.force
+        ),
     )
 
 
@@ -650,6 +653,10 @@ def build_parser() -> argparse.ArgumentParser:
     fw = add("refresh-fundamentals-web", cmd_refresh_fundamentals_web, limit=True)
     fw.add_argument("--region", required=True, choices=["us", "india", "australia", "all"])
     fw.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
+    fw.add_argument("--symbols", default=None,
+                    help="comma-separated tickers to refresh (e.g. after results); ignores region")
+    fw.add_argument("--force", action="store_true",
+                    help="bypass the statement cache (use after a company reports)")
     add("all", cmd_all)
     return parser
 

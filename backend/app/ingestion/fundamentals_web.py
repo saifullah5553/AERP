@@ -61,11 +61,14 @@ def _cache_to_dtos(raw: list) -> list:
     return out
 
 
-def _get_statements(sym: str, provider: YahooProvider, cache_dir: Path | None):
+def _get_statements(sym: str, provider: YahooProvider, cache_dir: Path | None, force: bool = False):
     """(quarterly, annual) statement DTOs — from the local cache if present, else yfinance
-    (and cached). Caching avoids re-hitting yfinance on re-runs / re-scoring."""
+    (and cached). Caching avoids re-hitting yfinance on re-runs / re-scoring.
+
+    ``force`` bypasses the cache read (but still refreshes it) — used after a company reports
+    results, when the cached statements are by definition stale."""
     cf = (cache_dir / f"{sym}.json") if cache_dir else None
-    if cf and cf.exists():
+    if cf and cf.exists() and not force:
         try:
             raw = json.loads(cf.read_text(encoding="utf-8"))
             return _cache_to_dtos(raw.get("q", [])), _cache_to_dtos(raw.get("a", []))
@@ -169,7 +172,8 @@ def _ratios_json(ratios) -> dict:
 
 def refresh_fundamentals_web(
     data_dir: str | Path, region: str, workers: int = 6, limit: int | None = None,
-    cache_dir: str | Path | None = None,
+    cache_dir: str | Path | None = None, symbols: list[str] | None = None,
+    force: bool = False,
 ) -> dict[str, int]:
     out = Path(data_dir)
     cdir = out / "company"
@@ -194,7 +198,18 @@ def refresh_fundamentals_web(
                 and not r.get("fund_na") and r.get("technical_score") is not None
                 and r.get("provider_symbol"))
 
-    all_targets = [r for r in rows if _is_target(r)]
+    if symbols:
+        # Targeted refresh (e.g. companies that just reported results): take exactly these,
+        # regardless of whether they already have a score — their numbers just changed.
+        want = {s.strip().upper() for s in symbols if s.strip()}
+        all_targets = [
+            r for r in rows
+            if (str(r.get("provider_symbol") or "").upper() in want
+                or str(r.get("symbol") or "").upper() in want)
+            and r.get("provider_symbol")
+        ]
+    else:
+        all_targets = [r for r in rows if _is_target(r)]
     targets = all_targets[:limit] if limit is not None else all_targets
 
     provider = YahooProvider()
@@ -203,7 +218,7 @@ def refresh_fundamentals_web(
         # ok=False only on a real exception (transient 429 etc.) — those stay retryable;
         # ok=True with res=None means yfinance had no usable statements → mark fund_na.
         try:
-            q, a = _get_statements(r["provider_symbol"], provider, cache)
+            q, a = _get_statements(r["provider_symbol"], provider, cache, force=force)
             return r, _score_one(_f(r.get("price")), regime_map.get(r.get("region")), q, a), True
         except Exception:  # noqa: BLE001 - one bad ticker shouldn't stop the batch
             return r, None, False
