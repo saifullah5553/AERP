@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.logging import get_logger
+from app.core.snapshot_lock import snapshot_lock
 from app.engines.strategy.quality import assess_quality
 
 log = get_logger(__name__)
@@ -68,6 +69,13 @@ def _rank(rows: list[dict], region: str, company: Path) -> list[dict]:
 
 def rebalance(data_dir: str | Path, force: bool = False) -> dict[str, Any]:
     """Quarterly rebalance: add the new top scorers, drop those that fell out."""
+    with snapshot_lock("model-portfolio", data_dir) as ok:
+        if not ok:
+            return {"skipped": True}
+        return _rebalance(data_dir, force)
+
+
+def _rebalance(data_dir: str | Path, force: bool = False) -> dict[str, Any]:
     out = Path(data_dir)
     path = out / PORTFOLIO
     doc = _load(path)

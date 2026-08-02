@@ -17,12 +17,20 @@ import json
 from pathlib import Path
 
 from app.core.logging import get_logger
+from app.core.snapshot_lock import snapshot_lock
 from app.engines.strategy.quality import assess_quality
 
 log = get_logger(__name__)
 
 
 def refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
+    with snapshot_lock("refresh-quality", data_dir) as ok:
+        if not ok:
+            return {"skipped": 1}
+        return _refresh_quality(data_dir, limit)
+
+
+def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
     out = Path(data_dir)
     cdir = out / "company"
     rows: list[dict] = json.loads((out / "screener.json").read_text(encoding="utf-8"))
