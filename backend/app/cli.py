@@ -197,6 +197,15 @@ def cmd_expand_universe(args: argparse.Namespace) -> None:
     log.info("expand-universe: %s", expand_universe(out, region=args.region, limit=args.limit))
 
 
+def cmd_refresh_sectors(args: argparse.Namespace) -> None:
+    """Fill missing sectors keylessly (ASX GICS directory + SEC SIC codes). Patches the
+    snapshot; India stays unset (no free sector source) rather than guessed."""
+    from app.ingestion.sectors_web import refresh_sectors
+
+    out = args.out or "../frontend/public/data"
+    log.info("refresh-sectors: %s", refresh_sectors(out, limit=args.limit))
+
+
 def cmd_refresh_fundamentals_web(args: argparse.Namespace) -> None:
     """Backfill real fundamentals for the expanded technical-only universe via yfinance
     (residential IP only). Reuses the fundamental engine; patches the snapshot. Resumable."""
@@ -650,6 +659,8 @@ def build_parser() -> argparse.ArgumentParser:
     eu = add("expand-universe", cmd_expand_universe, limit=True)
     eu.add_argument("--region", required=True, choices=["us", "india", "australia"])
     eu.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
+    rs = add("refresh-sectors", cmd_refresh_sectors, limit=True)
+    rs.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
     fw = add("refresh-fundamentals-web", cmd_refresh_fundamentals_web, limit=True)
     fw.add_argument("--region", required=True, choices=["us", "india", "australia", "all"])
     fw.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
