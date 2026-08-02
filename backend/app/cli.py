@@ -212,6 +212,17 @@ def cmd_backtest(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_strategy_backtest(args: argparse.Namespace) -> None:
+    """Simulate the real trading rule (buy on entering strong_buy, sell on leaving) trade by
+    trade, with costs, and compare it against simply buying and holding."""
+    from app.ingestion.strategy_backtest import strategy_backtest
+
+    out = args.out or "../frontend/public/data"
+    log.info("strategy-backtest: %s", strategy_backtest(
+        out, sample=args.sample, step=args.step, cost_bps=args.cost_bps,
+    ))
+
+
 def cmd_factor_backtest(args: argparse.Namespace) -> None:
     """Measure each metric's individual predictive power (quintile spread + rank IC), so the
     composite can be weighted on evidence instead of intuition."""
@@ -693,6 +704,11 @@ def build_parser() -> argparse.ArgumentParser:
                     help="test only names carrying real financials (the research universe)")
     bt.add_argument("--min-price", type=float, default=0.0, help="skip sub-price penny names")
     bt.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
+    sb = add("strategy-backtest", cmd_strategy_backtest)
+    sb.add_argument("--sample", type=int, default=500)
+    sb.add_argument("--step", type=int, default=5, help="trading days between signal checks")
+    sb.add_argument("--cost-bps", type=float, default=20.0, help="cost per side, basis points")
+    sb.add_argument("--out", default=None)
     fb = add("factor-backtest", cmd_factor_backtest)
     fb.add_argument("--horizon", type=int, default=60)
     fb.add_argument("--sample", type=int, default=800)
