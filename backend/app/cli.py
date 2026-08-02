@@ -197,6 +197,21 @@ def cmd_expand_universe(args: argparse.Namespace) -> None:
     log.info("expand-universe: %s", expand_universe(out, region=args.region, limit=args.limit))
 
 
+def cmd_backtest(args: argparse.Namespace) -> None:
+    """Walk-forward test of the signal engine: compute each signal from data available N days
+    ago, then measure the return actually delivered since. Writes data/backtest.json."""
+    from app.ingestion.backtest import backtest
+
+    out = args.out or "../frontend/public/data"
+    log.info(
+        "backtest: %s",
+        backtest(
+            out, horizon=args.horizon, sample=args.sample,
+            only_fundamentals=args.only_fundamentals, min_price=args.min_price,
+        ),
+    )
+
+
 def cmd_refresh_sectors(args: argparse.Namespace) -> None:
     """Fill missing sectors keylessly (ASX GICS directory + SEC SIC codes). Patches the
     snapshot; India stays unset (no free sector source) rather than guessed."""
@@ -659,6 +674,13 @@ def build_parser() -> argparse.ArgumentParser:
     eu = add("expand-universe", cmd_expand_universe, limit=True)
     eu.add_argument("--region", required=True, choices=["us", "india", "australia"])
     eu.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
+    bt = add("backtest", cmd_backtest)
+    bt.add_argument("--horizon", type=int, default=60, help="trading days to look forward")
+    bt.add_argument("--sample", type=int, default=400, help="how many names to test")
+    bt.add_argument("--only-fundamentals", action="store_true",
+                    help="test only names carrying real financials (the research universe)")
+    bt.add_argument("--min-price", type=float, default=0.0, help="skip sub-price penny names")
+    bt.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
     rs = add("refresh-sectors", cmd_refresh_sectors, limit=True)
     rs.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
     fw = add("refresh-fundamentals-web", cmd_refresh_fundamentals_web, limit=True)
