@@ -21,10 +21,16 @@ function Log($msg) {
   Add-Content -Path $log -Value $line -Encoding utf8
 }
 
-# Don't stack runs: if a previous batch is still working, leave it alone.
+# Don't stack runs, and don't race any OTHER snapshot writer either. Everything below writes
+# screener.json, so two of them at once means last-writer-wins and a half-updated snapshot.
+# Skipping a slot is free - the next one is only four hours away.
+$writers = @(
+  "*refresh-fundamentals-web*", "*refresh-technicals*", "*model-portfolio*",
+  "*refresh-prices*", "*refresh-sectors*", "*expand-universe*", "*backfill_quality*"
+)
 $running = Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
-  Where-Object { $_.CommandLine -like "*refresh-fundamentals-web*" }
-if ($running) { Log "a batch is already running - skipping this slot"; exit 0 }
+  Where-Object { $cl = $_.CommandLine; $writers | Where-Object { $cl -like $_ } }
+if ($running) { Log "another snapshot writer is running - skipping this slot"; exit 0 }
 
 Log "=== batch start (size $BatchSize) ==="
 

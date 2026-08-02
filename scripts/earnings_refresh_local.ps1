@@ -18,6 +18,16 @@ function Log($msg) {
   Add-Content -Path $log -Value $line -Encoding utf8
 }
 
+# Don't race another snapshot writer - they all write screener.json, so two at once means
+# last-writer-wins and a half-updated snapshot. This job reruns on its next scheduled slot.
+$writers = @(
+  "*refresh-fundamentals-web*", "*refresh-technicals*", "*model-portfolio*",
+  "*refresh-prices*", "*refresh-sectors*", "*expand-universe*", "*backfill_quality*"
+)
+$running = Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
+  Where-Object { $cl = $_.CommandLine; $writers | Where-Object { $cl -like $_ } }
+if ($running) { Log "another snapshot writer is running - skipping this slot"; exit 0 }
+
 Log "=== earnings refresh start ==="
 
 # 1. Who just reported? (blank = nothing to do)
