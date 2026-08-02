@@ -310,7 +310,8 @@ def cmd_refresh_fundamentals_web(args: argparse.Namespace) -> None:
     log.info(
         "refresh-fundamentals-web: %s",
         refresh_fundamentals_web(
-            out, region=args.region, limit=args.limit, symbols=syms, force=args.force
+            out, region=args.region, limit=args.limit, symbols=syms, force=args.force,
+            cached_only=args.cached_only,
         ),
     )
 
@@ -806,6 +807,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="comma-separated tickers to refresh (e.g. after results); ignores region")
     fw.add_argument("--force", action="store_true",
                     help="bypass the statement cache (use after a company reports)")
+    fw.add_argument("--cached-only", action="store_true",
+                    help="score only names already in the cache - no yfinance calls")
     add("all", cmd_all)
     return parser
 

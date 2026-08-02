@@ -178,7 +178,7 @@ def _ratios_json(ratios) -> dict:
 def refresh_fundamentals_web(
     data_dir: str | Path, region: str, workers: int = 3, limit: int | None = None,
     cache_dir: str | Path | None = None, symbols: list[str] | None = None,
-    force: bool = False, throttle: float = 0.4,
+    force: bool = False, throttle: float = 0.4, cached_only: bool = False,
 ) -> dict[str, int]:
     """Backfill fundamentals from yfinance.
 
@@ -222,6 +222,13 @@ def refresh_fundamentals_web(
         ]
     else:
         all_targets = [r for r in rows if _is_target(r)]
+    if cached_only:
+        # Score only what's already been fetched: pure local work, no yfinance calls, so it
+        # can't be rate-limited and finishes in seconds rather than hours.
+        all_targets = [
+            r for r in all_targets
+            if (cache / f"{r['provider_symbol']}.json").exists()
+        ]
     targets = all_targets[:limit] if limit is not None else all_targets
 
     provider = YahooProvider()
