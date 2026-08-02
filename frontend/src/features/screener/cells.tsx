@@ -25,6 +25,28 @@ export function SignalCell(p: ICellRendererParams) {
   );
 }
 
+// Strategy action: the quality gate's verdict. Green = act, amber = watchlist, grey = skip.
+const ACTION_STYLE: Record<string, { bg: string; fg: string; label: string }> = {
+  buy: { bg: "rgba(34,197,94,0.18)", fg: "#22c55e", label: "BUY" },
+  hold: { bg: "rgba(56,189,248,0.16)", fg: "#38bdf8", label: "HOLD" },
+  watch: { bg: "rgba(245,158,11,0.16)", fg: "#f59e0b", label: "WATCH" },
+  avoid: { bg: "rgba(100,116,139,0.16)", fg: "#94a3b8", label: "AVOID" },
+};
+
+export function ActionCell(p: ICellRendererParams) {
+  const a = String(p.value ?? "");
+  const s = ACTION_STYLE[a];
+  if (!s) return <span className="text-slate-600">—</span>;
+  return (
+    <span
+      style={{ background: s.bg, color: s.fg }}
+      className="inline-block rounded px-2 py-0.5 text-xs font-bold"
+    >
+      {s.label}
+    </span>
+  );
+}
+
 function scoreTones(v: number): { bg: string; border: string } {
   const hue = Math.max(0, Math.min(120, (v / 100) * 120)); // 0=red → 120=green
   return {

@@ -111,6 +111,13 @@ export interface ScreenerRow {
   technical_score: number | null;
   composite_score: number | null;
   pabrai_score: number | null;
+  // Strategy engine (quality gate -> price-action entry). Backtests showed the fundamental
+  // gate carries the edge, so these lead the screener.
+  strategy_action?: "buy" | "hold" | "watch" | "avoid" | null;
+  strategy_conviction?: number | null;
+  quality_score?: number | null;
+  quality_passed?: boolean | null;
+  entry_score?: number | null;
   signal: SignalType | null;
   signal_label: string | null;
   signal_since?: string | null;

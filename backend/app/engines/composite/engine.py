@@ -33,16 +33,18 @@ log = get_logger(__name__)
 # Weights are renormalised over whichever components a security actually has, so a component
 # set to 0.0 simply stops influencing the composite (it is still computed and displayed).
 #
-# 2026-08-02 re-weighting: the factor backtest measured every technical input as a NEGATIVE
-# predictor over 60d (momentum IC -0.094, pct_from_52w_high -0.087, adx -0.086), so weight was
-# moved off the measured-negative technical block and onto fundamentals. NOTE the fundamental
-# leg is itself UNVALIDATED - we have no point-in-time fundamentals to backtest it with - so
-# this is a reasoned response to the evidence, not a proven improvement. Re-run
-# `strategy-backtest` after any change here to see whether it actually helped.
+# 2026-08-02, evidence-led weighting. Two measurements drove this:
+#   * factor backtest: every technical input was a NEGATIVE predictor over 60d
+#     (momentum IC -0.094, pct_from_52w_high -0.087, adx -0.086)
+#   * point-in-time portfolio backtest using NO technicals at all beat the typical stock by
+#     +65pp on PSX and +47pp on the ASX
+# So fundamentals carry the ranking and technicals are demoted to a small timing contribution
+# rather than a driver. They are not zeroed: the entry engine's price-action VETOES (don't
+# chase an extended move) did add value, so some price awareness is retained.
 WEIGHTS = {
-    "fundamental": 0.60,
-    "technical": 0.25,
-    "momentum": 0.15,
+    "fundamental": 0.75,
+    "technical": 0.15,
+    "momentum": 0.10,
     "quality": 0.0,
     "risk": 0.0,
 }

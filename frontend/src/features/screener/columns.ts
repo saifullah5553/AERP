@@ -2,7 +2,7 @@ import type { ColDef } from "ag-grid-community";
 
 import { fmtInt, fmtNumber, fmtPercent, scoreHeatBg, titleize } from "@/lib/format";
 import type { ScreenerRow } from "@/types/api";
-import { ChangeCell, PatternCell, ScoreCell, SignalCell } from "./cells";
+import { ActionCell, ChangeCell, PatternCell, ScoreCell, SignalCell } from "./cells";
 
 // Translucent heat fill for a score column cell.
 const heat = (p: { value: unknown }) => ({
@@ -59,10 +59,27 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
     num("eps_growth", "EPS Gr", { width: 100, valueFormatter: (p) => fmtPercent(p.value) }),
     num("dividend_yield", "Div Y", { width: 90, valueFormatter: (p) => fmtPercent(p.value) }),
 
+    // Strategy engine first: the point-in-time backtests showed the fundamental quality gate
+    // carries the edge (beat the typical stock by +47pp to +65pp across two markets), while
+    // technical inputs measured negative. So Action and Quality lead, and Tech is demoted.
     {
-      field: "technical_score",
-      headerName: "Tech",
-      width: 90,
+      field: "strategy_action",
+      headerName: "Action",
+      headerTooltip:
+        "Quality gate + price action: BUY (strong/improving and starting to move), HOLD, " +
+        "WATCH (quality, awaiting a move), AVOID (fails the fundamental gate)",
+      width: 110,
+      sortable: true,
+      cellRenderer: ActionCell,
+    },
+    {
+      field: "quality_score",
+      headerName: "Quality",
+      headerTooltip:
+        "Fundamental quality: growth (45%) + cash (40%) + debt guardrail (15%), judged over " +
+        "multiple reported periods. This is the ranking the backtests validated.",
+      width: 100,
+      sort: "desc",
       sortable: true,
       cellRenderer: ScoreCell,
       cellStyle: heat,
@@ -79,7 +96,25 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
       field: "composite_score",
       headerName: "Composite",
       width: 120,
-      sort: "desc",
+      sortable: true,
+      cellRenderer: ScoreCell,
+      cellStyle: heat,
+    },
+    {
+      field: "entry_score",
+      headerName: "Entry",
+      headerTooltip: "Price-action timing quality (0-100): is the move just starting?",
+      width: 90,
+      sortable: true,
+      cellRenderer: ScoreCell,
+    },
+    {
+      field: "technical_score",
+      headerName: "Tech",
+      headerTooltip:
+        "Technical score. Kept for reference only - measured as a negative predictor over " +
+        "60 days, so it no longer drives the ranking.",
+      width: 90,
       sortable: true,
       cellRenderer: ScoreCell,
       cellStyle: heat,

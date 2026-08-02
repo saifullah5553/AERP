@@ -6,6 +6,7 @@ import CompanyPage from "@/features/company/CompanyPage";
 import ScreenerPage from "@/features/screener/ScreenerPage";
 import SectorsPage from "@/features/sectors/SectorsPage";
 import BuySellPage from "@/features/signals/BuySellPage";
+import ModelPortfolioPage from "@/features/portfolio/ModelPortfolioPage";
 
 // HashRouter keeps deep links working on GitHub Pages (no server-side rewrites),
 // and is harmless behind a real backend.
@@ -17,6 +18,7 @@ export default function App() {
           <Route path="/" element={<ScreenerPage />} />
           <Route path="/sectors" element={<SectorsPage />} />
           <Route path="/signals" element={<BuySellPage />} />
+          <Route path="/portfolio" element={<ModelPortfolioPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/movers" element={<MoversPage />} />
           <Route path="/company/:symbol" element={<CompanyPage />} />
