@@ -233,6 +233,14 @@ def cmd_psx_pit_backtest(args: argparse.Namespace) -> None:
     ))
 
 
+def cmd_refresh_quality(args: argparse.Namespace) -> None:
+    """Score fundamental quality for EVERY stock from stored statements (no network)."""
+    from app.ingestion.quality_refresh import refresh_quality
+
+    out = args.out or "../frontend/public/data"
+    log.info("refresh-quality: %s", refresh_quality(out, limit=args.limit))
+
+
 def cmd_model_portfolio(args: argparse.Namespace) -> None:
     """Rebalance the model portfolio (quarterly) and mark holdings to current prices (daily)."""
     from app.ingestion.model_portfolio import mark, rebalance
@@ -774,6 +782,8 @@ def build_parser() -> argparse.ArgumentParser:
     pp.add_argument("--cost-bps", type=float, default=30.0)
     pp.add_argument("--stop-pct", type=float, default=25.0)
     pp.add_argument("--out", default=None)
+    rq = add("refresh-quality", cmd_refresh_quality, limit=True)
+    rq.add_argument("--out", default=None)
     mp = add("model-portfolio", cmd_model_portfolio)
     mp.add_argument("--force", action="store_true", help="rebalance even within the same quarter")
     mp.add_argument("--out", default=None)
