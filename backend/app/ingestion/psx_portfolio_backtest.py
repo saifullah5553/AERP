@@ -1,4 +1,8 @@
-"""Quarterly top-N portfolio backtest on PSX — does the fundamental score actually rank?
+"""Quarterly top-N portfolio backtest — does the fundamental score actually rank?
+
+Pure fundamentals: NO technicals, no entry timing. Holdings are chosen only by the
+point-in-time quality score, so this isolates the question "is the fundamental ranking itself
+worth anything?" from every price-based decision.
 
 The per-trade backtest answers "are individual entries good?". This answers a different and
 arguably more important question for a positional investor:
@@ -32,7 +36,8 @@ log = get_logger(__name__)
 
 def psx_portfolio_backtest(
     data_dir: str | Path, top_n: int = 20, rebalance_days: int = 63, warmup: int = 260,
-    sample: int = 400, workers: int = 6, cost_bps: float = 30.0,
+    sample: int = 400, workers: int = 6, cost_bps: float = 30.0, region: str = "psx",
+    min_periods: int = 3,
 ) -> dict[str, Any]:
     out = Path(data_dir)
     rows: list[dict] = json.loads((out / "screener.json").read_text(encoding="utf-8"))
@@ -40,7 +45,7 @@ def psx_portfolio_backtest(
 
     picks: list[tuple[dict, dict]] = []
     for r in rows:
-        if r.get("region") != "psx" or not r.get("provider_symbol"):
+        if r.get("region") != region or not r.get("provider_symbol"):
             continue
         cf = company / f"{r['provider_symbol']}.json"
         if not cf.exists():
@@ -49,7 +54,7 @@ def psx_portfolio_backtest(
             st = json.loads(cf.read_text(encoding="utf-8")).get("statements") or {}
         except (OSError, json.JSONDecodeError):
             continue
-        if len(st.get("income") or []) >= 3:
+        if len(st.get("income") or []) >= min_periods:
             picks.append((r, st))
         if len(picks) >= sample:
             break
@@ -143,7 +148,7 @@ def psx_portfolio_backtest(
     periods = [h["period_return_pct"] for h in history if "equity" in h]
     wins = [p for p in periods if p > 0]
     result = {
-        "market": "psx",
+        "market": region,
         "strategy": f"quarterly top-{top_n} by point-in-time quality score, equal weight",
         "window": f"{start} .. {end}",
         "universe": len(series),
@@ -164,7 +169,7 @@ def psx_portfolio_backtest(
             "owning everything."
         ),
     }
-    (out / "psx_portfolio_backtest.json").write_text(json.dumps(result), encoding="utf-8")
-    log.info("psx-portfolio-backtest: total=%s%% vs BH %s%%",
-             result["total_return_pct"], result["buy_and_hold_median_pct"])
+    (out / f"{region}_portfolio_backtest.json").write_text(json.dumps(result), encoding="utf-8")
+    log.info("portfolio-backtest[%s]: total=%s%% vs BH avg %s%%", region,
+             result["total_return_pct"], result["buy_and_hold_avg_pct"])
     return result

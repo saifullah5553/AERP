@@ -219,6 +219,7 @@ def cmd_psx_portfolio_backtest(args: argparse.Namespace) -> None:
     out = args.out or "../frontend/public/data"
     log.info("psx-portfolio-backtest: %s", psx_portfolio_backtest(
         out, top_n=args.top_n, rebalance_days=args.rebalance_days, sample=args.sample,
+        region=args.region, warmup=args.warmup,
     ))
 
 
@@ -754,6 +755,8 @@ def build_parser() -> argparse.ArgumentParser:
     pb.add_argument("--top-n", type=int, default=20)
     pb.add_argument("--rebalance-days", type=int, default=63, help="63 ~= one quarter")
     pb.add_argument("--sample", type=int, default=400)
+    pb.add_argument("--region", default="psx", choices=["psx", "us", "india", "australia"])
+    pb.add_argument("--warmup", type=int, default=260)
     pb.add_argument("--out", default=None)
     pp = add("psx-pit-backtest", cmd_psx_pit_backtest)
     pp.add_argument("--sample", type=int, default=250)
