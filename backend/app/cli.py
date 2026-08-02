@@ -212,6 +212,16 @@ def cmd_backtest(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_strategy_v2_backtest(args: argparse.Namespace) -> None:
+    """Backtest the quality-gate + price-action strategy against buy-and-hold."""
+    from app.ingestion.strategy_v2_backtest import strategy_v2_backtest
+
+    out = args.out or "../frontend/public/data"
+    log.info("strategy-v2-backtest: %s", strategy_v2_backtest(
+        out, sample=args.sample, step=args.step, cost_bps=args.cost_bps, stop_pct=args.stop_pct,
+    ))
+
+
 def cmd_strategy_backtest(args: argparse.Namespace) -> None:
     """Simulate the real trading rule (buy on entering strong_buy, sell on leaving) trade by
     trade, with costs, and compare it against simply buying and holding."""
@@ -704,6 +714,12 @@ def build_parser() -> argparse.ArgumentParser:
                     help="test only names carrying real financials (the research universe)")
     bt.add_argument("--min-price", type=float, default=0.0, help="skip sub-price penny names")
     bt.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
+    s2 = add("strategy-v2-backtest", cmd_strategy_v2_backtest)
+    s2.add_argument("--sample", type=int, default=500)
+    s2.add_argument("--step", type=int, default=5)
+    s2.add_argument("--cost-bps", type=float, default=20.0)
+    s2.add_argument("--stop-pct", type=float, default=25.0)
+    s2.add_argument("--out", default=None)
     sb = add("strategy-backtest", cmd_strategy_backtest)
     sb.add_argument("--sample", type=int, default=500)
     sb.add_argument("--step", type=int, default=5, help="trading days between signal checks")
