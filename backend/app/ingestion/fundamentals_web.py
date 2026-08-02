@@ -12,11 +12,13 @@ from __future__ import annotations
 
 import contextlib
 import json
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
 from app.core.logging import get_logger
+from app.engines.composite.dimensions import quality_score, risk_score
 from app.engines.composite.regime_modifier import apply_regime_modifier
 from app.engines.composite.signals import derive_signal
 from app.engines.fundamental.health import altman_z_score, piotroski_f_score
@@ -61,7 +63,8 @@ def _cache_to_dtos(raw: list) -> list:
     return out
 
 
-def _get_statements(sym: str, provider: YahooProvider, cache_dir: Path | None, force: bool = False):
+def _get_statements(sym: str, provider: YahooProvider, cache_dir: Path | None,
+                    force: bool = False, throttle: float = 0.0):
     """(quarterly, annual) statement DTOs — from the local cache if present, else yfinance
     (and cached). Caching avoids re-hitting yfinance on re-runs / re-scoring.
 
@@ -74,6 +77,8 @@ def _get_statements(sym: str, provider: YahooProvider, cache_dir: Path | None, f
             return _cache_to_dtos(raw.get("q", [])), _cache_to_dtos(raw.get("a", []))
         except (OSError, json.JSONDecodeError):
             pass
+    if throttle:
+        time.sleep(throttle)  # pace real fetches so yfinance doesn't start blocking us
     q = provider.get_statements(sym, StatementPeriod.QUARTER, limit=12)
     a = provider.get_statements(sym, StatementPeriod.ANNUAL, limit=5)
     if cf and (q or a):  # only cache real hits, so a transient 429 can be retried
@@ -171,10 +176,17 @@ def _ratios_json(ratios) -> dict:
 
 
 def refresh_fundamentals_web(
-    data_dir: str | Path, region: str, workers: int = 6, limit: int | None = None,
+    data_dir: str | Path, region: str, workers: int = 3, limit: int | None = None,
     cache_dir: str | Path | None = None, symbols: list[str] | None = None,
-    force: bool = False,
+    force: bool = False, throttle: float = 0.4,
 ) -> dict[str, int]:
+    """Backfill fundamentals from yfinance.
+
+    ``workers``/``throttle`` deliberately pace the fetching: yfinance blocks aggressive
+    callers (a fast 6-worker run stalls in backoff and stops producing), so we use fewer
+    concurrent workers and a short gap between requests. Cached names are unaffected — the
+    gap only applies when a real fetch is needed.
+    """
     out = Path(data_dir)
     cdir = out / "company"
     # Repo-root data/fund_cache/ (outside the deployed snapshot): backend/app/ingestion → AERP.
@@ -218,7 +230,9 @@ def refresh_fundamentals_web(
         # ok=False only on a real exception (transient 429 etc.) — those stay retryable;
         # ok=True with res=None means yfinance had no usable statements → mark fund_na.
         try:
-            q, a = _get_statements(r["provider_symbol"], provider, cache, force=force)
+            q, a = _get_statements(
+                r["provider_symbol"], provider, cache, force=force, throttle=throttle
+            )
             return r, _score_one(_f(r.get("price")), regime_map.get(r.get("region")), q, a), True
         except Exception:  # noqa: BLE001 - one bad ticker shouldn't stop the batch
             return r, None, False
@@ -240,7 +254,12 @@ def refresh_fundamentals_web(
                 continue
             tech = _f(r.get("technical_score"))
             de = _f(ratios.debt_to_equity)
-            base, cov, present = _reblend(fund, tech, None, None, None)
+            # Quality + risk come straight from the same ratios (same engine the curated
+            # pipeline uses), so expanded names get the full score set — not just fund+tech.
+            # Momentum needs price indicators, so tech_refresh fills that leg on its daily run.
+            qual, _q = quality_score(ratios)
+            risk, _r = risk_score(None, ratios)
+            base, cov, present = _reblend(fund, tech, None, _f(qual), _f(risk))
             if base is None:
                 continue
             comp, _bd = apply_regime_modifier(base, regime_map.get(r.get("region")), de)
@@ -272,6 +291,10 @@ def refresh_fundamentals_web(
                     if isinstance(d.get("scores"), dict):
                         d["scores"]["fundamental"] = round(fund, 2)
                         d["scores"]["composite"] = comp
+                        if qual is not None:
+                            d["scores"]["quality"] = round(qual, 2)
+                        if risk is not None:
+                            d["scores"]["risk"] = round(risk, 2)
                     if isinstance(d.get("signal"), dict):
                         d["signal"]["signal_type"] = sig.signal.value
                         d["signal"]["label"] = sig.label

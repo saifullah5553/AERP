@@ -20,6 +20,7 @@ import httpx
 import numpy as np
 
 from app.core.logging import get_logger
+from app.engines.composite.dimensions import momentum_score
 from app.engines.composite.engine import WEIGHTS
 from app.engines.composite.regime_modifier import apply_regime_modifier
 from app.engines.composite.signals import derive_signal
@@ -283,7 +284,8 @@ def refresh_technicals(
         if h is None:
             continue
         dates, high, low, close, vol = h
-        tech = score_technical(_scoring_metrics(compute_indicators(high, low, close, vol))).score
+        ind = compute_indicators(high, low, close, vol)
+        tech = score_technical(_scoring_metrics(ind)).score
         if tech is None:
             continue
         # Committed non-technical legs from the company file (fall back to the screener row).
@@ -298,6 +300,11 @@ def refresh_technicals(
         if fund is None:
             fund = _f(r.get("fundamental_score"))
         mom, qual, risk = _f(sc.get("momentum")), _f(sc.get("quality")), _f(sc.get("risk"))
+        # Momentum is purely price-derived, so recompute it here from the fresh indicators —
+        # this also fills the leg for expanded names the DB pipeline never scored.
+        fresh_mom, _mbd = momentum_score(ind)
+        if fresh_mom is not None:
+            mom = _f(fresh_mom)
         regime = regime_map.get(r.get("region"))
         de = _f(r.get("debt_to_equity"))
         if fund is None and mom is None and qual is None and risk is None:
@@ -345,6 +352,8 @@ def refresh_technicals(
                 d = json.loads(cf.read_text(encoding="utf-8"))
                 if isinstance(d.get("scores"), dict):
                     d["scores"]["technical"] = round(tech, 2)
+                    if mom is not None:
+                        d["scores"]["momentum"] = round(mom, 2)
                     d["scores"]["composite"] = composite
                 if isinstance(d.get("signal"), dict):
                     d["signal"]["signal_type"] = sig.signal.value
