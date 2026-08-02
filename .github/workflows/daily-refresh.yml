@@ -45,6 +45,10 @@ jobs:
           # Per-company news via Google News RSS (keyless). Snapshot is composite-sorted, so
           # --limit refreshes the highest-scored names first; the rest fill over subsequent runs.
           python -m app.cli refresh-news --limit 250 || true
+          # Write down today's BUY/HOLD calls BEFORE the outcome is known, then score the
+          # running record. This builds a forward-looking track record, not a backtest.
+          python -m app.cli journal-signals || true
+          python -m app.cli evaluate-journal || true
 
       - name: Detect new Buy/Exit signals (for email)
         run: |

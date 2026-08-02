@@ -141,8 +141,10 @@ def assess_quality(statements: dict[str, list[dict]], min_checks: int = 5) -> Qu
     reasons = [k for k, v in checks.items() if v is False]
 
     # Score ranks the qualifying names: how many checks passed, tilted by growth strength.
+    # Only scored when enough of the six tests actually have data - otherwise "1 of 1 check
+    # passed" would render as a perfect 100 for a company we know almost nothing about.
     score = None
-    if known:
+    if known >= 4:
         base = 100.0 * trues / known
         growth_bonus = 0.0
         for key, cap in (("revenue_growth", 0.5), ("eps_growth", 1.0)):

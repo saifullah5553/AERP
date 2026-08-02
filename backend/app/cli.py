@@ -212,6 +212,22 @@ def cmd_backtest(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_journal_signals(args: argparse.Namespace) -> None:
+    """Append today's BUY/HOLD calls to the signal journal (idempotent per date)."""
+    from app.ingestion.signal_journal import record_signals
+
+    out = args.out or "../frontend/public/data"
+    log.info("journal-signals: %s", record_signals(out))
+
+
+def cmd_evaluate_journal(args: argparse.Namespace) -> None:
+    """Score journalled signals against current prices, grouped by month."""
+    from app.ingestion.signal_journal import evaluate_journal
+
+    out = args.out or "../frontend/public/data"
+    log.info("evaluate-journal: %s", evaluate_journal(out))
+
+
 def cmd_strategy_v2_backtest(args: argparse.Namespace) -> None:
     """Backtest the quality-gate + price-action strategy against buy-and-hold."""
     from app.ingestion.strategy_v2_backtest import strategy_v2_backtest
@@ -714,6 +730,10 @@ def build_parser() -> argparse.ArgumentParser:
                     help="test only names carrying real financials (the research universe)")
     bt.add_argument("--min-price", type=float, default=0.0, help="skip sub-price penny names")
     bt.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
+    jr = add("journal-signals", cmd_journal_signals)
+    jr.add_argument("--out", default=None)
+    ev = add("evaluate-journal", cmd_evaluate_journal)
+    ev.add_argument("--out", default=None)
     s2 = add("strategy-v2-backtest", cmd_strategy_v2_backtest)
     s2.add_argument("--sample", type=int, default=500)
     s2.add_argument("--step", type=int, default=5)

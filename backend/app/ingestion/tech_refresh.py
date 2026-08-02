@@ -25,6 +25,7 @@ from app.engines.composite.engine import WEIGHTS
 from app.engines.composite.regime_modifier import apply_regime_modifier
 from app.engines.composite.signals import derive_signal
 from app.engines.patterns.engine import detect_all
+from app.engines.strategy.signal import evaluate as strategy_evaluate
 from app.engines.technical.engine import _scoring_metrics
 from app.engines.technical.indicators import compute_indicators
 from app.engines.technical.scoring import score_technical
@@ -292,14 +293,32 @@ def refresh_technicals(
         tech = score_technical(_scoring_metrics(ind)).score
         if tech is None:
             continue
-        # Committed non-technical legs from the company file (fall back to the screener row).
+        # Committed non-technical legs + statements from the company file (fall back to the
+        # screener row for the scores).
         sc: dict = {}
+        statements: dict = {}
         cf = company / f"{sym}.json"
         if cf.exists():
             try:
-                sc = json.loads(cf.read_text(encoding="utf-8")).get("scores") or {}
+                _cdoc = json.loads(cf.read_text(encoding="utf-8"))
+                sc = _cdoc.get("scores") or {}
+                statements = _cdoc.get("statements") or {}
             except (OSError, json.JSONDecodeError):
-                sc = {}
+                sc, statements = {}, {}
+
+        # ── Strategy engine: quality gate → price-action entry → hold-while-strong ──
+        # Reuses this same OHLC fetch, so it costs no extra network.
+        strategy: dict | None = None
+        try:
+            strategy = strategy_evaluate(statements, high, low, close, vol).as_dict()
+        except Exception:  # noqa: BLE001 - the strategy must never break the refresh
+            strategy = None
+        if strategy:
+            r["strategy_action"] = strategy["action"]
+            r["strategy_conviction"] = strategy["conviction"]
+            r["quality_passed"] = strategy["quality_passed"]
+            r["quality_score"] = strategy["quality_score"]
+            r["entry_score"] = strategy["entry_score"]
         fund = _f(sc.get("fundamental"))
         if fund is None:
             fund = _f(r.get("fundamental_score"))
@@ -391,6 +410,8 @@ def refresh_technicals(
                         d["scores"]["momentum"] = round(mom, 2)
                 if pat_rows:
                     d["patterns"] = pat_rows
+                if strategy:
+                    d["strategy"] = strategy
                     d["scores"]["composite"] = composite
                 if isinstance(d.get("signal"), dict):
                     d["signal"]["signal_type"] = sig.signal.value
