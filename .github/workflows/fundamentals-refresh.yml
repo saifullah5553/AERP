@@ -1,0 +1,88 @@
+name: Fundamentals Refresh (all markets)
+
+# Keeps data/fundamentals_ttm/*.json.gz current as companies report, without ever re-scraping
+# the whole ~11k universe. Each run asks the store which companies' newest period has aged past
+# a reporting cycle, re-scrapes only those, and merges the result back in.
+#
+# Weekly rather than quarterly: the four markets do not report on one calendar, so "the
+# quarter" is a rolling event. A weekly pass picks each company up shortly after it files and
+# does nothing for the ones that have not.
+#
+# Safe by construction:
+#   * the scraper writes a complete statement or nothing (it refuses tables below MIN_ROWS), so
+#     a throttled run is a no-op rather than a source of bad data
+#   * consolidation MERGES, so a run that only sees a handful of CSVs cannot delete the
+#     thousands of companies that did not report
+#   * we commit only when the store actually changed
+on:
+  schedule:
+    - cron: "10 4 * * 6" # Sat 04:10 UTC, clear of the other refresh jobs
+  workflow_dispatch:
+    inputs:
+      symbols:
+        description: "Comma-separated symbols to refresh (blank = auto from stored staleness)"
+        required: false
+        default: ""
+      older_than:
+        description: "Days since newest stored period before a company counts as stale"
+        required: false
+        default: "100"
+      max_symbols:
+        description: "Cap per run, to keep the job well inside the Actions time limit"
+        required: false
+        default: "250"
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install playwright pandas sqlalchemy && python -m playwright install --with-deps chromium
+
+      - name: Pick companies whose results have aged out
+        id: pick
+        working-directory: backend
+        run: |
+          MANUAL="${{ github.event.inputs.symbols }}"
+          if [ -n "$MANUAL" ]; then
+            SYMS="$MANUAL"
+          else
+            OLDER="${{ github.event.inputs.older_than }}"
+            MAXN="${{ github.event.inputs.max_symbols }}"
+            SYMS=$(python -m app.cli list-stale-fundamentals \
+                     --older-than "${OLDER:-100}" --limit "${MAXN:-250}" \
+                   | cut -d: -f2 | paste -sd, -)
+          fi
+          echo "symbols=$SYMS" >> "$GITHUB_OUTPUT"
+          echo "Refreshing: ${SYMS:-<none>}"
+
+      - name: Re-scrape those companies
+        if: steps.pick.outputs.symbols != ''
+        run: |
+          python scripts/scrape_fundamentals.py \
+            --regions us,india,australia,psx \
+            --symbols "${{ steps.pick.outputs.symbols }}" \
+            --workers 3 --page-pause 0.5 --work 300 --rest 0
+
+      - name: Merge into the store
+        if: steps.pick.outputs.symbols != ''
+        working-directory: backend
+        run: python -m app.cli consolidate-fundamentals
+
+      - name: Commit if anything changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/fundamentals_ttm
+          if git diff --cached --quiet; then
+            echo "Store unchanged - nothing to commit."
+          else
+            git commit -m "data: refresh fundamentals for companies that reported"
+            git push
+          fi

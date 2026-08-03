@@ -151,3 +151,62 @@ def test_apply_never_replaces_richer_history(tmp_path: Path) -> None:
     assert apply_to_snapshot(tmp_path / "data", store, regions=["us"]) == {"us": 0}
     doc = json.loads((cdir / "AAA.json").read_text(encoding="utf-8"))
     assert len(doc["statements"]["income"]) == 5
+
+
+def test_consolidate_merges_instead_of_dropping_absent_companies(tmp_path: Path) -> None:
+    # The quarterly refresh re-scrapes only the companies that just reported, so the CSV folder
+    # holds a handful of names while the store holds thousands. Rebuilding from what happens to
+    # be on disk would silently delete everyone who did not report.
+    raw = tmp_path / "csv" / "us"
+    raw.mkdir(parents=True)
+    (raw / "AAA_Income_Statement.csv").write_text(INCOME, encoding="utf-8")
+    store = tmp_path / "store"
+    consolidate(tmp_path / "csv", store, regions=["us"])
+
+    (raw / "AAA_Income_Statement.csv").unlink()
+    (raw / "BBB_Income_Statement.csv").write_text(INCOME, encoding="utf-8")
+    assert consolidate(tmp_path / "csv", store, regions=["us"]) == {"us": 2}
+
+    data = load("us", store)
+    assert data is not None
+    assert sorted(data["companies"]) == ["AAA", "BBB"]
+
+
+def test_consolidate_replace_rebuilds_from_scratch(tmp_path: Path) -> None:
+    raw = tmp_path / "csv" / "us"
+    raw.mkdir(parents=True)
+    (raw / "AAA_Income_Statement.csv").write_text(INCOME, encoding="utf-8")
+    store = tmp_path / "store"
+    consolidate(tmp_path / "csv", store, regions=["us"])
+
+    (raw / "AAA_Income_Statement.csv").unlink()
+    (raw / "BBB_Income_Statement.csv").write_text(INCOME, encoding="utf-8")
+    assert consolidate(tmp_path / "csv", store, regions=["us"], replace=True) == {"us": 1}
+
+    data = load("us", store)
+    assert data is not None
+    assert list(data["companies"]) == ["BBB"]
+
+
+def test_stale_symbols_picks_only_aged_data(tmp_path: Path) -> None:
+    # What keeps the quarterly refresh cheap: touch only companies whose data has aged past a
+    # reporting cycle, not all ~11k names.
+    from datetime import date
+
+    from app.ingestion.fundamentals_store import stale_symbols
+
+    store = tmp_path / "store"
+    store.mkdir()
+    payload = {
+        "version": 1, "region": "us", "currency": "USD", "suffix": "",
+        "companies": {
+            "FRESH": {"periods": ["2026-06-30"]},
+            "AGED": {"periods": ["2025-09-30"]},
+            "BROKEN": {"periods": [None]},
+        },
+    }
+    with gzip.open(store / "us.json.gz", "wt", encoding="utf-8") as fh:
+        json.dump(payload, fh)
+
+    got = stale_symbols("us", store, older_than_days=100, today=date(2026, 8, 3))
+    assert got == ["AGED", "BROKEN"]

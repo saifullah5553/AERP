@@ -194,13 +194,24 @@ def main() -> int:
     ap.add_argument("--page-pause", type=float, default=0.8, help="seconds between page loads")
     ap.add_argument("--workers", type=int, default=4,
                     help="parallel browsers; each is one more concurrent page load")
+    ap.add_argument("--symbols", default=None,
+                    help="comma list to refresh; re-fetches them even if already downloaded")
     ap.add_argument("--limit", type=int, default=None)
     args = ap.parse_args()
 
     from playwright.sync_api import sync_playwright
 
     regions = [r.strip() for r in args.regions.split(",") if r.strip() in MARKET_PREFIX]
-    todo = [t for t in targets(regions) if not already_done(*t)]
+    if args.symbols:
+        # A targeted refresh: these names just reported, so their existing CSVs are stale by
+        # definition. Clear them first, otherwise the per-file skip would make this a no-op.
+        wanted = {s.strip().upper() for s in args.symbols.split(",") if s.strip()}
+        todo = [t for t in targets(regions) if t[1] in wanted]
+        for region, sym in todo:
+            for name in STATEMENTS:
+                (OUT_DIR / region / f"{sym}_{name}.csv").unlink(missing_ok=True)
+    else:
+        todo = [t for t in targets(regions) if not already_done(*t)]
     if args.limit:
         todo = todo[: args.limit]
     log(f"=== start: {len(todo)} symbols to fetch across {regions} "

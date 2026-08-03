@@ -77,6 +77,26 @@ def cmd_ingest_fundamentals_store(args: argparse.Namespace) -> None:
                      region, ingest_region(db, region, Path(args.store_dir)))
 
 
+def cmd_list_stale_fundamentals(args: argparse.Namespace) -> None:
+    """Print region:SYMBOL lines for companies whose stored results have aged out."""
+    from pathlib import Path
+
+    from app.ingestion.fundamentals_store import REGION_META, stale_symbols
+
+    regions = ([r.strip() for r in args.regions.split(",")]
+               if args.regions else list(REGION_META))
+    out: list[str] = []
+    for region in regions:
+        for sym in stale_symbols(region, Path(args.store_dir), args.older_than):
+            out.append(f"{region}:{sym}")
+            if args.limit and len(out) >= args.limit:
+                break
+        if args.limit and len(out) >= args.limit:
+            break
+    for line in out:
+        print(line)
+
+
 def cmd_apply_fundamentals(args: argparse.Namespace) -> None:
     """Push the stored fundamentals into the snapshot's company files."""
     from pathlib import Path
@@ -789,6 +809,11 @@ def build_parser() -> argparse.ArgumentParser:
     cons.add_argument("--csv-dir", default="../data/fundamentals_csv")
     cons.add_argument("--store-dir", default="../data/fundamentals_ttm")
     cons.add_argument("--regions", default=None, help="comma list, default all")
+    stale = add("list-stale-fundamentals", cmd_list_stale_fundamentals, limit=True)
+    stale.add_argument("--store-dir", default="../data/fundamentals_ttm")
+    stale.add_argument("--regions", default=None, help="comma list, default all")
+    stale.add_argument("--older-than", type=int, default=100,
+                       help="days since newest stored period")
     appf = add("apply-fundamentals", cmd_apply_fundamentals)
     appf.add_argument("--store-dir", default="../data/fundamentals_ttm")
     appf.add_argument("--data-dir", default=None)

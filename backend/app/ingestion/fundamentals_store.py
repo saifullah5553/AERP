@@ -130,8 +130,17 @@ def build_company(texts: dict[str, str | None]) -> dict[str, Any] | None:
     }
 
 
-def consolidate(csv_dir: Path, out_dir: Path, regions: list[str] | None = None) -> dict[str, int]:
-    """Distil raw scraped CSVs into one gzipped JSON per market."""
+def consolidate(csv_dir: Path, out_dir: Path, regions: list[str] | None = None,
+                replace: bool = False) -> dict[str, int]:
+    """Distil raw scraped CSVs into one gzipped JSON per market.
+
+    Merges into the existing store by default. That matters for the quarterly refresh: it
+    re-scrapes only the companies that just reported, so the CSV folder holds a handful of
+    names while the store holds thousands. Rebuilding from what happens to be on disk would
+    silently delete every company that did not report this quarter.
+
+    Pass replace=True only for a full rebuild from a complete CSV set.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     result: dict[str, int] = {}
 
@@ -143,7 +152,8 @@ def consolidate(csv_dir: Path, out_dir: Path, regions: list[str] | None = None) 
         income_sfx = _KINDS["income"][0]
         symbols = sorted(p.name[: -len(income_sfx)] for p in rdir.glob(f"*{income_sfx}"))
 
-        companies: dict[str, Any] = {}
+        existing = None if replace else load(region, out_dir)
+        companies: dict[str, Any] = dict((existing or {}).get("companies") or {})
         for sym in symbols:
             texts = {
                 kind: _read(rdir / f"{sym}{sfx}")
@@ -165,8 +175,8 @@ def consolidate(csv_dir: Path, out_dir: Path, regions: list[str] | None = None) 
         with gzip.open(path, "wt", encoding="utf-8") as fh:
             json.dump(payload, fh, separators=(",", ":"))
         result[region] = len(companies)
-        log.info("fundamentals_store: %s -> %d companies (%s)",
-                 region, len(companies), _size(path))
+        log.info("fundamentals_store: %s -> %d companies (%d from CSV this run, %s)",
+                 region, len(companies), len(symbols), _size(path))
 
     return result
 
@@ -181,6 +191,36 @@ def load(region: str, store_dir: Path) -> dict[str, Any] | None:
     except (OSError, json.JSONDecodeError) as exc:
         log.warning("fundamentals_store: cannot read %s: %s", path, exc)
         return None
+
+
+def stale_symbols(region: str, store_dir: Path, older_than_days: int = 100,
+                  today: date | None = None) -> list[str]:
+    """Companies whose newest stored period is old enough that results have likely landed.
+
+    This is what makes the quarterly update cheap: instead of re-scraping ~11k names, the
+    refresh touches only those whose data has actually aged past a reporting cycle. Default is
+    100 days - a quarter plus the usual filing lag - so a company that reports on time is
+    picked up on the first run after it files, and one that has not reported yet is not
+    re-scraped pointlessly every week.
+    """
+    data = load(region, store_dir)
+    if not data:
+        return []
+    now = today or datetime.now(UTC).date()
+    out: list[str] = []
+    for sym, rec in (data.get("companies") or {}).items():
+        newest = next((p for p in (rec.get("periods") or []) if p), None)
+        if not newest:
+            out.append(sym)
+            continue
+        try:
+            when = date.fromisoformat(newest)
+        except ValueError:
+            out.append(sym)
+            continue
+        if (now - when).days > older_than_days:
+            out.append(sym)
+    return sorted(out)
 
 
 def annual_dtos(rec: dict[str, Any], currency: str) -> list[StatementDTO]:
