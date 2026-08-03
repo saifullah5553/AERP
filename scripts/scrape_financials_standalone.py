@@ -61,8 +61,47 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOTS = [HERE, HERE.parent]           # look beside this file, then one level up
-OUT_DIR = Path("data/fundamentals_csv")
-LOG_FILE = Path("data/scrape_financials.log")
+
+# Everything is written NEXT TO THIS SCRIPT, not into the current working directory.
+# Relative paths meant the output landed wherever you happened to launch from - and worse,
+# launching from the Windows user profile crashed outright with "Access is denied: 'data'",
+# because Controlled Folder Access refuses folder creation there. --out overrides.
+BASE_DIR = HERE
+OUT_DIR = BASE_DIR / "data" / "fundamentals_csv"
+LOG_FILE = BASE_DIR / "data" / "scrape_financials.log"
+UNIVERSE_DIR = BASE_DIR / "data" / "universe"
+
+
+def set_base_dir(path: Path) -> None:
+    """Point every output at `path`. Called once, before anything is written."""
+    global BASE_DIR, OUT_DIR, LOG_FILE, UNIVERSE_DIR
+    BASE_DIR = path.expanduser().resolve()
+    OUT_DIR = BASE_DIR / "data" / "fundamentals_csv"
+    LOG_FILE = BASE_DIR / "data" / "scrape_financials.log"
+    UNIVERSE_DIR = BASE_DIR / "data" / "universe"
+
+
+def check_writable() -> None:
+    """Fail immediately, and readably, if we cannot write where we are about to write.
+
+    Discovering this mid-run - after harvesting 5,601 symbols - wastes the whole run and
+    surfaces as a bare WinError 5 deep inside pathlib.
+    """
+    try:
+        UNIVERSE_DIR.mkdir(parents=True, exist_ok=True)
+        probe = UNIVERSE_DIR / ".write_test"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink(missing_ok=True)
+    except OSError as exc:
+        print(
+            f"\nCannot write to {BASE_DIR}\n"
+            f"  {type(exc).__name__}: {exc}\n\n"
+            "Windows blocks folder creation in some locations - Controlled Folder Access\n"
+            "protects the user profile. Move the script somewhere writable, or pass:\n"
+            "    --out D:\\financials\n",
+            flush=True,
+        )
+        raise SystemExit(2) from exc
 
 # URL prefix per market. Tadawul IS carried, despite the quote path looking nothing like the
 # others - GCC was left out of earlier runs on the assumption it was not.
@@ -147,8 +186,6 @@ LIST_URL = {
     "gcc": "https://stockanalysis.com/list/saudi-stock-exchange/",
     "psx": "https://stockanalysis.com/list/pakistan-stock-exchange/",
 }
-UNIVERSE_DIR = Path("data/universe")
-
 _LIST_JS = """() => {
     const tables = [...document.querySelectorAll('table')];
     if (!tables.length) return [];
@@ -428,7 +465,7 @@ def already_done(region: str, sym: str) -> bool:
                for name in STATEMENTS)
 
 
-def open_browser(p, headless: bool, slow_mo: int, block_assets: bool = True):
+def open_browser(p, headless: bool, slow_mo: int, block_assets: bool | None = None):
     """A real browser window by default.
 
     Headless Chromium is detectable and, more practically, gives you nothing to look at when a
@@ -436,9 +473,13 @@ def open_browser(p, headless: bool, slow_mo: int, block_assets: bool = True):
     visible window with a small delay between actions is slower per page but far easier to
     trust, and it is what a person driving the site would produce.
 
-    Images and fonts are still blocked: they are most of the bytes and none of the data. Pass
-    block_assets=False if you want the window to look completely normal.
+    Stylesheets, images and fonts are blocked ONLY when headless. They are most of the bytes
+    and none of the data, so dropping them is free when nobody is looking - but in a visible
+    window it renders the site unstyled and broken, which is indistinguishable from the page
+    failing to load. If you are watching, you should see what a person would see.
     """
+    if block_assets is None:
+        block_assets = headless
     browser = p.chromium.launch(
         headless=headless,
         slow_mo=slow_mo,
@@ -492,7 +533,14 @@ def main() -> int:
     ap.add_argument("--work", type=float, default=90.0, help="minutes of scraping per cycle")
     ap.add_argument("--rest", type=float, default=30.0, help="minutes of rest between cycles")
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--out", default=None,
+                    help="where to write data/ (default: next to this script)")
     args = ap.parse_args()
+
+    if args.out:
+        set_base_dir(Path(args.out))
+    check_writable()
+    log(f"writing to {BASE_DIR / 'data'}")
 
     from playwright.sync_api import sync_playwright
 
