@@ -39,6 +39,11 @@ QUOTE_PREFIX = "quote/dfm"      # stockanalysis path for this exchange
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "dfm_data")
 SYMBOL_FILE = os.path.join(DATA_DIR, "_symbols.csv")
+# Why a symbol produced nothing. The distinction cannot be recovered afterwards, and it
+# matters: "no financials page exists" is a permanent fact about the company, while "the fetch
+# failed" is about this run. Excluding a real company from the platform because of a timeout
+# would be a silent, permanent loss.
+NO_DATA_FILE = os.path.join(DATA_DIR, "_no_data.csv")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 STATEMENTS = {
@@ -177,18 +182,32 @@ def collect_symbols(page):
     return symbols
 
 
+def record_no_data(symbol, statement, reason):
+    """Note why a statement was not saved, so exclusions can later be based on evidence."""
+    new = not os.path.exists(NO_DATA_FILE)
+    with open(NO_DATA_FILE, "a", encoding="utf-8", newline="") as fh:
+        w = csv.writer(fh)
+        if new:
+            w.writerow(["symbol", "statement", "reason"])
+        w.writerow([symbol, statement, reason])
+
+
 def scrape_statement(page, url):
-    """The statement table at `url`, or None."""
+    """The statement table at `url`. Returns (dataframe_or_None, reason)."""
     try:
         resp = page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        if resp and resp.status == 404:
+            # "This stock exists, but the specific page type was not found." A permanent fact
+            # about the company - shells, SPACs and trusts file no statements.
+            return None, "no_financials_page"
         if not resp or resp.status >= 400:
-            return None            # 404 here means the company has no such page (SPACs, shells)
+            return None, f"http_{resp.status if resp else 'none'}"
         page.wait_for_selector("table tbody tr", timeout=30000)
         page.wait_for_timeout(1500)      # let the rest of the table render
 
         data = page.evaluate(EXTRACT_JS)
         if not data or not data["headers"] or not data["rows"]:
-            return None
+            return None, "empty_table"
         headers, rows = data["headers"], []
         for cells in data["rows"]:
             if len(cells) == len(headers) * 2:        # some rows repeat the label column
@@ -197,11 +216,11 @@ def scrape_statement(page, url):
                 cells = cells[: len(headers)] + [""] * max(0, len(headers) - len(cells))
             rows.append(cells)
         if len(rows) < MIN_ROWS:
-            return None
-        return pd.DataFrame(rows, columns=headers)
+            return None, "too_few_rows"
+        return pd.DataFrame(rows, columns=headers), "ok"
     except Exception as exc:
         print(f"      {type(exc).__name__}")
-        return None
+        return None, type(exc).__name__
 
 
 def scrape_symbol(page, symbol):
@@ -213,14 +232,15 @@ def scrape_symbol(page, symbol):
             continue
         url = (f"https://stockanalysis.com/{QUOTE_PREFIX}/"
                f"{symbol_to_slug(symbol)}/{path}/?p=trailing")
-        df = scrape_statement(page, url)
+        df, reason = scrape_statement(page, url)
         if df is not None and not df.empty:
             df.fillna("", inplace=True)
             df.to_csv(csv_file, index=False, encoding="utf-8")
             print(f"    saved {name} ({len(df)} rows)")
             saved += 1
         else:
-            print(f"    no {name}")
+            print(f"    no {name} ({reason})")
+            record_no_data(symbol, name, reason)
         time.sleep(PAGE_PAUSE)
     return saved
 
