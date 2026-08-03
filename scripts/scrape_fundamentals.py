@@ -30,6 +30,7 @@ import argparse
 import json
 import os
 import sys
+import threading
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -38,6 +39,9 @@ REPO = Path(__file__).resolve().parent.parent
 SCREENER = REPO / "frontend" / "public" / "data" / "screener.json"
 OUT_DIR = Path(os.environ.get("AERP_FUND_CSV_DIR", REPO / "data" / "fundamentals_csv"))
 LOG = REPO / "data" / "scrape_fundamentals.log"
+
+# Never needed for reading a table, and they are most of the bytes on these pages.
+_SKIP_RESOURCES = {"image", "media", "font", "stylesheet"}
 
 # stockanalysis URL prefix per market. PSX already has its own folder from the earlier scrape,
 # but it is included so a single command can top up everything.
@@ -91,7 +95,23 @@ def targets(regions: list[str]) -> list[tuple[str, str]]:
     return out
 
 
-def scrape_table(page, url: str):
+# A real statement carries ~30 rows. Anything much smaller is the condensed summary or a
+# half-rendered page - writing it would poison the dataset far more quietly than failing does,
+# and a miss is free to retry because the run is resumable.
+MIN_ROWS = 12
+
+
+def scrape_table(page, url: str, attempts: int = 2):
+    for n in range(attempts):
+        df = _scrape_once(page, url)
+        if df is not None and len(df) >= MIN_ROWS:
+            return df
+        if n + 1 < attempts:
+            page.wait_for_timeout(1500)
+    return None
+
+
+def _scrape_once(page, url: str):
     """Return a DataFrame of the statement table, or None."""
     import pandas as pd
 
@@ -99,32 +119,35 @@ def scrape_table(page, url: str):
         resp = page.goto(url, wait_until="domcontentloaded", timeout=45000)
         if not resp or resp.status >= 400:
             return None
-        page.wait_for_selector("table", timeout=12000)
         # These pages carry several tables (a condensed summary, segment splits, valuation
-        # teasers) and the full statement is not reliably first or tagged. Taking the one with
-        # the most rows picks the real statement on every page type and survives reshuffles;
-        # the poll gives the client-rendered table time to replace the static summary.
-        tables = page.locator("table")
-        table, best = None, 0
-        for _ in range(8):
-            for i in range(tables.count()):
-                n = tables.nth(i).locator("tbody tr").count()
-                if n > best:
-                    table, best = tables.nth(i), n
-            if best >= 15:
-                break
-            page.wait_for_timeout(700)
-        if table is None:
+        # teasers) and the statement is neither reliably first nor tagged, so we take the one
+        # with the most rows. Wait for a table that is actually big enough to BE a statement:
+        # waiting only for "a table" returns instantly on the static summary, which is how the
+        # condensed version got saved in the first place.
+        page.wait_for_function(
+            "n => [...document.querySelectorAll('table')]"
+            ".some(t => t.querySelectorAll('tbody tr').length >= n)",
+            arg=MIN_ROWS, timeout=20000,
+        )
+        # Extract entirely in the page: one round trip instead of a few hundred locator calls,
+        # which was most of the per-page cost.
+        data = page.evaluate("""() => {
+            const tables = [...document.querySelectorAll('table')];
+            if (!tables.length) return null;
+            const t = tables.reduce((a, b) =>
+                b.querySelectorAll('tbody tr').length > a.querySelectorAll('tbody tr').length
+                    ? b : a);
+            const headers = [...t.querySelectorAll('thead th')]
+                .map(h => h.innerText.replace(/\\n/g, ' ').trim()).filter(Boolean);
+            const rows = [...t.querySelectorAll('tbody tr')]
+                .map(r => [...r.querySelectorAll('td')].map(c => c.innerText.trim()))
+                .filter(cells => cells.length);
+            return {headers, rows};
+        }""")
+        if not data or not data["headers"] or not data["rows"]:
             return None
-        headers = [h.replace("\n", " ").strip()
-                   for h in table.locator("thead th").all_inner_texts() if h.strip()]
-        if not headers:
-            return None
-        rows = []
-        for row in table.locator("tbody tr").all():
-            cells = [c.strip() for c in row.locator("td").all_inner_texts()]
-            if not cells:
-                continue
+        headers, rows = data["headers"], []
+        for cells in data["rows"]:
             if len(cells) == len(headers) * 2:      # some rows duplicate the label column
                 cells = cells[: len(headers)]
             elif len(cells) != len(headers):
@@ -169,6 +192,8 @@ def main() -> int:
     ap.add_argument("--work", type=float, default=120.0, help="minutes of scraping per cycle")
     ap.add_argument("--rest", type=float, default=30.0, help="minutes of rest between cycles")
     ap.add_argument("--page-pause", type=float, default=0.8, help="seconds between page loads")
+    ap.add_argument("--workers", type=int, default=4,
+                    help="parallel browsers; each is one more concurrent page load")
     ap.add_argument("--limit", type=int, default=None)
     args = ap.parse_args()
 
@@ -179,15 +204,16 @@ def main() -> int:
     if args.limit:
         todo = todo[: args.limit]
     log(f"=== start: {len(todo)} symbols to fetch across {regions} "
-        f"(work {args.work}m / rest {args.rest}m) ===")
+        f"(work {args.work}m / rest {args.rest}m, {args.workers} workers) ===")
     if not todo:
         log("nothing to do - everything already downloaded")
         return 0
 
-    done = failed = 0
-    idx = 0
-    while idx < len(todo):
-        cycle_end = time.time() + args.work * 60
+    state = {"idx": 0, "done": 0, "failed": 0}
+    lock = threading.Lock()
+
+    def worker(cycle_end: float) -> None:
+        """One browser, pulling symbols off the shared queue until the window closes."""
         with sync_playwright() as p:
             browser = p.chromium.launch(
                 headless=True,
@@ -198,29 +224,53 @@ def main() -> int:
                 user_agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                             "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"),
             )
+            # We only ever read a table. Images, fonts, stylesheets and media are pure download
+            # cost on pages this heavy, and they dominated the per-page time.
+            ctx.route(
+                "**/*",
+                lambda route: route.abort()
+                if route.request.resource_type in _SKIP_RESOURCES
+                else route.continue_(),
+            )
             page = ctx.new_page()
-            while idx < len(todo) and time.time() < cycle_end:
-                region, sym = todo[idx]
-                idx += 1
+            while True:
+                with lock:
+                    if state["idx"] >= len(todo) or time.time() >= cycle_end:
+                        break
+                    i = state["idx"]
+                    state["idx"] += 1
+                region, sym = todo[i]
                 try:
                     n = scrape_symbol(page, region, sym, args.page_pause)
-                    if n:
-                        done += 1
-                    else:
-                        failed += 1
+                    key = "done" if n else "failed"
                 except Exception as exc:  # noqa: BLE001
-                    failed += 1
+                    key = "failed"
                     log(f"  {region}/{sym}: {type(exc).__name__}")
-                if idx % 25 == 0:
-                    log(f"  progress {idx}/{len(todo)} | saved {done} | no-data {failed}")
+                with lock:
+                    state[key] += 1
+                    seen = state["idx"]
+                if seen % 50 == 0:
+                    log(f"  progress {seen}/{len(todo)} | saved {state['done']} "
+                        f"| no-data {state['failed']}")
             browser.close()
 
+    while state["idx"] < len(todo):
+        cycle_end = time.time() + args.work * 60
+        threads = [threading.Thread(target=worker, args=(cycle_end,), daemon=True)
+                   for _ in range(max(1, args.workers))]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        idx, done = state["idx"], state["done"]
         if idx < len(todo):
             log(f"--- cycle done at {idx}/{len(todo)} (saved {done}) - resting "
                 f"{args.rest}m so stockanalysis doesn't throttle us ---")
             time.sleep(args.rest * 60)
 
-    log(f"=== COMPLETE: {done} symbols saved, {failed} without usable data ===")
+    log(f"=== COMPLETE: {state['done']} symbols saved, "
+        f"{state['failed']} without usable data ===")
     return 0
 
 
