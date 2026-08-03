@@ -125,7 +125,12 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
         targets = targets[:limit]
 
     built = from_cache = improving = deteriorating = 0
-    for r in targets:
+    for i, r in enumerate(targets, 1):
+        # This is a read-modify-write over every company file, so a full pass takes tens of
+        # minutes. Without a heartbeat it is indistinguishable from a hang, and a silent
+        # long-runner is what gets killed by mistake.
+        if i % 500 == 0:
+            log.info("refresh-quality-history: %d/%d (built %d)", i, len(targets), built)
         cfile = cdir / f"{r['provider_symbol']}.json"
         if not cfile.exists():
             continue
