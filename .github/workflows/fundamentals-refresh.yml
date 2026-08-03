@@ -1,32 +1,45 @@
 name: Fundamentals Refresh (all markets)
 
-# Keeps data/fundamentals_ttm/*.json.gz current as companies report, without ever re-scraping
-# the whole ~11k universe. Each run asks the store which companies' newest period has aged past
-# a reporting cycle, re-scrapes only those, and merges the result back in.
+# Runs daily and refreshes only the companies that just reported, so a company filing today has
+# its fundamentals updated tomorrow. It never re-scrapes the ~11k universe.
 #
-# Weekly rather than quarterly: the four markets do not report on one calendar, so "the
-# quarter" is a rolling event. A weekly pass picks each company up shortly after it files and
-# does nothing for the ones that have not.
+# Where the "who reported" signal comes from, and how good it is - the differences are real and
+# the backstop exists because of them:
+#
+#   PSX         exchange announcements in catalysts.json. Per company, complete.
+#   US          the stockanalysis earnings calendar lists every company reporting that day.
+#               Complete. It has no date navigation, so we read "today" and this job's daily
+#               cadence is what turns that into next-day coverage.
+#   India / AU  no announcement feed we can rely on - the news feed is capped at ~40 items per
+#               region, so it catches large names only.
+#
+# Because of that last line the job always mixes in a quota of the longest-stale companies.
+# That is what guarantees every company is eventually refreshed even where no signal exists;
+# without it the gaps would be silent and the job would report success every day regardless.
 #
 # Safe by construction:
 #   * the scraper writes a complete statement or nothing (it refuses tables below MIN_ROWS), so
 #     a throttled run is a no-op rather than a source of bad data
-#   * consolidation MERGES, so a run that only sees a handful of CSVs cannot delete the
-#     thousands of companies that did not report
+#   * consolidation MERGES, so a run holding a handful of CSVs cannot delete the thousands of
+#     companies that did not report
 #   * we commit only when the store actually changed
 on:
   schedule:
-    - cron: "10 4 * * 6" # Sat 04:10 UTC, clear of the other refresh jobs
+    - cron: "40 5 * * *" # daily 05:40 UTC - after the US close and the day's filings
   workflow_dispatch:
     inputs:
       symbols:
-        description: "Comma-separated symbols to refresh (blank = auto from stored staleness)"
+        description: "Comma-separated symbols to refresh (blank = auto from announcements)"
         required: false
         default: ""
-      older_than:
-        description: "Days since newest stored period before a company counts as stale"
+      days:
+        description: "How far back to look for announcements"
         required: false
-        default: "100"
+        default: "3"
+      backstop:
+        description: "Stale companies to mix in, for markets with no announcement feed"
+        required: false
+        default: "40"
       max_symbols:
         description: "Cap per run, to keep the job well inside the Actions time limit"
         required: false
@@ -34,6 +47,10 @@ on:
 
 permissions:
   contents: write
+
+concurrency:
+  group: fundamentals-refresh
+  cancel-in-progress: false
 
 jobs:
   refresh:
@@ -45,7 +62,11 @@ jobs:
           python-version: "3.12"
       - run: pip install playwright pandas sqlalchemy && python -m playwright install --with-deps chromium
 
-      - name: Pick companies whose results have aged out
+      - name: Companies reporting today (US calendar)
+        id: cal
+        run: echo "symbols=$(python scripts/earnings_calendar.py)" >> "$GITHUB_OUTPUT"
+
+      - name: Companies that announced results (all markets) + staleness quota
         id: pick
         working-directory: backend
         run: |
@@ -53,16 +74,19 @@ jobs:
           if [ -n "$MANUAL" ]; then
             SYMS="$MANUAL"
           else
-            OLDER="${{ github.event.inputs.older_than }}"
+            DAYS="${{ github.event.inputs.days }}"
+            BACK="${{ github.event.inputs.backstop }}"
             MAXN="${{ github.event.inputs.max_symbols }}"
-            SYMS=$(python -m app.cli list-stale-fundamentals \
-                     --older-than "${OLDER:-100}" --limit "${MAXN:-250}" \
-                   | cut -d: -f2 | paste -sd, -)
+            ANNOUNCED=$(python -m app.cli list-reported-fundamentals \
+                          --days "${DAYS:-3}" --backstop "${BACK:-40}" \
+                          --limit "${MAXN:-250}" | paste -sd, -)
+            SYMS=$(printf '%s,%s' "${{ steps.cal.outputs.symbols }}" "$ANNOUNCED" \
+                   | tr ',' '\n' | grep -v '^$' | sort -u | head -n "${MAXN:-250}" | paste -sd, -)
           fi
           echo "symbols=$SYMS" >> "$GITHUB_OUTPUT"
-          echo "Refreshing: ${SYMS:-<none>}"
+          echo "Refreshing $(echo "$SYMS" | tr ',' '\n' | grep -c .) companies"
 
-      - name: Re-scrape those companies
+      - name: Re-scrape them
         if: steps.pick.outputs.symbols != ''
         run: |
           python scripts/scrape_fundamentals.py \

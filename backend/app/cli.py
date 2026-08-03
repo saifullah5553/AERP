@@ -77,6 +77,18 @@ def cmd_ingest_fundamentals_store(args: argparse.Namespace) -> None:
                      region, ingest_region(db, region, Path(args.store_dir)))
 
 
+def cmd_list_reported_fundamentals(args: argparse.Namespace) -> None:
+    """Print symbols that just reported (plus a staleness quota), one per line."""
+    from pathlib import Path
+
+    from app.ingestion.results_watch import pick
+
+    data_dir = args.data_dir or "../frontend/public/data"
+    for sym in pick(Path(data_dir), Path(args.store_dir), days=args.days,
+                    backstop=args.backstop, cap=args.limit or 250):
+        print(sym)
+
+
 def cmd_list_stale_fundamentals(args: argparse.Namespace) -> None:
     """Print region:SYMBOL lines for companies whose stored results have aged out."""
     from pathlib import Path
@@ -809,6 +821,13 @@ def build_parser() -> argparse.ArgumentParser:
     cons.add_argument("--csv-dir", default="../data/fundamentals_csv")
     cons.add_argument("--store-dir", default="../data/fundamentals_ttm")
     cons.add_argument("--regions", default=None, help="comma list, default all")
+    rep = add("list-reported-fundamentals", cmd_list_reported_fundamentals, limit=True)
+    rep.add_argument("--store-dir", default="../data/fundamentals_ttm")
+    rep.add_argument("--data-dir", default=None)
+    rep.add_argument("--days", type=int, default=3,
+                     help="how far back to look for announcements")
+    rep.add_argument("--backstop", type=int, default=40,
+                     help="stale names to mix in, for markets with no announcement feed")
     stale = add("list-stale-fundamentals", cmd_list_stale_fundamentals, limit=True)
     stale.add_argument("--store-dir", default="../data/fundamentals_ttm")
     stale.add_argument("--regions", default=None, help="comma list, default all")
