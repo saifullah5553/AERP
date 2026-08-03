@@ -574,12 +574,19 @@ def main() -> int:
 
     while state["idx"] < len(todo):
         cycle_end = time.time() + args.work * 60
-        threads = [threading.Thread(target=worker, args=(cycle_end,), daemon=True)
-                   for _ in range(max(1, args.workers))]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
+        if args.workers <= 1:
+            # Run in the MAIN thread. Playwright's sync API is greenlet-based and threads are
+            # the fragile part of this design; with one worker a thread buys nothing and only
+            # adds that risk. This is the shape of the PSX script that has been working all
+            # along - one Playwright, one browser, one page, sequential.
+            worker(cycle_end)
+        else:
+            threads = [threading.Thread(target=worker, args=(cycle_end,), daemon=True)
+                       for _ in range(args.workers)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
         if state["idx"] < len(todo):
             log(f"--- cycle done at {state['idx']}/{len(todo)} (saved {state['done']}) "
                 f"- resting {args.rest}m ---")
