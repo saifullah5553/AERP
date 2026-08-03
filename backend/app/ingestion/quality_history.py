@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.logging import get_logger
+from app.core.safe_path import safe_file
 from app.core.snapshot_lock import snapshot_lock
 from app.engines.strategy.quality import assess_quality
 from app.ingestion.fundamentals_web import _cache_to_dtos, _roll_ttm
@@ -86,8 +87,12 @@ def _series_from_statements(doc: dict, key: str = "statements") -> list[dict] | 
         return None
     period = str(inc[0].get("period") or "ttm")
     out: list[dict] = []
+    # Only the newest MAX_POINTS are kept, so only those are worth computing. Scoring all ~20
+    # stored quarters and then slicing cost 2.5s per company - about 8 hours over the universe,
+    # which is why this job never once ran to completion.
+    oldest = min(len(inc), MAX_POINTS) - 1
     # Statements are newest-first, so slicing from i hides everything more recent than i.
-    for i in range(len(inc) - 1, -1, -1):
+    for i in range(oldest, -1, -1):
         view = {k: (v or [])[i:] for k, v in st.items()}
         res = assess_quality(view)
         if res.score is not None:
@@ -133,8 +138,10 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
         # long-runner is what gets killed by mistake.
         if i % 500 == 0:
             log.info("refresh-quality-history: %d/%d (built %d)", i, len(targets), built)
-        cfile = cdir / f"{r['provider_symbol']}.json"
-        if not cfile.exists():
+        # Never build this path by hand: a ticker like CON resolves to a Windows device and
+        # the read blocks forever at 0% CPU - which is what this job kept doing.
+        cfile = safe_file(cdir, f"{r['provider_symbol']}.json")
+        if cfile is None or not cfile.exists():
             continue
         try:
             doc = json.loads(cfile.read_text(encoding="utf-8"))

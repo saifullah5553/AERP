@@ -33,6 +33,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
+from app.core.safe_path import safe_file
 from app.ingestion.providers.base import StatementDTO
 from app.ingestion.psx_csv import (
     BALANCE_MAP,
@@ -315,8 +316,8 @@ def apply_to_snapshot(data_dir: Path, store_dir: Path,
         currency = data.get("currency") or "USD"
         written = skipped = 0
         for sym, rec in (data.get("companies") or {}).items():
-            cfile = cdir / f"{sym}{suffix}.json"
-            if not cfile.exists():
+            cfile = safe_file(cdir, f"{sym}{suffix}.json")
+            if cfile is None or not cfile.exists():
                 continue
             annual = _statement_rows(rec, currency, quarterly=False)
             if not annual:

@@ -117,3 +117,21 @@ def test_bars_from_chart_skips_gaps() -> None:
 
 def test_reserved_windows_name_is_skipped_not_crashed(tmp_path: Path) -> None:
     assert ohlc_store.save_bars("australia", "PRN", BARS, store=tmp_path) == 0
+
+
+# ── Windows device names ──────────────────────────────────────────────────
+
+def test_reserved_device_names_are_recognised() -> None:
+    from app.core.safe_path import is_reserved, safe_file
+
+    # CON is a real US ticker (Concentra Group). On Windows `company/CON.json` is the console,
+    # not a file: exists() says True and the read then blocks forever at 0% CPU. That wedged
+    # the quality-history job five times before it was found.
+    assert is_reserved("CON.json")
+    assert is_reserved("PRN.AX.json")
+    assert is_reserved("nul.json")
+    assert not is_reserved("CONN.json")
+    assert not is_reserved("AAPL.json")
+
+    assert safe_file(Path("company"), "CON.json") is None
+    assert safe_file(Path("company"), "AAPL.json") == Path("company") / "AAPL.json"

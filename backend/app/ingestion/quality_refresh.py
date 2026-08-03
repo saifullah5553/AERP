@@ -17,6 +17,7 @@ import json
 from pathlib import Path
 
 from app.core.logging import get_logger
+from app.core.safe_path import safe_file
 from app.core.snapshot_lock import snapshot_lock
 from app.engines.strategy.quality import assess_quality
 
@@ -41,8 +42,8 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
 
     scored = passed = improving = no_data = 0
     for r in targets:
-        cf = cdir / f"{r['provider_symbol']}.json"
-        if not cf.exists():
+        cf = safe_file(cdir, f"{r['provider_symbol']}.json")
+        if cf is None or not cf.exists():
             continue
         try:
             doc = json.loads(cf.read_text(encoding="utf-8"))
