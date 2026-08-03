@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.logging import get_logger
+from app.core.snapshot_lock import snapshot_lock
 from app.engines.composite.dimensions import quality_score, risk_score
 from app.engines.composite.regime_modifier import apply_regime_modifier
 from app.engines.composite.signals import derive_signal
@@ -176,6 +177,20 @@ def _ratios_json(ratios) -> dict:
 
 
 def refresh_fundamentals_web(
+    data_dir: str | Path, region: str, workers: int = 3, limit: int | None = None,
+    cache_dir: str | Path | None = None, symbols: list[str] | None = None,
+    force: bool = False, throttle: float = 0.4, cached_only: bool = False,
+) -> dict[str, int]:
+    """Take the snapshot lock, or skip - see app/core/snapshot_lock for why never blocking."""
+    with snapshot_lock("refresh-fundamentals-web", data_dir) as ok:
+        if not ok:
+            return {"skipped": 1}
+        return _refresh_fundamentals_web(
+            data_dir, region, workers, limit, cache_dir, symbols, force, throttle, cached_only,
+        )
+
+
+def _refresh_fundamentals_web(
     data_dir: str | Path, region: str, workers: int = 3, limit: int | None = None,
     cache_dir: str | Path | None = None, symbols: list[str] | None = None,
     force: bool = False, throttle: float = 0.4, cached_only: bool = False,
