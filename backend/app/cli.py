@@ -77,6 +77,19 @@ def cmd_ingest_fundamentals_store(args: argparse.Namespace) -> None:
                      region, ingest_region(db, region, Path(args.store_dir)))
 
 
+def cmd_export_missing_sectors(args: argparse.Namespace) -> None:
+    """Write data/sectors/_manual.csv listing every name still without a sector."""
+    import json as _json
+    from pathlib import Path
+
+    from app.ingestion.sectors_web import MANUAL_SECTORS, export_missing_sectors
+
+    data_dir = args.data_dir or "../frontend/public/data"
+    rows = _json.loads(Path(f"{data_dir}/screener.json").read_text(encoding="utf-8"))
+    n = export_missing_sectors(rows)
+    log.info("export-missing-sectors: %d rows -> %s", n, MANUAL_SECTORS)
+
+
 def cmd_build_symbols(args: argparse.Namespace) -> None:
     """Write data/symbols/<region>.csv - one canonical spelling per company, plus each
     provider's. Prices come from Yahoo and fundamentals from stockanalysis, so the two must
@@ -858,6 +871,8 @@ def build_parser() -> argparse.ArgumentParser:
     cons.add_argument("--csv-dir", default="../data/fundamentals_csv")
     cons.add_argument("--store-dir", default="../data/fundamentals_ttm")
     cons.add_argument("--regions", default=None, help="comma list, default all")
+    ems = add("export-missing-sectors", cmd_export_missing_sectors)
+    ems.add_argument("--data-dir", default=None)
     bsym = add("build-symbols", cmd_build_symbols)
     bsym.add_argument("--data-dir", default=None)
     ohlc = add("refresh-ohlc", cmd_refresh_ohlc, limit=True)

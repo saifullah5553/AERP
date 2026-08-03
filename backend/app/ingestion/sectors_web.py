@@ -249,6 +249,57 @@ def fetch_yahoo_sectors(provider_symbols: list[str], throttle: float = 0.05,
 SECTOR_STORE = Path(__file__).resolve().parents[3] / "data" / "sectors"
 
 
+MANUAL_SECTORS = SECTOR_STORE / "_manual.csv"
+
+
+def load_manual_sectors() -> dict[str, dict]:
+    """Hand-curated sectors. These beat every automated source.
+
+    Some names no free source knows - thin NSE listings, recent NYSE issues. A person deciding
+    "this is a bank" is better data than any fallback we could invent, so a manual entry is
+    never overwritten by a later sweep.
+    """
+    out: dict[str, dict] = {}
+    if not MANUAL_SECTORS.exists():
+        return out
+    try:
+        with open(MANUAL_SECTORS, encoding="utf-8") as fh:
+            for row in csv.DictReader(fh):
+                ps = (row.get("provider_symbol") or "").strip()
+                sector = (row.get("sector") or "").strip()
+                if ps and sector:
+                    out[ps] = {"sector": sector,
+                               "industry": (row.get("industry") or "").strip() or None}
+    except OSError:
+        pass
+    return out
+
+
+def export_missing_sectors(rows: list[dict]) -> int:
+    """Write the still-unresolved names into _manual.csv for a human to fill in.
+
+    Keeps any sectors already entered by hand, so re-running never discards work.
+    """
+    SECTOR_STORE.mkdir(parents=True, exist_ok=True)
+    manual = load_manual_sectors()
+    missing = [r for r in rows if not r.get("sector") and r.get("provider_symbol")]
+
+    with open(MANUAL_SECTORS, "w", encoding="utf-8", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["provider_symbol", "symbol", "name", "region", "market_code",
+                    "sector", "industry"])
+        for ps, got in sorted(manual.items()):
+            w.writerow([ps, "", "", "", "", got["sector"], got.get("industry") or ""])
+        for r in sorted(missing, key=lambda x: (str(x.get("region")), str(x.get("symbol")))):
+            if str(r["provider_symbol"]) in manual:
+                continue
+            w.writerow([r["provider_symbol"], r.get("symbol", ""), r.get("name", ""),
+                        r.get("region", ""), r.get("market_code", ""), "", ""])
+    log.info("export-missing-sectors: %d to fill, %d already entered by hand",
+             len(missing), len(manual))
+    return len(missing)
+
+
 def load_sector_store() -> dict[str, dict]:
     """{provider_symbol: {sector, industry, source}} from the versioned store."""
     out: dict[str, dict] = {}
@@ -302,8 +353,10 @@ def refresh_sectors(data_dir: str | Path, limit: int | None = None) -> dict[str,
     cdir = out / "company"
     rows: list[dict] = json.loads((out / "screener.json").read_text(encoding="utf-8"))
 
-    # Our own store first - anything already resolved never needs looking up again.
+    # Hand-curated entries win outright, then our own store - anything already resolved never
+    # needs looking up again.
     stored = load_sector_store()
+    stored.update(load_manual_sectors())
     from_store = 0
     for r in rows:
         if r.get("sector") or not r.get("provider_symbol"):
@@ -374,10 +427,15 @@ def refresh_sectors(data_dir: str | Path, limit: int | None = None) -> dict[str,
             r["sector"] = label
             asset_filled += 1
 
+    # One vocabulary before anything is stored, so the fragmentation cannot be re-imported.
+    from app.ingestion.sector_taxonomy import normalize_rows
+
+    norm = normalize_rows(rows)
+
     (out / "screener.json").write_text(json.dumps(rows), encoding="utf-8")
     save_sector_store(rows)
     result = {"missing": len(missing), "from_store": from_store, "yahoo_map": len(yahoo),
               "asx_map": len(asx), "us_map": len(us), "filled": filled,
-              "industry_filled": with_industry, "by_asset_class": asset_filled}
+              "industry_filled": with_industry, "by_asset_class": asset_filled, **norm}
     log.info("refresh-sectors: %s", result)
     return result
