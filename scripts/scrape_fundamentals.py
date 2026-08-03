@@ -108,15 +108,52 @@ MIN_ROWS = 12
 _COOLDOWN_UNTIL = 0.0
 _COOLDOWN_LOCK = threading.Lock()
 COOLDOWN_SECONDS = 120.0
+MAX_COOLDOWN_SECONDS = 900.0
+_cooldown = COOLDOWN_SECONDS
+_extra_delay = 0.0
+MAX_EXTRA_DELAY = 6.0
 
 
 def _throttled() -> None:
-    global _COOLDOWN_UNTIL
+    """Back every worker off, and back off harder each time it keeps happening.
+
+    A fixed pause guesses at a rate the server never told us. Doubling until the 429s stop, and
+    resetting on the first success, lets the run settle at whatever rate is actually tolerated -
+    which matters because a throttled fetch costs three attempts and yields nothing, so pushing
+    harder makes the run slower, not faster.
+    """
+    global _COOLDOWN_UNTIL, _cooldown, _extra_delay
     with _COOLDOWN_LOCK:
         first = time.time() >= _COOLDOWN_UNTIL
-        _COOLDOWN_UNTIL = max(_COOLDOWN_UNTIL, time.time() + COOLDOWN_SECONDS)
-    if first:
-        log(f"  rate limited (429) - all workers backing off {COOLDOWN_SECONDS:.0f}s")
+        if not first:
+            return  # already backing off; don't compound within one window
+        wait = _cooldown
+        _COOLDOWN_UNTIL = time.time() + wait
+        _cooldown = min(_cooldown * 2, MAX_COOLDOWN_SECONDS)
+        _extra_delay = min(_extra_delay + 0.5, MAX_EXTRA_DELAY)
+        slower = _extra_delay
+    log(f"  rate limited (429) - backing off {wait:.0f}s, pacing +{slower:.1f}s/page")
+
+
+def _throttle_cleared() -> None:
+    """A clean fetch means the current pace is tolerated; ease back off slowly."""
+    global _cooldown, _extra_delay
+    with _COOLDOWN_LOCK:
+        _cooldown = COOLDOWN_SECONDS
+        # Decay far slower than it grows. Recovering quickly just walks back into the next 429,
+        # which is the oscillation this is here to stop.
+        _extra_delay = max(0.0, _extra_delay - 0.02)
+
+
+def pace() -> float:
+    """Extra seconds to wait between pages, learned from the 429s we have seen.
+
+    Pausing on a 429 alone is not enough: once the pause ends the run returns to exactly the
+    pace that caused it, so it oscillates between bursting and being throttled. Slowing the
+    steady-state rate is what actually settles it.
+    """
+    with _COOLDOWN_LOCK:
+        return _extra_delay
 
 
 def _wait_out_cooldown() -> None:
@@ -157,6 +194,7 @@ def scrape_table(page, url: str, attempts: int = 3, statement: str | None = None
         if df is not None and len(df) >= MIN_ROWS and (
             statement is None or _complete(df, statement)
         ):
+            _throttle_cleared()
             return df
         if n + 1 < attempts:
             page.wait_for_timeout(1500)
@@ -265,7 +303,7 @@ def scrape_symbol(page, region: str, sym: str, page_pause: float) -> int:
             df.fillna("", inplace=True)
             df.to_csv(csv_file, index=False, encoding="utf-8")
             written += 1
-        time.sleep(page_pause)
+        time.sleep(page_pause + pace())
     return written
 
 
