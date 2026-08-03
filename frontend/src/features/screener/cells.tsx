@@ -47,6 +47,26 @@ export function ActionCell(p: ICellRendererParams) {
   );
 }
 
+// Quality trend across the stored TTM points: is the business getting stronger or weaker?
+const TREND_STYLE: Record<string, { fg: string; label: string }> = {
+  improving: { fg: "#22c55e", label: "▲ Improving" },
+  stable: { fg: "#94a3b8", label: "→ Stable" },
+  deteriorating: { fg: "#ef4444", label: "▼ Declining" },
+};
+
+export function TrendCell(p: ICellRendererParams) {
+  const s = TREND_STYLE[String(p.value ?? "")];
+  if (!s) return <span className="text-slate-600">—</span>;
+  const chg = (p.data as { quality_change?: number | null } | undefined)?.quality_change;
+  return (
+    <span style={{ color: s.fg }} className="text-xs font-semibold" title={
+      chg == null ? undefined : `quality score change over the series: ${chg > 0 ? "+" : ""}${chg}`
+    }>
+      {s.label}
+    </span>
+  );
+}
+
 function scoreTones(v: number): { bg: string; border: string } {
   const hue = Math.max(0, Math.min(120, (v / 100) * 120)); // 0=red → 120=green
   return {

@@ -58,10 +58,16 @@ def _rank(rows: list[dict], region: str, company: Path) -> list[dict]:
             continue
         q = assess_quality(st)
         if q.eligible and q.score is not None:
+            # Which set of results these numbers are through - so the portfolio can state
+            # plainly that it is ranking on, say, results to 31-03-2026 rather than implying
+            # the figures are current to today.
+            inc = st.get("income") or []
+            through = str(inc[0].get("fiscal_date") or "")[:10] if inc else None
             scored.append((q.score, {
                 "provider_symbol": r["provider_symbol"], "symbol": r.get("symbol"),
                 "name": r.get("name"), "sector": r.get("sector"),
                 "quality_score": q.score, "price": r.get("price"),
+                "results_through": through,
             }))
     scored.sort(key=lambda t: t[0], reverse=True)
     return [s for _sc, s in scored]
@@ -104,6 +110,7 @@ def _rebalance(data_dir: str | Path, force: bool = False) -> dict[str, Any]:
         for sym, h in current.items():
             if sym in target:
                 h["quality_score"] = target[sym]["quality_score"]
+                h["results_through"] = target[sym].get("results_through")
                 keep.append(h)
             else:
                 px = next((r.get("price") for r in rows
@@ -128,6 +135,7 @@ def _rebalance(data_dir: str | Path, force: bool = False) -> dict[str, Any]:
                 "provider_symbol": sym, "symbol": t["symbol"], "name": t["name"],
                 "sector": t["sector"], "entry_date": today, "entry_price": t["price"],
                 "entry_quality": t["quality_score"], "quality_score": t["quality_score"],
+                "results_through": t.get("results_through"),
             })
             changes.append({
                 "date": today, "quarter": qtr, "region": region, "action": "add",

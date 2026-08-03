@@ -117,6 +117,9 @@ export interface ScreenerRow {
   strategy_conviction?: number | null;
   quality_score?: number | null;
   quality_passed?: boolean | null;
+  quality_trend?: "improving" | "stable" | "deteriorating" | "unknown" | null;
+  quality_change?: number | null;
+  results_through?: string | null;
   entry_score?: number | null;
   signal: SignalType | null;
   signal_label: string | null;

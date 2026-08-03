@@ -28,6 +28,13 @@ function Holdings({
   if (!holdings?.length) return null;
   const label = MARKETS.find((m) => m.key === region)?.label ?? region.toUpperCase();
   const weight = 100 / holdings.length;
+  // The newest reported period behind this market's rankings - so it's explicit that the
+  // scores reflect, say, results to 31-03-2026 rather than anything more recent.
+  const latestResults = holdings
+    .map((h) => h.results_through)
+    .filter((d): d is string => !!d)
+    .sort()
+    .pop();
 
   return (
     <div className="mb-6">
@@ -36,6 +43,12 @@ function Holdings({
         <span className="text-xs text-slate-500">
           {holdings.length} holdings · equal weight ({weight.toFixed(1)}% each)
         </span>
+        {latestResults && (
+          <span className="rounded bg-base-700 px-2 py-0.5 text-[11px] text-slate-400"
+                title="Newest set of reported results behind these rankings">
+            results to {latestResults}
+          </span>
+        )}
         {summary && (
           <span className="text-xs font-semibold" style={{ color: pctColor(summary.avg_return_pct) }}>
             {summary.avg_return_pct > 0 ? "+" : ""}{summary.avg_return_pct}% avg ·{" "}
@@ -52,6 +65,7 @@ function Holdings({
               <th className="px-3 py-2 text-left">Company</th>
               <th className="px-3 py-2 text-left">Sector</th>
               <th className="px-3 py-2 text-right">Quality</th>
+              <th className="px-3 py-2 text-right">Results To</th>
               <th className="px-3 py-2 text-right">Entry</th>
               <th className="px-3 py-2 text-right">Price</th>
               <th className="px-3 py-2 text-right">Return</th>
@@ -76,6 +90,9 @@ function Holdings({
                 <td className="px-3 py-1.5 text-xs text-slate-400">{h.sector ?? "—"}</td>
                 <td className="num px-3 py-1.5 text-right font-semibold text-slate-200">
                   {h.quality_score?.toFixed(1) ?? "—"}
+                </td>
+                <td className="num px-3 py-1.5 text-right text-[11px] text-slate-400">
+                  {h.results_through ?? "—"}
                 </td>
                 <td className="num px-3 py-1.5 text-right text-slate-400">
                   {fmtNumber(h.entry_price)}

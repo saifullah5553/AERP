@@ -2,7 +2,7 @@ import type { ColDef } from "ag-grid-community";
 
 import { fmtInt, fmtNumber, fmtPercent, scoreHeatBg, titleize } from "@/lib/format";
 import type { ScreenerRow } from "@/types/api";
-import { ActionCell, ChangeCell, PatternCell, ScoreCell } from "./cells";
+import { ActionCell, ChangeCell, PatternCell, ScoreCell, TrendCell } from "./cells";
 
 // Translucent heat fill for a score column cell.
 const heat = (p: { value: unknown }) => ({
@@ -83,6 +83,16 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
       sortable: true,
       cellRenderer: ScoreCell,
       cellStyle: heat,
+    },
+    {
+      field: "quality_trend",
+      headerName: "Trend",
+      headerTooltip:
+        "Direction of the quality score across up to 8 trailing-twelve-month points. " +
+        "TTM throughout, so seasonality can't masquerade as a trend.",
+      width: 110,
+      sortable: true,
+      cellRenderer: TrendCell,
     },
     {
       field: "fundamental_score",

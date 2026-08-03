@@ -345,6 +345,7 @@ export default function CompanyPage() {
       <div className="grid gap-4 p-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
           <SignalCard signal={data.signal} />
+          <QualityTrendCard detail={data} />
           <SignalEventsCard
             events={moves.filter((m) => m.provider_symbol === String(sec.provider_symbol ?? ""))}
           />
@@ -447,6 +448,60 @@ function SignalEventsCard({ events }: { events: SignalMove[] }) {
             </div>
           );
         })}
+      </div>
+    </Card>
+  );
+}
+
+// Quality score across the stored TTM points - the fundamental trend, seasonality-free because
+// every point is a full trailing twelve months rather than a single quarter.
+function QualityTrendCard({ detail }: { detail: CompanyDetail }) {
+  const hist = (detail as unknown as { quality_history?: {
+    date: string; score: number; passed: boolean; period: string }[] }).quality_history;
+  if (!hist || hist.length < 2) return null;
+  const trend = (detail as unknown as { quality_trend?: {
+    direction: string; change: number | null } }).quality_trend;
+  const scores = hist.map((h) => h.score);
+  const lo = Math.min(...scores, 0);
+  const hi = Math.max(...scores, 100);
+  const tone = trend?.direction === "improving" ? "#22c55e"
+    : trend?.direction === "deteriorating" ? "#ef4444" : "#94a3b8";
+
+  return (
+    <Card
+      title="Fundamental Quality Trend"
+      right={
+        <span className="text-xs font-semibold" style={{ color: tone }}>
+          {trend?.direction === "improving" ? "▲ Improving"
+            : trend?.direction === "deteriorating" ? "▼ Declining" : "→ Stable"}
+          {trend?.change != null && ` (${trend.change > 0 ? "+" : ""}${trend.change})`}
+        </span>
+      }
+    >
+      <div className="px-4 py-3">
+        <div className="mb-3 flex items-end gap-1" style={{ height: 90 }}>
+          {hist.map((h) => {
+            const pct = hi > lo ? ((h.score - lo) / (hi - lo)) * 100 : 50;
+            return (
+              <div key={h.date} className="flex flex-1 flex-col items-center gap-1">
+                <div
+                  className="w-full rounded-t"
+                  style={{
+                    height: `${Math.max(4, pct)}%`,
+                    background: h.passed ? "rgba(34,197,94,0.55)" : "rgba(148,163,184,0.45)",
+                  }}
+                  title={`${h.date}: ${h.score}${h.passed ? " (passes gate)" : ""}`}
+                />
+                <span className="num text-[9px] text-slate-500">{h.score.toFixed(0)}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex justify-between text-[10px] text-slate-500">
+          <span>{hist[0].date}</span>
+          <span className="uppercase">{hist[0].period} · {hist.length} periods</span>
+          <span>{hist[hist.length - 1].date}</span>
+        </div>
       </div>
     </Card>
   );

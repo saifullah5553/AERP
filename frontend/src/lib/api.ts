@@ -72,6 +72,7 @@ export interface PortfolioHolding {
   quality_score: number | null;
   price?: number | null;
   return_pct?: number | null;
+  results_through?: string | null;
 }
 export interface PortfolioChange {
   date: string;

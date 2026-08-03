@@ -241,6 +241,14 @@ def cmd_refresh_quality(args: argparse.Namespace) -> None:
     log.info("refresh-quality: %s", refresh_quality(out, limit=args.limit))
 
 
+def cmd_quality_history(args: argparse.Namespace) -> None:
+    """Build the per-stock quality trend (up to 8 TTM points) from local data only."""
+    from app.ingestion.quality_history import refresh_quality_history
+
+    out = args.out or "../frontend/public/data"
+    log.info("refresh-quality-history: %s", refresh_quality_history(out, limit=args.limit))
+
+
 def cmd_model_portfolio(args: argparse.Namespace) -> None:
     """Rebalance the model portfolio (quarterly) and mark holdings to current prices (daily)."""
     from app.ingestion.model_portfolio import mark, rebalance
@@ -784,6 +792,8 @@ def build_parser() -> argparse.ArgumentParser:
     pp.add_argument("--out", default=None)
     rq = add("refresh-quality", cmd_refresh_quality, limit=True)
     rq.add_argument("--out", default=None)
+    qh = add("refresh-quality-history", cmd_quality_history, limit=True)
+    qh.add_argument("--out", default=None)
     mp = add("model-portfolio", cmd_model_portfolio)
     mp.add_argument("--force", action="store_true", help="rebalance even within the same quarter")
     mp.add_argument("--out", default=None)
