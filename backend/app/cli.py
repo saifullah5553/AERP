@@ -910,7 +910,8 @@ def build_parser() -> argparse.ArgumentParser:
     rn.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
     rn.add_argument("--only-missing", action="store_true", help="only names without news yet")
     eu = add("expand-universe", cmd_expand_universe, limit=True)
-    eu.add_argument("--region", required=True, choices=["us", "india", "australia"])
+    eu.add_argument("--region", required=True,
+                    choices=["us", "india", "australia", "psx"])
     eu.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
     bt = add("backtest", cmd_backtest)
     bt.add_argument("--horizon", type=int, default=60, help="trading days to look forward")

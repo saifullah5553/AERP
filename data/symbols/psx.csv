@@ -1,452 +1,475 @@
 symbol,name,yahoo,stockanalysis,has_listing
-AABS,Al-Abbas Sugar Mills Limited,AABS.KA,AABS,0
-AATM,Ali Asghar Textile Mills Limited,AATM.KA,AATM,0
-ABL,Allied Bank Limited,ABL.KA,ABL,0
-ABOT,Abbott Laboratories (Pakistan) Limited,ABOT.KA,ABOT,0
-ACPL,Attock Cement Pakistan Limited,ACPL.KA,ACPL,0
-ADAMS,Adam Sugar Mills Limited,ADAMS.KA,ADAMS,0
-ADMM,Artistic Denim Mills Limited,ADMM.KA,ADMM,0
-AGHA,Agha Steel Ind.Ltd,AGHA.KA,AGHA,0
-AGIC,Askari General Insurance Company Limited,AGIC.KA,AGIC,0
-AGIL,Agriauto Industries Limited,AGIL.KA,AGIL,0
-AGL,Agritech Limited,AGL.KA,AGL,0
-AGP,AGP Limited,AGP.KA,AGP,0
-AGSML,Abdullah Shah Ghazi Sugar Mills Limited,AGSML.KA,AGSML,0
-AGTL,Al-Ghazi Tractors Limited,AGTL.KA,AGTL,0
-AHCL,Arif Habib Corporation Limited,AHCL.KA,AHCL,0
-AHL,Arif Habib Limited,AHL.KA,AHL,0
-AHTM,Ahmad Hassan Textile Mills Limited,AHTM.KA,AHTM,0
-AICL,Adamjee Insurance Company Limited,AICL.KA,AICL,0
-AIRLINK,Air Link Communication Limited,AIRLINK.KA,AIRLINK,0
-AKBL,Askari Bank Limited,AKBL.KA,AKBL,0
-AKDHL,AKD Hospitality Limited,AKDHL.KA,AKDHL,0
-AKDSL,AKD Securities Limited,AKDSL.KA,AKDSL,0
-AKGL,Al-Khair Gadoon Limited,AKGL.KA,AKGL,0
-ALAC,Askari Life Assurance Company Limited,ALAC.KA,ALAC,0
-ALIFE,Adamjee Life Assurance Company Limited,ALIFE.KA,ALIFE,0
-ALNRS,Al-Noor Sugar Mills Limited,ALNRS.KA,ALNRS,0
-ALTN,Altern Energy Limited,ALTN.KA,ALTN,0
-AMBL,Apna Microfinance Bank Limited,AMBL.KA,AMBL,0
-AMTEX,Amtex Limited,AMTEX.KA,AMTEX,0
-ANL,Azgard Nine Limited,ANL.KA,ANL,0
-ANSM,Ansari Sugar Mills Limited,ANSM.KA,ANSM,0
-ANTM,AN Textile Mills Limited,ANTM.KA,ANTM,0
-APL,Attock Petroleum Limited,APL.KA,APL,0
-ARMG,ARM Green Industries Limited,ARMG.KA,ARMG,0
-ARPAK,Arpak International Investments Ltd.,ARPAK.KA,ARPAK,0
-ARPL,Archroma Pakistan Limited,ARPL.KA,ARPL,0
-ARUJ,Aruj Industries Limited,ARUJ.KA,ARUJ,0
-ASC,Al Shaheer Corporation Limited,ASC.KA,ASC,0
-ASHT,Ashfaq Textile Mills Limited,ASHT.KA,ASHT,0
-ASL,Aisha Steel Mills Limited,ASL.KA,ASL,0
-ASTL,Amreli Steels Limited,ASTL.KA,ASTL,0
-ASTM,Asim Textile Mills Limited,ASTM.KA,ASTM,0
-ATBA,Atlas Battery Limited,ATBA.KA,ATBA,0
-ATIL,Atlas Insurance Limited,ATIL.KA,ATIL,0
-ATLH,Atlas Honda Limited,ATLH.KA,ATLH,0
-ATRL,Attock Refinery Limited,ATRL.KA,ATRL,0
-AVN,Avanceon Limited,AVN.KA,AVN,0
-AWTX,Allawasaya Tex. & Finishing Mills Ltd,AWTX.KA,AWTX,0
-BAFL,Bank Alfalah Limited,BAFL.KA,BAFL,0
-BAFS,Baba Farid Sugar Mills Limited,BAFS.KA,BAFS,0
-BAHL,Bank AL Habib Limited,BAHL.KA,BAHL,0
-BAPL,Bawany Air Products Limited,BAPL.KA,BAPL,0
-BATA,Bata Pakistan Limited,BATA.KA,BATA,0
-BCL,Bolan Castings Limited,BCL.KA,BCL,0
-BECO,Beco Steel Limited,BECO.KA,BECO,0
-BERG,Berger Paints Pakistan Limited,BERG.KA,BERG,0
-BFAGRO,Barkat Frisian Agro Limited,BFAGRO.KA,BFAGRO,0
-BFBIO,BF Biosciences Limited,BFBIO.KA,BFBIO,0
-BFMOD,B.F. Modaraba,BFMOD.KA,BFMOD,0
-BGL,Baluchistan Glass Limited,BGL.KA,BGL,0
-BHAT,Bhanero Textile Mills Limited,BHAT.KA,BHAT,0
-BIFO,Biafo Industries Limited,BIFO.KA,BIFO,0
-BIPL,BankIslami Pakistan Limited,BIPL.KA,BIPL,0
-BLUEX,Blue-Ex Limited,BLUEX.KA,BLUEX,0
-BML,Bank Makramah Limited,BML.KA,BML,0
-BNL,Bunnys Limited,BNL.KA,BNL,0
-BNWM,Bannu Woollen Mills Limited,BNWM.KA,BNWM,0
-BOK,The Bank of Khyber,BOK.KA,BOK,0
-BOP,The Bank of Punjab,BOP.KA,BOP,0
-BPL,Burshane LPG (Pakistan) Limited,BPL.KA,BPL,0
-BRRG,B.R.R Guardian Limited,BRRG.KA,BRRG,0
-BTL,Blessed Textiles Limited,BTL.KA,BTL,0
-BUXL,Buxly Paints Limited,BUXL.KA,BUXL,0
-BWCL,Bestway Cement Limited,BWCL.KA,BWCL,0
-BWHL,Baluchistan Wheels Limited,BWHL.KA,BWHL,0
-CCM,Crescent Cotton Mills Limited,CCM.KA,CCM,0
-CENI,Century Insurance Company Limited,CENI.KA,CENI,0
-CEPB,Century Paper & Board Mills Limited,CEPB.KA,CEPB,0
-CFL,Crescent Fibres Limited,CFL.KA,CFL,0
-CHAS,Chashma Sugar Mills Limited,CHAS.KA,CHAS,0
-CHBL,Chenab Limited,CHBL.KA,CHBL,0
-CHCC,Cherat Cement Company Limited,CHCC.KA,CHCC,0
-CJPL,Crescent Jute Products Limited,CJPL.KA,CJPL,0
-CLOV,Clover Pakistan Limited,CLOV.KA,CLOV,0
-CLVL,Cordoba Logistics & Ventures Limited,CLVL.KA,CLVL,0
-CNERGY,Cnergyico PK  Limited,CNERGY.KA,CNERGY,0
-COLG,Colgate-Palmolive (Pakistan) Limited,COLG.KA,COLG,0
-CPHL,Citi Pharma Ltd.,CPHL.KA,CPHL,0
-CPPL,Cherat Packaging Limited,CPPL.KA,CPPL,0
-CRTM,The Crescent Textile Mills Limited,CRTM.KA,CRTM,0
-CSAP,Crescent Steel & Allied Products Limited,CSAP.KA,CSAP,0
-CSIL,Crescent Star Insurance Limited,CSIL.KA,CSIL,0
-CTM,Colony Textile Mills Limited,CTM.KA,CTM,0
-DAAG,Data Agro Limited,DAAG.KA,DAAG,0
-DADX,Dadex Eternit Limited,DADX.KA,DADX,0
-DBCI,Dadabhoy Cement Industries Limited,DBCI.KA,DBCI,0
-DCL,Dewan Cement Limited,DCL.KA,DCL,0
-DCR,Dolmen City REIT,DCR.KA,DCR,0
-DEL,Dawood Equities Limited,DEL.KA,DEL,0
-DFML,Dewan Farooque Motors Limited,DFML.KA,DFML,0
-DFSM,Dewan Farooque Spinning Mills Limited,DFSM.KA,DFSM,0
-DGKC,D.G. Khan Cement Company Limited,DGKC.KA,DGKC,0
-DIIL,Diamond Industries Limited,DIIL.KA,DIIL,0
-DINT,Din Textile Mills Limited,DINT.KA,DINT,0
-DLL,Dawood Lawrencepur Limited,DLL.KA,DLL,0
-DMC,D.M. Corporation Limited.,DMC.KA,DMC,0
-DMTM,Dewan Mushtaq Textile Mills Limited,DMTM.KA,DMTM,0
-DNCC,Dandot Cement Company Limited,DNCC.KA,DNCC,0
-DOL,Descon Oxychem Limited,DOL.KA,DOL,0
-DSIL,D.S. Industries Limited,DSIL.KA,DSIL,0
-DSL,Dost Steels Limited,DSL.KA,DSL,0
-DWAE,Dewan Automotive Engineering Limited,DWAE.KA,DWAE,0
-DWSM,Dewan Sugar Mills Limited,DWSM.KA,DWSM,0
-DWTM,Dewan Textile Mills Limited,DWTM.KA,DWTM,0
-DYNO,Dynea Pakistan Limited,DYNO.KA,DYNO,0
-ECOP,Ecopack Limited,ECOP.KA,ECOP,0
-EFERT,Engro Fertilizers Limited,EFERT.KA,EFERT,0
-EFUG,EFU General Insurance Limited,EFUG.KA,EFUG,0
-EFUL,EFU Life Assurance Limited,EFUL.KA,EFUL,0
-ELCM,Elahi Cotton Mills Limited,ELCM.KA,ELCM,0
-ELSM,Ellcot Spinning Mills Limited,ELSM.KA,ELSM,0
-EMCO,Emco Industries Limited,EMCO.KA,EMCO,0
-ENGROH,Engro Holdings Limited,ENGROH.KA,ENGROH,0
-EPCL,Engro Polymer & Chemicals Limited,EPCL.KA,EPCL,0
-EPQL,Engro Powergen Qadirpur Limited,EPQL.KA,EPQL,0
-ESBL,Escorts Investment Bank Limited,ESBL.KA,ESBL,0
-EWIC,East West Insurance Company Limited,EWIC.KA,EWIC,0
-EXIDE,Exide Pakistan Limited,EXIDE.KA,EXIDE,0
-FABL,Faysal Bank Limited,FABL.KA,FABL,0
-FANM,First Al-Noor Modaraba,FANM.KA,FANM,0
-FASM,Faisal Spinning Mills Limited,FASM.KA,FASM,0
-FATIMA,Fatima Fertilizer Company Limited,FATIMA.KA,FATIMA,0
-FCCL,Fauji Cement Company Limited,FCCL.KA,FCCL,0
-FCEL,First Capital Equities Limited,FCEL.KA,FCEL,0
-FCEPL,Frieslandcampina Engro Pakistan Limited,FCEPL.KA,FCEPL,0
-FCIBL,First Credit and Investment Bank Limited,FCIBL.KA,FCIBL,0
-FCL,Fast Cables Limited,FCL.KA,FCL,0
-FCSC,First Capital Securities Corporation,FCSC.KA,FCSC,0
-FDPL,First Dawood Properties Limited,FDPL.KA,FDPL,0
-FECM,First Elite Capital Modaraba,FECM.KA,FECM,0
-FECTC,Fecto Cement Limited,FECTC.KA,FECTC,0
-FEROZ,Ferozsons Laboratories Limited,FEROZ.KA,FEROZ,0
-FFC,Fauji Fertilizer Company Limited,FFC.KA,FFC,0
-FFL,Fauji Foods Limited,FFL.KA,FFL,0
-FFLM,First Fidelity Leasing Modaraba,FFLM.KA,FFLM,0
-FHAM,First Habib Modaraba,FHAM.KA,FHAM,0
-FIBLM,First IBL Modaraba,FIBLM.KA,FIBLM,0
-FIMM,First Imrooz Modaraba,FIMM.KA,FIMM,0
-FLYNG,Flying Cement Company Limited,FLYNG.KA,FLYNG,0
-FML,Feroze1888 Mills Limited,FML.KA,FML,0
-FNEL,First National Equities Limited,FNEL.KA,FNEL,0
-FPJM,First Punjab Modaraba,FPJM.KA,FPJM,0
-FPRM,First Paramount Modaraba,FPRM.KA,FPRM,0
-FRCL,Frontier Ceramics Limited,FRCL.KA,FRCL,0
-FRSM,Faran Sugar Mills Limited,FRSM.KA,FRSM,0
-FSWL,Fateh Sports Wear Limited,FSWL.KA,FSWL,0
-FTMM,First Treet Manufacturing Modaraba,FTMM.KA,FTMM,0
-FTSM,First Tri-Star Modaraba,FTSM.KA,FTSM,0
-FZCM,Fazal Cloth Mills Limited,FZCM.KA,FZCM,0
-GADT,Gadoon Textile Mills Limited,GADT.KA,GADT,0
-GAL,Ghandhara Automobiles Limited,GAL.KA,GAL,0
-GAMON,Gammon Pakistan Limited,GAMON.KA,GAMON,0
-GATI,Gatron (Industries) Limited,GATI.KA,GATI,0
-GATM,Gul Ahmed Textile Mills Limited,GATM.KA,GATM,0
-GDL,Ghani Dairies Limited,GDL.KA,GDL,0
-GEMMEL,Mughal Energy Limited(GEM),GEMMEL.KA,GEMMEL,0
-GEMNETS,Nets International Communication Limited,GEMNETS.KA,GEMNETS,0
-GEMPAPL,Pak Agro Packaging Limited(GEM),GEMPAPL.KA,GEMPAPL,0
-GFIL,Ghazi Fabrics International Limited,GFIL.KA,GFIL,0
-GGGL,Ghani Global Glass Limited,GGGL.KA,GGGL,0
-GGL,Ghani Global Holdings Limited,GGL.KA,GGL,0
-GHGL,Ghani Glass Limited,GHGL.KA,GHGL,0
-GHNI,Ghandhara Industries Limited,GHNI.KA,GHNI,0
-GIL,Good Luck Industries Ltd.,GIL.KA,GIL,0
-GLAXO,GlaxoSmithKline Pakistan Limited,GLAXO.KA,GLAXO,0
-GOC,GOC (Pak) Limited.,GOC.KA,GOC,0
-GRR,Globe Residency REIT,GRR.KA,GRR,0
-GRYL,Grays Leasing Limited,GRYL.KA,GRYL,0
-GSPM,Gulshan Spinning Mills Limited,GSPM.KA,GSPM,0
-GTYR,Ghandhara Tyre & Rubber Company Limited,GTYR.KA,GTYR,0
-GUSM,Gulistan Spinning Mills Limited,GUSM.KA,GUSM,0
-GVGL,Ghani Value Glass Limited,GVGL.KA,GVGL,0
-GWLC,Gharibwal Cement Limited,GWLC.KA,GWLC,0
-HABSM,Habib Sugar Mills Limited,HABSM.KA,HABSM,0
-HAEL,Hala Enterprises Limited,HAEL.KA,HAEL,0
-HAFL,Hafiz Limited,HAFL.KA,HAFL,0
-HALEON,Haleon Pakistan Limited,HALEON.KA,HALEON,0
-HASCOL,Hascol Petroleum Limited,HASCOL.KA,HASCOL,0
-HBL,Habib Bank Limited,HBL.KA,HBL,0
-HCAR,Honda Atlas Cars (Pakistan) Limited,HCAR.KA,HCAR,0
-HICL,Habib Insurance Company Limited,HICL.KA,HICL,0
-HINO,Hinopak Motors Limited,HINO.KA,HINO,0
-HINOON,Highnoon Laboratories Limited,HINOON.KA,HINOON,0
-HIRAT,Hira Textile Mills Limited,HIRAT.KA,HIRAT,0
-HMB,Habib Metropolitan Bank Limited,HMB.KA,HMB,0
-HPL,Hoechst Pakistan Limited,HPL.KA,HPL,0
-HRPL,Habib Rice Product Limited.,HRPL.KA,HRPL,0
-HSPI,Huffaz Seamless Pipe Industries Limited,HSPI.KA,HSPI,0
-HTL,Hi-Tech Lubricants Limited,HTL.KA,HTL,0
-HUBC,The Hub Power Company Limited,HUBC.KA,HUBC,0
-HUMNL,Hum Network Limited,HUMNL.KA,HUMNL,0
-HUSI,Husein Industries Limited,HUSI.KA,HUSI,0
-HWQS,Haseeb Waqas Sugar Mills Limited,HWQS.KA,HWQS,0
-IBFL,Ibrahim Fibres Limited,IBFL.KA,IBFL,0
-IBLHL,IBL HealthCare Limited,IBLHL.KA,IBLHL,0
-ICCI,ICC Industries Limited,ICCI.KA,ICCI,0
-ICIBL,Invest Capital Investment Bank Limited,ICIBL.KA,ICIBL,0
-ICL,Ittehad Chemicals Limted,ICL.KA,ICL,0
-IDRT,Idrees Textile Mills Limited,IDRT.KA,IDRT,0
+786,786 Investment Limited,786.KA,786,1
+AABS,Al-Abbas Sugar Mills Limited,AABS.KA,AABS,1
+AATM,Ali Asghar Textile Mills Limited,AATM.KA,AATM,1
+ABL,Allied Bank Limited,ABL.KA,ABL,1
+ABOT,Abbott Laboratories (Pakistan) Limited,ABOT.KA,ABOT,1
+ACPL,Attock Cement Pakistan Limited,ACPL.KA,ACPL,1
+ADAMS,Adam Sugar Mills Limited,ADAMS.KA,ADAMS,1
+ADMM,Artistic Denim Mills Limited,ADMM.KA,ADMM,1
+AGHA,Agha Steel Ind.Ltd,AGHA.KA,AGHA,1
+AGIC,Askari General Insurance Company Limited,AGIC.KA,AGIC,1
+AGIL,Agriauto Industries Limited,AGIL.KA,AGIL,1
+AGL,Agritech Limited,AGL.KA,AGL,1
+AGP,AGP Limited,AGP.KA,AGP,1
+AGSML,Abdullah Shah Ghazi Sugar Mills Limited,AGSML.KA,AGSML,1
+AGTL,Al-Ghazi Tractors Limited,AGTL.KA,AGTL,1
+AHCL,Arif Habib Corporation Limited,AHCL.KA,AHCL,1
+AHL,Arif Habib Limited,AHL.KA,AHL,1
+AHTM,Ahmad Hassan Textile Mills Limited,AHTM.KA,AHTM,1
+AICL,Adamjee Insurance Company Limited,AICL.KA,AICL,1
+AIRLINK,Air Link Communication Limited,AIRLINK.KA,AIRLINK,1
+AKBL,Askari Bank Limited,AKBL.KA,AKBL,1
+AKDHL,AKD Hospitality Limited,AKDHL.KA,AKDHL,1
+AKDSL,AKD Securities Limited,AKDSL.KA,AKDSL,1
+AKGL,Al-Khair Gadoon Limited,AKGL.KA,AKGL,1
+ALAC,Askari Life Assurance Company Limited,ALAC.KA,ALAC,1
+ALIFE,Adamjee Life Assurance Company Limited,ALIFE.KA,ALIFE,1
+ALNRS,Al-Noor Sugar Mills Limited,ALNRS.KA,ALNRS,1
+ALTN,Altern Energy Limited,ALTN.KA,ALTN,1
+AMBL,Apna Microfinance Bank Limited,AMBL.KA,AMBL,1
+AMTEX,Amtex Limited,AMTEX.KA,AMTEX,1
+ANL,Azgard Nine Limited,ANL.KA,ANL,1
+ANSM,Ansari Sugar Mills Limited,ANSM.KA,ANSM,1
+ANTM,AN Textile Mills Limited,ANTM.KA,ANTM,1
+APL,Attock Petroleum Limited,APL.KA,APL,1
+ARCTM,Arctic Textile Mills Limited,ARCTM.KA,ARCTM,1
+ARMG,ARM Green Industries Limited,ARMG.KA,ARMG,1
+ARPAK,Arpak International Investments Ltd.,ARPAK.KA,ARPAK,1
+ARPL,Archroma Pakistan Limited,ARPL.KA,ARPL,1
+ARUJ,Aruj Industries Limited,ARUJ.KA,ARUJ,1
+ASC,Al Shaheer Corporation Limited,ASC.KA,ASC,1
+ASHT,Ashfaq Textile Mills Limited,ASHT.KA,ASHT,1
+ASIC,Asia Insurance Company Limited,ASIC.KA,ASIC,1
+ASL,Aisha Steel Mills Limited,ASL.KA,ASL,1
+ASTL,Amreli Steels Limited,ASTL.KA,ASTL,1
+ASTM,Asim Textile Mills Limited,ASTM.KA,ASTM,1
+ATBA,Atlas Battery Limited,ATBA.KA,ATBA,1
+ATIL,Atlas Insurance Limited,ATIL.KA,ATIL,1
+ATLH,Atlas Honda Limited,ATLH.KA,ATLH,1
+ATRL,Attock Refinery Limited,ATRL.KA,ATRL,1
+AVN,Avanceon Limited,AVN.KA,AVN,1
+AWTX,Allawasaya Tex. & Finishing Mills Ltd,AWTX.KA,AWTX,1
+BAFL,Bank Alfalah Limited,BAFL.KA,BAFL,1
+BAFS,Baba Farid Sugar Mills Limited,BAFS.KA,BAFS,1
+BAHL,Bank AL Habib Limited,BAHL.KA,BAHL,1
+BAPL,Bawany Air Products Limited,BAPL.KA,BAPL,1
+BATA,Bata Pakistan Limited,BATA.KA,BATA,1
+BCL,Bolan Castings Limited,BCL.KA,BCL,1
+BECO,Beco Steel Limited,BECO.KA,BECO,1
+BELA,Bela Automotives Ltd.,BELA.KA,BELA,1
+BERG,Berger Paints Pakistan Limited,BERG.KA,BERG,1
+BFAGRO,Barkat Frisian Agro Limited,BFAGRO.KA,BFAGRO,1
+BFBIO,BF Biosciences Limited,BFBIO.KA,BFBIO,1
+BFMOD,B.F. Modaraba,BFMOD.KA,BFMOD,1
+BGL,Baluchistan Glass Limited,BGL.KA,BGL,1
+BHAT,Bhanero Textile Mills Limited,BHAT.KA,BHAT,1
+BIFO,Biafo Industries Limited,BIFO.KA,BIFO,1
+BIPL,BankIslami Pakistan Limited,BIPL.KA,BIPL,1
+BLUEX,Blue-Ex Limited,BLUEX.KA,BLUEX,1
+BML,Bank Makramah Limited,BML.KA,BML,1
+BNL,Bunnys Limited,BNL.KA,BNL,1
+BNWM,Bannu Woollen Mills Limited,BNWM.KA,BNWM,1
+BOK,The Bank of Khyber,BOK.KA,BOK,1
+BOP,The Bank of Punjab,BOP.KA,BOP,1
+BPL,Burshane LPG (Pakistan) Limited,BPL.KA,BPL,1
+BRRG,B.R.R Guardian Limited,BRRG.KA,BRRG,1
+BTL,Blessed Textiles Limited,BTL.KA,BTL,1
+BUXL,Buxly Paints Limited,BUXL.KA,BUXL,1
+BWCL,Bestway Cement Limited,BWCL.KA,BWCL,1
+BWHL,Baluchistan Wheels Limited,BWHL.KA,BWHL,1
+CCM,Crescent Cotton Mills Limited,CCM.KA,CCM,1
+CENI,Century Insurance Company Limited,CENI.KA,CENI,1
+CEPB,Century Paper & Board Mills Limited,CEPB.KA,CEPB,1
+CFL,Crescent Fibres Limited,CFL.KA,CFL,1
+CHAS,Chashma Sugar Mills Limited,CHAS.KA,CHAS,1
+CHBL,Chenab Limited,CHBL.KA,CHBL,1
+CHCC,Cherat Cement Company Limited,CHCC.KA,CHCC,1
+CJPL,Crescent Jute Products Limited,CJPL.KA,CJPL,1
+CLOV,Clover Pakistan Limited,CLOV.KA,CLOV,1
+CLVL,Cordoba Logistics & Ventures Limited,CLVL.KA,CLVL,1
+CNERGY,Cnergyico PK  Limited,CNERGY.KA,CNERGY,1
+COLG,Colgate-Palmolive (Pakistan) Limited,COLG.KA,COLG,1
+CPHL,Citi Pharma Ltd.,CPHL.KA,CPHL,1
+CPPL,Cherat Packaging Limited,CPPL.KA,CPPL,1
+CRTM,The Crescent Textile Mills Limited,CRTM.KA,CRTM,1
+CSAP,Crescent Steel & Allied Products Limited,CSAP.KA,CSAP,1
+CSIL,Crescent Star Insurance Limited,CSIL.KA,CSIL,1
+CTM,Colony Textile Mills Limited,CTM.KA,CTM,1
+DAAG,Data Agro Limited,DAAG.KA,DAAG,1
+DADX,Dadex Eternit Limited,DADX.KA,DADX,1
+DBCI,Dadabhoy Cement Industries Limited,DBCI.KA,DBCI,1
+DCL,Dewan Cement Limited,DCL.KA,DCL,1
+DCR,Dolmen City REIT,DCR.KA,DCR,1
+DEL,Dawood Equities Limited,DEL.KA,DEL,1
+DFML,Dewan Farooque Motors Limited,DFML.KA,DFML,1
+DFSM,Dewan Farooque Spinning Mills Limited,DFSM.KA,DFSM,1
+DGKC,D.G. Khan Cement Company Limited,DGKC.KA,DGKC,1
+DIIL,Diamond Industries Limited,DIIL.KA,DIIL,1
+DINT,Din Textile Mills Limited,DINT.KA,DINT,1
+DLL,Dawood Lawrencepur Limited,DLL.KA,DLL,1
+DMC,D.M. Corporation Limited.,DMC.KA,DMC,1
+DMTM,Dewan Mushtaq Textile Mills Limited,DMTM.KA,DMTM,1
+DNCC,Dandot Cement Company Limited,DNCC.KA,DNCC,1
+DOL,Descon Oxychem Limited,DOL.KA,DOL,1
+DSIL,D.S. Industries Limited,DSIL.KA,DSIL,1
+DSL,Dost Steels Limited,DSL.KA,DSL,1
+DWAE,Dewan Automotive Engineering Limited,DWAE.KA,DWAE,1
+DWSM,Dewan Sugar Mills Limited,DWSM.KA,DWSM,1
+DWTM,Dewan Textile Mills Limited,DWTM.KA,DWTM,1
+DYNO,Dynea Pakistan Limited,DYNO.KA,DYNO,1
+ECOP,Ecopack Limited,ECOP.KA,ECOP,1
+EFERT,Engro Fertilizers Limited,EFERT.KA,EFERT,1
+EFUG,EFU General Insurance Limited,EFUG.KA,EFUG,1
+EFUL,EFU Life Assurance Limited,EFUL.KA,EFUL,1
+ELCM,Elahi Cotton Mills Limited,ELCM.KA,ELCM,1
+ELSM,Ellcot Spinning Mills Limited,ELSM.KA,ELSM,1
+EMCO,Emco Industries Limited,EMCO.KA,EMCO,1
+ENGROH,Engro Holdings Limited,ENGROH.KA,ENGROH,1
+EPCL,Engro Polymer & Chemicals Limited,EPCL.KA,EPCL,1
+EPQL,Engro Powergen Qadirpur Limited,EPQL.KA,EPQL,1
+ESBL,Escorts Investment Bank Limited,ESBL.KA,ESBL,1
+EWIC,East West Insurance Company Limited,EWIC.KA,EWIC,1
+EXIDE,Exide Pakistan Limited,EXIDE.KA,EXIDE,1
+FABL,Faysal Bank Limited,FABL.KA,FABL,1
+FANM,First Al-Noor Modaraba,FANM.KA,FANM,1
+FASM,Faisal Spinning Mills Limited,FASM.KA,FASM,1
+FATIMA,Fatima Fertilizer Company Limited,FATIMA.KA,FATIMA,1
+FCCL,Fauji Cement Company Limited,FCCL.KA,FCCL,1
+FCEL,First Capital Equities Limited,FCEL.KA,FCEL,1
+FCEPL,Frieslandcampina Engro Pakistan Limited,FCEPL.KA,FCEPL,1
+FCIBL,First Credit and Investment Bank Limited,FCIBL.KA,FCIBL,1
+FCL,Fast Cables Limited,FCL.KA,FCL,1
+FCSC,First Capital Securities Corporation,FCSC.KA,FCSC,1
+FDPL,First Dawood Properties Limited,FDPL.KA,FDPL,1
+FECM,First Elite Capital Modaraba,FECM.KA,FECM,1
+FECTC,Fecto Cement Limited,FECTC.KA,FECTC,1
+FEROZ,Ferozsons Laboratories Limited,FEROZ.KA,FEROZ,1
+FFC,Fauji Fertilizer Company Limited,FFC.KA,FFC,1
+FFL,Fauji Foods Limited,FFL.KA,FFL,1
+FFLM,First Fidelity Leasing Modaraba,FFLM.KA,FFLM,1
+FHAM,First Habib Modaraba,FHAM.KA,FHAM,1
+FIBLM,First IBL Modaraba,FIBLM.KA,FIBLM,1
+FIL,Fateh Industries Ltd,FIL.KA,FIL,1
+FIMM,First Imrooz Modaraba,FIMM.KA,FIMM,1
+FLYNG,Flying Cement Company Limited,FLYNG.KA,FLYNG,1
+FML,Feroze1888 Mills Limited,FML.KA,FML,1
+FNEL,First National Equities Limited,FNEL.KA,FNEL,1
+FPJM,First Punjab Modaraba,FPJM.KA,FPJM,1
+FPRM,First Paramount Modaraba,FPRM.KA,FPRM,1
+FRCL,Frontier Ceramics Limited,FRCL.KA,FRCL,1
+FRSM,Faran Sugar Mills Limited,FRSM.KA,FRSM,1
+FSWL,Fateh Sports Wear Limited,FSWL.KA,FSWL,1
+FTMM,First Treet Manufacturing Modaraba,FTMM.KA,FTMM,1
+FTSM,First Tri-Star Modaraba,FTSM.KA,FTSM,1
+FZCM,Fazal Cloth Mills Limited,FZCM.KA,FZCM,1
+GADT,Gadoon Textile Mills Limited,GADT.KA,GADT,1
+GAL,Ghandhara Automobiles Limited,GAL.KA,GAL,1
+GAMON,Gammon Pakistan Limited,GAMON.KA,GAMON,1
+GATI,Gatron (Industries) Limited,GATI.KA,GATI,1
+GATM,Gul Ahmed Textile Mills Limited,GATM.KA,GATM,1
+GCIL,Ghani Chemical Industries Limited,GCIL.KA,GCIL,1
+GDL,Ghani Dairies Limited,GDL.KA,GDL,1
+GEMMEL,Mughal Energy Limited(GEM),GEMMEL.KA,GEMMEL,1
+GEMNETS,Nets International Communication Limited,GEMNETS.KA,GEMNETS,1
+GEMPAPL,Pak Agro Packaging Limited(GEM),GEMPAPL.KA,GEMPAPL,1
+GFIL,Ghazi Fabrics International Limited,GFIL.KA,GFIL,1
+GGGL,Ghani Global Glass Limited,GGGL.KA,GGGL,1
+GGL,Ghani Global Holdings Limited,GGL.KA,GGL,1
+GHGL,Ghani Glass Limited,GHGL.KA,GHGL,1
+GHNI,Ghandhara Industries Limited,GHNI.KA,GHNI,1
+GIL,Good Luck Industries Ltd.,GIL.KA,GIL,1
+GLAXO,GlaxoSmithKline Pakistan Limited,GLAXO.KA,GLAXO,1
+GOC,GOC (Pak) Limited.,GOC.KA,GOC,1
+GRR,Globe Residency REIT,GRR.KA,GRR,1
+GRYL,Grays Leasing Limited,GRYL.KA,GRYL,1
+GSPM,Gulshan Spinning Mills Limited,GSPM.KA,GSPM,1
+GTYR,Ghandhara Tyre & Rubber Company Limited,GTYR.KA,GTYR,1
+GUSM,Gulistan Spinning Mills Limited,GUSM.KA,GUSM,1
+GVGL,Ghani Value Glass Limited,GVGL.KA,GVGL,1
+GWLC,Gharibwal Cement Limited,GWLC.KA,GWLC,1
+HABSM,Habib Sugar Mills Limited,HABSM.KA,HABSM,1
+HAEL,Hala Enterprises Limited,HAEL.KA,HAEL,1
+HAFL,Hafiz Limited,HAFL.KA,HAFL,1
+HALEON,Haleon Pakistan Limited,HALEON.KA,HALEON,1
+HASCOL,Hascol Petroleum Limited,HASCOL.KA,HASCOL,1
+HBL,Habib Bank Limited,HBL.KA,HBL,1
+HCAR,Honda Atlas Cars (Pakistan) Limited,HCAR.KA,HCAR,1
+HICL,Habib Insurance Company Limited,HICL.KA,HICL,1
+HINO,Hinopak Motors Limited,HINO.KA,HINO,1
+HINOON,Highnoon Laboratories Limited,HINOON.KA,HINOON,1
+HIRAT,Hira Textile Mills Limited,HIRAT.KA,HIRAT,1
+HMB,Habib Metropolitan Bank Limited,HMB.KA,HMB,1
+HPL,Hoechst Pakistan Limited,HPL.KA,HPL,1
+HRPL,Habib Rice Product Limited.,HRPL.KA,HRPL,1
+HSPI,Huffaz Seamless Pipe Industries Limited,HSPI.KA,HSPI,1
+HTL,Hi-Tech Lubricants Limited,HTL.KA,HTL,1
+HUBC,The Hub Power Company Limited,HUBC.KA,HUBC,1
+HUMNL,Hum Network Limited,HUMNL.KA,HUMNL,1
+HUSI,Husein Industries Limited,HUSI.KA,HUSI,1
+HWQS,Haseeb Waqas Sugar Mills Limited,HWQS.KA,HWQS,1
+IBFL,Ibrahim Fibres Limited,IBFL.KA,IBFL,1
+IBLHL,IBL HealthCare Limited,IBLHL.KA,IBLHL,1
+ICCI,ICC Industries Limited,ICCI.KA,ICCI,1
+ICIBL,Invest Capital Investment Bank Limited,ICIBL.KA,ICIBL,1
+ICL,Ittehad Chemicals Limted,ICL.KA,ICL,1
+IDRT,Idrees Textile Mills Limited,IDRT.KA,IDRT,1
 IDSM,Ideal Spinning Mills Limited,IDSM.KA,IDSM,0
-IDYM,Indus Dyeing & Manufacturing Co. Limited,IDYM.KA,IDYM,0
-IGIL,IGI Life Insurance Limited,IGIL.KA,IGIL,0
-ILP,Interloop Limited,ILP.KA,ILP,0
-IMAGE,Image Pakistan Limited,IMAGE.KA,IMAGE,0
-IML,Imperial  Limited,IML.KA,IML,0
-IMS,Intermarket Securities Limited,IMS.KA,IMS,0
-INDU,Indus Motor Company Limited,INDU.KA,INDU,0
-INIL,International Industries Limited,INIL.KA,INIL,0
-INKL,International Knitwear Limited,INKL.KA,INKL,0
-IPAK,International Packaging Films Limited,IPAK.KA,IPAK,0
-IREIT,Image Reit,IREIT.KA,IREIT,0
-ISIL,Ismail Industries Limited,ISIL.KA,ISIL,0
-ISL,International Steels Limited,ISL.KA,ISL,0
-ITTEFAQ,Ittefaq Iron Industries Limited,ITTEFAQ.KA,ITTEFAQ,0
-JATM,J.A. Textile Mills Limited,JATM.KA,JATM,0
-JDMT,Janana De Malucho Textile Mills Limited,JDMT.KA,JDMT,0
-JDWS,JDW Sugar Mills Limited,JDWS.KA,JDWS,0
-JGICL,Jubilee General Insurance Company Ltd.,JGICL.KA,JGICL,0
-JKSM,J.K. Spinning Mills Limited,JKSM.KA,JKSM,0
-JLICL,Jubilee Life Insurance Company Limited,JLICL.KA,JLICL,0
-JSBL,JS Bank Limited,JSBL.KA,JSBL,0
-JSCL,Jahangir Siddiqui & Co. Ltd.,JSCL.KA,JSCL,0
-JSGCL,JS Global Capital Limited,JSGCL.KA,JSGCL,0
-JSIL,JS Investments Limited,JSIL.KA,JSIL,0
-JSML,Jauharabad Sugar Mills Limited,JSML.KA,JSML,0
-JSRR,JS Rental REIT,JSRR.KA,JSRR,0
-JUBS,Jubilee Spinning & Weaving Mills Ltd.,JUBS.KA,JUBS,0
-JVDC,Javedan Corporation Limited,JVDC.KA,JVDC,0
-KAPCO,Kot Addu Power Company Limited,KAPCO.KA,KAPCO,0
-KCL,Karam Ceramics Limited,KCL.KA,KCL,0
-KEL,K-Electric Limited,KEL.KA,KEL,0
-KHTC,Khyber Tobacco Company Limited,KHTC.KA,KHTC,0
-KML,Kohinoor Mills Limited,KML.KA,KML,0
-KOHC,Kohat Cement Company Limited,KOHC.KA,KOHC,0
-KOHE,Kohinoor Energy Limited,KOHE.KA,KOHE,0
-KOHP,Kohinoor Power Company Limited,KOHP.KA,KOHP,0
-KOHTM,Kohat Textile Mills Limited,KOHTM.KA,KOHTM,0
-KOIL,Kohinoor Industries Limited,KOIL.KA,KOIL,0
-KOSM,Kohinoor Spinning Mills Limited,KOSM.KA,KOSM,0
-KPUS,Khairpur Sugar Mills Limited,KPUS.KA,KPUS,0
-KSBP,KSB Pumps Company Limited,KSBP.KA,KSBP,0
-KSTM,Khalid Siraj Textile Mills Limited,KSTM.KA,KSTM,0
-KTML,Kohinoor Textile Mills Limited,KTML.KA,KTML,0
-LCI,Lucky Core Industries Limited,LCI.KA,LCI,0
-LEUL,Leather Up Limited,LEUL.KA,LEUL,0
-LIVEN,Liven Pharma Limited,LIVEN.KA,LIVEN,0
-LOADS,Loads Limited,LOADS.KA,LOADS,0
-LOTCHEM,Lotte Chemical Pakistan Limited,LOTCHEM.KA,LOTCHEM,0
-LPGL,Leiner Pak Gelatine Limited,LPGL.KA,LPGL,0
-LPL,Lalpir Power Limited,LPL.KA,LPL,0
-LUCK,Lucky Cement Limited,LUCK.KA,LUCK,0
-MACFL,MACPAC Films Limited,MACFL.KA,MACFL,0
-MACTER,Macter International Limited,MACTER.KA,MACTER,0
-MARI,Mari Energies Limited,MARI.KA,MARI,0
-MCB,MCB Bank Limited,MCB.KA,MCB,0
-MCBIM,MCB Investment Management Limited.,MCBIM.KA,MCBIM,0
-MDTL,Media Times Limited,MDTL.KA,MDTL,0
-MEBL,Meezan Bank Limited,MEBL.KA,MEBL,0
-MEHT,Mehmood Textile Mills Limited,MEHT.KA,MEHT,0
-MERIT,Merit Packaging Limited,MERIT.KA,MERIT,0
-MFFL,Mitchells Fruit Farms Limited,MFFL.KA,MFFL,0
-MFL,Matco Foods Limited,MFL.KA,MFL,0
-MIRKS,Mirpurkhas Sugar Mills Limited,MIRKS.KA,MIRKS,0
-MLCF,Maple Leaf Cement Factory Limited,MLCF.KA,MLCF,0
-MQTM,Maqbool Textile Mills Limited,MQTM.KA,MQTM,0
-MRNS,Mehran Sugar Mills Limited,MRNS.KA,MRNS,0
-MSCL,Metropolitan Steel Corporation Limited,MSCL.KA,MSCL,0
-MSOT,Masood Textile Mills Limited,MSOT.KA,MSOT,0
-MTL,Millat Tractors Limited,MTL.KA,MTL,0
-MUGHAL,Mughal Iron & Steel Industries Limited,MUGHAL.KA,MUGHAL,0
-MUREB,Murree Brewery Company Limited,MUREB.KA,MUREB,0
-NAGC,Nagina Cotton Mills Limited,NAGC.KA,NAGC,0
-NATF,National Foods Limited,NATF.KA,NATF,0
-NBP,National Bank of Pakistan,NBP.KA,NBP,0
-NCL,Nishat Chunian Limited,NCL.KA,NCL,0
-NCPL,Nishat Chunian Power Limited,NCPL.KA,NCPL,0
-NESTLE,Nestle Pakistan Limited,NESTLE.KA,NESTLE,0
-NETSOL,NetSol Technologies Limited,NETSOL.KA,NETSOL,0
-NEXT,Next Capital Limited,NEXT.KA,NEXT,0
-NICL,Nimir Industrial Chemicals Limited,NICL.KA,NICL,0
-NML,Nishat Mills Limited,NML.KA,NML,0
-NONS,Noon Sugar Mills Limited,NONS.KA,NONS,0
-NPL,Nishat Power Limited,NPL.KA,NPL,0
-NRL,National Refinery Limited,NRL.KA,NRL,0
-NRSL,Nimir Resins Limited,NRSL.KA,NRSL,0
-NSRM,The National Silk & Rayon Mills Limited,NSRM.KA,NSRM,0
-OCTOPUS,Octopus Digital Limited,OCTOPUS.KA,OCTOPUS,0
-OGDC,Oil & Gas Development Company Limited,OGDC.KA,OGDC,0
-OLPL,OLP Financial Services Pakistan Limited,OLPL.KA,OLPL,0
-OLPM,OLP Modaraba,OLPM.KA,OLPM,0
-OML,Olympia Mills Limited,OML.KA,OML,0
-ORM,Orient Rental Mod,ORM.KA,ORM,0
-OTSU,Otsuka Pakistan Limited,OTSU.KA,OTSU,0
-PABC,Pakistan Aluminium Beverage Cans Limited,PABC.KA,PABC,0
-PACE,Pace (Pakistan) Limited,PACE.KA,PACE,0
-PAEL,Pak Elektron Limited,PAEL.KA,PAEL,0
-PAKD,Pak Datacom Limited,PAKD.KA,PAKD,0
-PAKL,Pak Leather Crafts Limited,PAKL.KA,PAKL,0
-PAKOXY,Pakistan Oxygen Limited,PAKOXY.KA,PAKOXY,0
-PAKRI,Pakistan Reinsurance Company Limited,PAKRI.KA,PAKRI,0
-PAKT,Pakistan Tobacco Company Limited,PAKT.KA,PAKT,0
-PASL,Pervez Ahmed Consultancy Services Ltd.,PASL.KA,PASL,0
-PASM,Paramount Spinning Mills Limited,PASM.KA,PASM,0
-PCAL,Pakistan Cables Limited,PCAL.KA,PCAL,0
-PECO,Pakistan Engineering Company Limited,PECO.KA,PECO,0
-PGLC,Pak-Gulf Leasing Company Limited,PGLC.KA,PGLC,0
-PHDL,Pakistan Hotels Developers Limited,PHDL.KA,PHDL,0
-PIAHCLA,PIA Holding Company Limited,PIAHCLA.KA,PIAHCLA,0
-PIBTL,Pakistan International Bulk Terminal,PIBTL.KA,PIBTL,0
-PICT,Pakistan International Container,PICT.KA,PICT,0
-PIL,PICIC Insurance Limited,PIL.KA,PIL,0
-PINL,Premier Insurance Limited,PINL.KA,PINL,0
-PIOC,Pioneer Cement Limited,PIOC.KA,PIOC,0
-PKGI,The Pakistan General Insurance Co. Ltd.,PKGI.KA,PKGI,0
-PKGP,Pakgen Power Limited,PKGP.KA,PKGP,0
-PKGS,Packages Limited,PKGS.KA,PKGS,0
-PMRS,The Premier Sugar Mills,PMRS.KA,PMRS,0
-PNSC,Pakistan National Shipping Corporation,PNSC.KA,PNSC,0
-POL,Pakistan Oilfields Limited,POL.KA,POL,0
-POML,Punjab Oil Mills Limited,POML.KA,POML,0
-POWER,Power Cement Limited,POWER.KA,POWER,0
-PPL,Pakistan Petroleum Limited,PPL.KA,PPL,0
-PPP,Pakistan Paper Products Limited,PPP.KA,PPP,0
-PPVC,Pakistan PVC Limited,PPVC.KA,PPVC,0
-PQGTL,Pak Qatar General Takaful Limited,PQGTL.KA,PQGTL,0
-PREMA,At-Tahur Limited,PREMA.KA,PREMA,0
-PRET,Premium Textile Mills Limited,PRET.KA,PRET,0
-PRL,Pakistan Refinery Limited,PRL.KA,PRL,0
-PRWM,Prosperity Weaving Mills Limited,PRWM.KA,PRWM,0
-PSEL,Pakistan Services Limited,PSEL.KA,PSEL,0
-PSO,Pakistan State Oil Company Limited,PSO.KA,PSO,0
-PSX,Pakistan Stock Exchange Limited,PSX.KA,PSX,0
-PSYL,Pakistan Synthetics Limited,PSYL.KA,PSYL,0
-PTC,Pakistan Telecommunication Company Ltd,PTC.KA,PTC,0
-PTL,Panther Tyres Ltd.,PTL.KA,PTL,0
-QTECH,Quantum Data Technologies Limited,QTECH.KA,QTECH,0
-QUET,Quetta Textile Mills Limited,QUET.KA,QUET,0
-QUICE,Quice Food Industries Limited,QUICE.KA,QUICE,0
-REDCO,Redco Textiles Limited,REDCO.KA,REDCO,0
-REWM,Reliance Weaving Mills Limited,REWM.KA,REWM,0
-RICL,Reliance Insurance Company Limited,RICL.KA,RICL,0
-RMPL,Rafhan Maize Products Company Limited,RMPL.KA,RMPL,0
-RPL,Roshan Packages Limited,RPL.KA,RPL,0
-RUBY,Ruby Textile Mills Limited,RUBY.KA,RUBY,0
-RUPL,Rupali Polyester Limited,RUPL.KA,RUPL,0
-SAIF,Saif Textile Mills Limited,SAIF.KA,SAIF,0
-SANE,Salman Noman Enterprises Limited,SANE.KA,SANE,0
-SANSM,Sanghar Sugar Mills Limited,SANSM.KA,SANSM,0
-SAPT,Sapphire Textile Mills Limited,SAPT.KA,SAPT,0
-SARC,Sardar Chemical Industries Limited,SARC.KA,SARC,0
-SAZEW,Sazgar Engineering Works Limited,SAZEW.KA,SAZEW,0
-SBL,Samba Bank Limited,SBL.KA,SBL,0
-SCBPL,Standard Chartered Bank (Pak) Ltd,SCBPL.KA,SCBPL,0
+IDYM,Indus Dyeing & Manufacturing Co. Limited,IDYM.KA,IDYM,1
+IGIHL,IGI Holdings Limited,IGIHL.KA,IGIHL,1
+IGIL,IGI Life Insurance Limited,IGIL.KA,IGIL,1
+ILP,Interloop Limited,ILP.KA,ILP,1
+IMAGE,Image Pakistan Limited,IMAGE.KA,IMAGE,1
+IML,Imperial  Limited,IML.KA,IML,1
+IMS,Intermarket Securities Limited,IMS.KA,IMS,1
+INDU,Indus Motor Company Limited,INDU.KA,INDU,1
+INIL,International Industries Limited,INIL.KA,INIL,1
+INKL,International Knitwear Limited,INKL.KA,INKL,1
+IPAK,International Packaging Films Limited,IPAK.KA,IPAK,1
+IREIT,Image Reit,IREIT.KA,IREIT,1
+ISIL,Ismail Industries Limited,ISIL.KA,ISIL,1
+ISL,International Steels Limited,ISL.KA,ISL,1
+ITTEFAQ,Ittefaq Iron Industries Limited,ITTEFAQ.KA,ITTEFAQ,1
+JATM,J.A. Textile Mills Limited,JATM.KA,JATM,1
+JDMT,Janana De Malucho Textile Mills Limited,JDMT.KA,JDMT,1
+JDWS,JDW Sugar Mills Limited,JDWS.KA,JDWS,1
+JGICL,Jubilee General Insurance Company Ltd.,JGICL.KA,JGICL,1
+JKSM,J.K. Spinning Mills Limited,JKSM.KA,JKSM,1
+JLICL,Jubilee Life Insurance Company Limited,JLICL.KA,JLICL,1
+JSBL,JS Bank Limited,JSBL.KA,JSBL,1
+JSCL,Jahangir Siddiqui & Co. Ltd.,JSCL.KA,JSCL,1
+JSGCL,JS Global Capital Limited,JSGCL.KA,JSGCL,1
+JSIL,JS Investments Limited,JSIL.KA,JSIL,1
+JSML,Jauharabad Sugar Mills Limited,JSML.KA,JSML,1
+JSRR,JS Rental REIT,JSRR.KA,JSRR,1
+JUBS,Jubilee Spinning & Weaving Mills Ltd.,JUBS.KA,JUBS,1
+JVDC,Javedan Corporation Limited,JVDC.KA,JVDC,1
+KAPCO,Kot Addu Power Company Limited,KAPCO.KA,KAPCO,1
+KCL,Karam Ceramics Limited,KCL.KA,KCL,1
+KEL,K-Electric Limited,KEL.KA,KEL,1
+KHTC,Khyber Tobacco Company Limited,KHTC.KA,KHTC,1
+KHYT,Khyber Textile Mills Limited,KHYT.KA,KHYT,1
+KML,Kohinoor Mills Limited,KML.KA,KML,1
+KOHC,Kohat Cement Company Limited,KOHC.KA,KOHC,1
+KOHE,Kohinoor Energy Limited,KOHE.KA,KOHE,1
+KOHP,Kohinoor Power Company Limited,KOHP.KA,KOHP,1
+KOHTM,Kohat Textile Mills Limited,KOHTM.KA,KOHTM,1
+KOIL,Kohinoor Industries Limited,KOIL.KA,KOIL,1
+KOSM,Kohinoor Spinning Mills Limited,KOSM.KA,KOSM,1
+KPUS,Khairpur Sugar Mills Limited,KPUS.KA,KPUS,1
+KSBP,KSB Pumps Company Limited,KSBP.KA,KSBP,1
+KSTM,Khalid Siraj Textile Mills Limited,KSTM.KA,KSTM,1
+KTML,Kohinoor Textile Mills Limited,KTML.KA,KTML,1
+LCI,Lucky Core Industries Limited,LCI.KA,LCI,1
+LEUL,Leather Up Limited,LEUL.KA,LEUL,1
+LIVEN,Liven Pharma Limited,LIVEN.KA,LIVEN,1
+LOADS,Loads Limited,LOADS.KA,LOADS,1
+LOTCHEM,Lotte Chemical Pakistan Limited,LOTCHEM.KA,LOTCHEM,1
+LPGL,Leiner Pak Gelatine Limited,LPGL.KA,LPGL,1
+LPL,Lalpir Power Limited,LPL.KA,LPL,1
+LSECL,LSE Capital Limited,LSECL.KA,LSECL,1
+LSEFSL,LSE Financial Services Ltd.,LSEFSL.KA,LSEFSL,1
+LUCK,Lucky Cement Limited,LUCK.KA,LUCK,1
+MACFL,MACPAC Films Limited,MACFL.KA,MACFL,1
+MACTER,Macter International Limited,MACTER.KA,MACTER,1
+MARI,Mari Energies Limited,MARI.KA,MARI,1
+MCB,MCB Bank Limited,MCB.KA,MCB,1
+MCBIM,MCB Investment Management Limited.,MCBIM.KA,MCBIM,1
+MDTL,Media Times Limited,MDTL.KA,MDTL,1
+MEBL,Meezan Bank Limited,MEBL.KA,MEBL,1
+MEHT,Mehmood Textile Mills Limited,MEHT.KA,MEHT,1
+MERIT,Merit Packaging Limited,MERIT.KA,MERIT,1
+MFFL,Mitchells Fruit Farms Limited,MFFL.KA,MFFL,1
+MFL,Matco Foods Limited,MFL.KA,MFL,1
+MIRKS,Mirpurkhas Sugar Mills Limited,MIRKS.KA,MIRKS,1
+MLCF,Maple Leaf Cement Factory Limited,MLCF.KA,MLCF,1
+MQTM,Maqbool Textile Mills Limited,MQTM.KA,MQTM,1
+MRNS,Mehran Sugar Mills Limited,MRNS.KA,MRNS,1
+MSCL,Metropolitan Steel Corporation Limited,MSCL.KA,MSCL,1
+MSOT,Masood Textile Mills Limited,MSOT.KA,MSOT,1
+MTL,Millat Tractors Limited,MTL.KA,MTL,1
+MUGHAL,Mughal Iron & Steel Industries Limited,MUGHAL.KA,MUGHAL,1
+MUREB,Murree Brewery Company Limited,MUREB.KA,MUREB,1
+MWMP,Mandviwalla Mauser Plastic Industries Limited,MWMP.KA,MWMP,1
+NAGC,Nagina Cotton Mills Limited,NAGC.KA,NAGC,1
+NATF,National Foods Limited,NATF.KA,NATF,1
+NATM,Nadeem Textile Mills Limited,NATM.KA,NATM,1
+NBP,National Bank of Pakistan,NBP.KA,NBP,1
+NCL,Nishat Chunian Limited,NCL.KA,NCL,1
+NCML,Nazir Cotton Mills Limited,NCML.KA,NCML,1
+NCPL,Nishat Chunian Power Limited,NCPL.KA,NCPL,1
+NESTLE,Nestle Pakistan Limited,NESTLE.KA,NESTLE,1
+NETSOL,NetSol Technologies Limited,NETSOL.KA,NETSOL,1
+NEXT,Next Capital Limited,NEXT.KA,NEXT,1
+NICL,Nimir Industrial Chemicals Limited,NICL.KA,NICL,1
+NML,Nishat Mills Limited,NML.KA,NML,1
+NONS,Noon Sugar Mills Limited,NONS.KA,NONS,1
+NPL,Nishat Power Limited,NPL.KA,NPL,1
+NRL,National Refinery Limited,NRL.KA,NRL,1
+NRSL,Nimir Resins Limited,NRSL.KA,NRSL,1
+NSRM,The National Silk & Rayon Mills Limited,NSRM.KA,NSRM,1
+OBOY,Oilboy Energy Limited,OBOY.KA,OBOY,1
+OCTOPUS,Octopus Digital Limited,OCTOPUS.KA,OCTOPUS,1
+OGDC,Oil & Gas Development Company Limited,OGDC.KA,OGDC,1
+OLPL,OLP Financial Services Pakistan Limited,OLPL.KA,OLPL,1
+OLPM,OLP Modaraba,OLPM.KA,OLPM,1
+OML,Olympia Mills Limited,OML.KA,OML,1
+ORM,Orient Rental Mod,ORM.KA,ORM,1
+OTSU,Otsuka Pakistan Limited,OTSU.KA,OTSU,1
+PABC,Pakistan Aluminium Beverage Cans Limited,PABC.KA,PABC,1
+PACE,Pace (Pakistan) Limited,PACE.KA,PACE,1
+PAEL,Pak Elektron Limited,PAEL.KA,PAEL,1
+PAKD,Pak Datacom Limited,PAKD.KA,PAKD,1
+PAKL,Pak Leather Crafts Limited,PAKL.KA,PAKL,1
+PAKOXY,Pakistan Oxygen Limited,PAKOXY.KA,PAKOXY,1
+PAKRI,Pakistan Reinsurance Company Limited,PAKRI.KA,PAKRI,1
+PAKT,Pakistan Tobacco Company Limited,PAKT.KA,PAKT,1
+PASL,Pervez Ahmed Consultancy Services Ltd.,PASL.KA,PASL,1
+PASM,Paramount Spinning Mills Limited,PASM.KA,PASM,1
+PCAL,Pakistan Cables Limited,PCAL.KA,PCAL,1
+PECO,Pakistan Engineering Company Limited,PECO.KA,PECO,1
+PGLC,Pak-Gulf Leasing Company Limited,PGLC.KA,PGLC,1
+PHDL,Pakistan Hotels Developers Limited,PHDL.KA,PHDL,1
+PIAHCLA,PIA Holding Company Limited,PIAHCLA.KA,PIAHCLA,1
+PIAHCLB,PIA Holding Company Limited,PIAHCLB.KA,PIAHCLB,1
+PIBTL,Pakistan International Bulk Terminal,PIBTL.KA,PIBTL,1
+PICT,Pakistan International Container,PICT.KA,PICT,1
+PIL,PICIC Insurance Limited,PIL.KA,PIL,1
+PIM,Popular Islamic Modaraba,PIM.KA,PIM,1
+PINL,Premier Insurance Limited,PINL.KA,PINL,1
+PIOC,Pioneer Cement Limited,PIOC.KA,PIOC,1
+PKGI,The Pakistan General Insurance Co. Ltd.,PKGI.KA,PKGI,1
+PKGP,Pakgen Power Limited,PKGP.KA,PKGP,1
+PKGS,Packages Limited,PKGS.KA,PKGS,1
+PMRS,The Premier Sugar Mills,PMRS.KA,PMRS,1
+PNSC,Pakistan National Shipping Corporation,PNSC.KA,PNSC,1
+POL,Pakistan Oilfields Limited,POL.KA,POL,1
+POML,Punjab Oil Mills Limited,POML.KA,POML,1
+POWER,Power Cement Limited,POWER.KA,POWER,1
+PPL,Pakistan Petroleum Limited,PPL.KA,PPL,1
+PPP,Pakistan Paper Products Limited,PPP.KA,PPP,1
+PPVC,Pakistan PVC Limited,PPVC.KA,PPVC,1
+PQGTL,Pak Qatar General Takaful Limited,PQGTL.KA,PQGTL,1
+PREMA,At-Tahur Limited,PREMA.KA,PREMA,1
+PRET,Premium Textile Mills Limited,PRET.KA,PRET,1
+PRL,Pakistan Refinery Limited,PRL.KA,PRL,1
+PRWM,Prosperity Weaving Mills Limited,PRWM.KA,PRWM,1
+PSEL,Pakistan Services Limited,PSEL.KA,PSEL,1
+PSO,Pakistan State Oil Company Limited,PSO.KA,PSO,1
+PSX,Pakistan Stock Exchange Limited,PSX.KA,PSX,1
+PSYL,Pakistan Synthetics Limited,PSYL.KA,PSYL,1
+PTC,Pakistan Telecommunication Company Ltd,PTC.KA,PTC,1
+PTL,Panther Tyres Ltd.,PTL.KA,PTL,1
+QTECH,Quantum Data Technologies Limited,QTECH.KA,QTECH,1
+QUET,Quetta Textile Mills Limited,QUET.KA,QUET,1
+QUICE,Quice Food Industries Limited,QUICE.KA,QUICE,1
+REDCO,Redco Textiles Limited,REDCO.KA,REDCO,1
+REWM,Reliance Weaving Mills Limited,REWM.KA,REWM,1
+RICL,Reliance Insurance Company Limited,RICL.KA,RICL,1
+RMPL,Rafhan Maize Products Company Limited,RMPL.KA,RMPL,1
+RPL,Roshan Packages Limited,RPL.KA,RPL,1
+RUBY,Ruby Textile Mills Limited,RUBY.KA,RUBY,1
+RUPL,Rupali Polyester Limited,RUPL.KA,RUPL,1
+SAIF,Saif Textile Mills Limited,SAIF.KA,SAIF,1
+SANE,Salman Noman Enterprises Limited,SANE.KA,SANE,1
+SANSM,Sanghar Sugar Mills Limited,SANSM.KA,SANSM,1
+SAPT,Sapphire Textile Mills Limited,SAPT.KA,SAPT,1
+SARC,Sardar Chemical Industries Limited,SARC.KA,SARC,1
+SASML,Sindh Abadgar's Sugar Mills Limited,SASML.KA,SASML,1
+SAZEW,Sazgar Engineering Works Limited,SAZEW.KA,SAZEW,1
+SBL,Samba Bank Limited,SBL.KA,SBL,1
+SCBPL,Standard Chartered Bank (Pak) Ltd,SCBPL.KA,SCBPL,1
 SCL,Shield Corporation Limited,SCL.KA,SCL,0
-SEARL,The Searle Company Limited,SEARL.KA,SEARL,0
-SEL,Sitara Energy Limited,SEL.KA,SEL,0
-SEPL,Security Papers Limited,SEPL.KA,SEPL,0
-SERT,Service Industries Textiles Limited,SERT.KA,SERT,0
-SFL,Sapphire Fibres Limited,SFL.KA,SFL,0
-SGABL,SG.Allied Businesses Limited,SGABL.KA,SGABL,0
-SGF,Service GlobalFootwear Limited,SGF.KA,SGF,0
-SGPL,S.G. Power Limited,SGPL.KA,SGPL,0
-SHDT,Shadab Textile Mills Limited,SHDT.KA,SHDT,0
-SHEZ,Shezan International Limited,SHEZ.KA,SHEZ,0
-SHFA,Shifa International Hospitals Limited,SHFA.KA,SHFA,0
-SHJS,Shahtaj Sugar Mills Limited,SHJS.KA,SHJS,0
-SHNI,Shaheen Insurance Company Limited,SHNI.KA,SHNI,0
-SHSML,Shahmurad Sugar Mills Limited,SHSML.KA,SHSML,0
-SIBL,Security Investment Bank Limited,SIBL.KA,SIBL,0
-SIEM,Siemens (Pakistan) Engineering,SIEM.KA,SIEM,0
-SINDM,Sindh Modaraba,SINDM.KA,SINDM,0
-SITC,Sitara Chemical Industries Limited,SITC.KA,SITC,0
-SKRS,Sakrand Sugar Mills Limited,SKRS.KA,SKRS,0
-SLGL,Secure Logistics-Trax Group Limited,SLGL.KA,SLGL,0
-SLL,SME Leasing Limited,SLL.KA,SLL,0
-SLYT,Sally Textile Mills Limited,SLYT.KA,SLYT,0
-SMCPL,Safe Mix Concrete Limited,SMCPL.KA,SMCPL,0
-SML,Shakarganj Limited,SML.KA,SML,0
-SNAI,Sana Industries Limited,SNAI.KA,SNAI,0
-SNBL,Soneri Bank Limited,SNBL.KA,SNBL,0
-SNGP,Sui Northern Gas Pipelines Limited,SNGP.KA,SNGP,0
-SPAC1,LSE SPAC-I Limited,SPAC1.KA,SPAC1,0
-SPCL,Saudi Pak Consultancy Company Limited,SPCL.KA,SPCL,0
-SPEL,SPEL Limited,SPEL.KA,SPEL,0
-SPL,Sitara Peroxide Limited,SPL.KA,SPL,0
-SPSL,Sitara Petroleum Service Limited,SPSL.KA,SPSL,0
-SPWL,Saif Power Limited,SPWL.KA,SPWL,0
-SRVI,Service Industries Limited,SRVI.KA,SRVI,0
-SSGC,Sui Southern Gas Company Limited,SSGC.KA,SSGC,0
-SSML,Saritow Spinning Mills Limited,SSML.KA,SSML,0
-STCL,Shabbir Tiles & Ceramics Limited,STCL.KA,STCL,0
-STJT,Shahtaj Textile Limited,STJT.KA,STJT,0
-STL,Supernet Technologies Limited,STL.KA,STL,0
-STML,Shams Textile Mills Limited,STML.KA,STML,0
-STPL,Siddiqsons Tin Plate Limited,STPL.KA,STPL,0
-STYLERS,,STYLERS.KA,STYLERS,0
-SURC,Suraj Cotton Mills Limited,SURC.KA,SURC,0
-SUTM,Sunrays Textile Mills Limited,SUTM.KA,SUTM,0
-SYM,Symmetry Group Limited,SYM.KA,SYM,0
-SYS,Systems Limited,SYS.KA,SYS,0
-SZTM,Shahzad Textile Mills Limited,SZTM.KA,SZTM,0
-TATM,Tata Textile Mills Limited,TATM.KA,TATM,0
-TCORP,Tariq Corporation Limited,TCORP.KA,TCORP,0
-TELE,Telecard Limited,TELE.KA,TELE,0
-TGL,Tariq Glass Industries Limited,TGL.KA,TGL,0
-THALL,Thal Limited,THALL.KA,THALL,0
-THCCL,Thatta Cement Company Limited,THCCL.KA,THCCL,0
-TICL,The Thal Industries Corporation Limited,TICL.KA,TICL,0
-TOMCL,The Organic Meat Company Limited,TOMCL.KA,TOMCL,0
-TOWL,Towellers Limited,TOWL.KA,TOWL,0
-TPL,TPL Corp Limited,TPL.KA,TPL,0
-TPLI,TPL Insurance Limited,TPLI.KA,TPLI,0
-TPLL,TPL Life Insurance Limited,TPLL.KA,TPLL,0
-TPLP,TPL Properties Limited,TPLP.KA,TPLP,0
-TPLT,TPL Trakker Limited,TPLT.KA,TPLT,0
-TREET,Treet Corporation Limited,TREET.KA,TREET,0
-TRG,TRG Pakistan Limited,TRG.KA,TRG,0
-TRIPF,Tri-Pack Films Limited,TRIPF.KA,TRIPF,0
-TRSM,Trust Modaraba,TRSM.KA,TRSM,0
-TSBL,Trust Securities & Brokerage Limited,TSBL.KA,TSBL,0
-TSML,Tandlianwala Sugar Mills Limited,TSML.KA,TSML,0
-TSPL,Tri-Star Power Limited,TSPL.KA,TSPL,0
-UBDL,United Brands Limited,UBDL.KA,UBDL,0
-UBL,United Bank Limited,UBL.KA,UBL,0
-UCAPM,Unicap Modaraba,UCAPM.KA,UCAPM,0
-UDPL,United Distributors Pakistan Limited,UDPL.KA,UDPL,0
-UNIC,The United Insurance Company,UNIC.KA,UNIC,0
-UNITY,Unity Foods Limited,UNITY.KA,UNITY,0
-UPFL,Unilever Pakistan Foods Limited,UPFL.KA,UPFL,0
-UVIC,The Universal Insurance Company Limited,UVIC.KA,UVIC,0
-WAFI,Wafi Energy Pakistan Limited,WAFI.KA,WAFI,0
-WAHDAT,Wahdat Poultry Farm Limited,WAHDAT.KA,WAHDAT,0
-WAHN,Wah Noble Chemicals Limited,WAHN.KA,WAHN,0
-WASL,Wasl Mobility Modaraba,WASL.KA,WASL,0
-WAVES,Waves Corporation Limited,WAVES.KA,WAVES,0
-WTL,Worldcall Telecom Limited,WTL.KA,WTL,0
-ZAHID,Zahidjee Textile Mills Limited,ZAHID.KA,ZAHID,0
-ZAL,Zarea Limited,ZAL.KA,ZAL,0
-ZIL,ZIL Limited,ZIL.KA,ZIL,0
-ZTL,Zephyr Textiles Limited,ZTL.KA,ZTL,0
-ZUMA,Zuma Resources Limited,ZUMA.KA,ZUMA,0
+SEARL,The Searle Company Limited,SEARL.KA,SEARL,1
+SEL,Sitara Energy Limited,SEL.KA,SEL,1
+SEPL,Security Papers Limited,SEPL.KA,SEPL,1
+SERT,Service Industries Textiles Limited,SERT.KA,SERT,1
+SFL,Sapphire Fibres Limited,SFL.KA,SFL,1
+SGABL,SG.Allied Businesses Limited,SGABL.KA,SGABL,1
+SGF,Service GlobalFootwear Limited,SGF.KA,SGF,1
+SGPL,S.G. Power Limited,SGPL.KA,SGPL,1
+SHCM,Shadman Cotton Mills Limited,SHCM.KA,SHCM,1
+SHDT,Shadab Textile Mills Limited,SHDT.KA,SHDT,1
+SHEZ,Shezan International Limited,SHEZ.KA,SHEZ,1
+SHFA,Shifa International Hospitals Limited,SHFA.KA,SHFA,1
+SHJS,Shahtaj Sugar Mills Limited,SHJS.KA,SHJS,1
+SHNI,Shaheen Insurance Company Limited,SHNI.KA,SHNI,1
+SHSML,Shahmurad Sugar Mills Limited,SHSML.KA,SHSML,1
+SIBL,Security Investment Bank Limited,SIBL.KA,SIBL,1
+SIEM,Siemens (Pakistan) Engineering,SIEM.KA,SIEM,1
+SINDM,Sindh Modaraba,SINDM.KA,SINDM,1
+SITC,Sitara Chemical Industries Limited,SITC.KA,SITC,1
+SKRS,Sakrand Sugar Mills Limited,SKRS.KA,SKRS,1
+SLGL,Secure Logistics-Trax Group Limited,SLGL.KA,SLGL,1
+SLL,SME Leasing Limited,SLL.KA,SLL,1
+SLYT,Sally Textile Mills Limited,SLYT.KA,SLYT,1
+SMCPL,Safe Mix Concrete Limited,SMCPL.KA,SMCPL,1
+SML,Shakarganj Limited,SML.KA,SML,1
+SNAI,Sana Industries Limited,SNAI.KA,SNAI,1
+SNBL,Soneri Bank Limited,SNBL.KA,SNBL,1
+SNGP,Sui Northern Gas Pipelines Limited,SNGP.KA,SNGP,1
+SPAC1,LSE SPAC-I Limited,SPAC1.KA,SPAC1,1
+SPCL,Saudi Pak Consultancy Company Limited,SPCL.KA,SPCL,1
+SPEL,SPEL Limited,SPEL.KA,SPEL,1
+SPL,Sitara Peroxide Limited,SPL.KA,SPL,1
+SPSL,Sitara Petroleum Service Limited,SPSL.KA,SPSL,1
+SPWL,Saif Power Limited,SPWL.KA,SPWL,1
+SRVI,Service Industries Limited,SRVI.KA,SRVI,1
+SSGC,Sui Southern Gas Company Limited,SSGC.KA,SSGC,1
+SSML,Saritow Spinning Mills Limited,SSML.KA,SSML,1
+SSOM,S.S. Oil Mills Limited,SSOM.KA,SSOM,1
+STCL,Shabbir Tiles & Ceramics Limited,STCL.KA,STCL,1
+STJT,Shahtaj Textile Limited,STJT.KA,STJT,1
+STL,Supernet Technologies Limited,STL.KA,STL,1
+STML,Shams Textile Mills Limited,STML.KA,STML,1
+STPL,Siddiqsons Tin Plate Limited,STPL.KA,STPL,1
+STYLERS,,STYLERS.KA,STYLERS,1
+SUHJ,Suhail Jute Mills Limited,SUHJ.KA,SUHJ,1
+SURC,Suraj Cotton Mills Limited,SURC.KA,SURC,1
+SUTM,Sunrays Textile Mills Limited,SUTM.KA,SUTM,1
+SYM,Symmetry Group Limited,SYM.KA,SYM,1
+SYS,Systems Limited,SYS.KA,SYS,1
+SZTM,Shahzad Textile Mills Limited,SZTM.KA,SZTM,1
+TATM,Tata Textile Mills Limited,TATM.KA,TATM,1
+TCORP,Tariq Corporation Limited,TCORP.KA,TCORP,1
+TELE,Telecard Limited,TELE.KA,TELE,1
+TGL,Tariq Glass Industries Limited,TGL.KA,TGL,1
+THALL,Thal Limited,THALL.KA,THALL,1
+THCCL,Thatta Cement Company Limited,THCCL.KA,THCCL,1
+TICL,The Thal Industries Corporation Limited,TICL.KA,TICL,1
+TOMCL,The Organic Meat Company Limited,TOMCL.KA,TOMCL,1
+TOWL,Towellers Limited,TOWL.KA,TOWL,1
+TPL,TPL Corp Limited,TPL.KA,TPL,1
+TPLI,TPL Insurance Limited,TPLI.KA,TPLI,1
+TPLL,TPL Life Insurance Limited,TPLL.KA,TPLL,1
+TPLP,TPL Properties Limited,TPLP.KA,TPLP,1
+TPLT,TPL Trakker Limited,TPLT.KA,TPLT,1
+TREET,Treet Corporation Limited,TREET.KA,TREET,1
+TRG,TRG Pakistan Limited,TRG.KA,TRG,1
+TRIPF,Tri-Pack Films Limited,TRIPF.KA,TRIPF,1
+TRSM,Trust Modaraba,TRSM.KA,TRSM,1
+TSBL,Trust Securities & Brokerage Limited,TSBL.KA,TSBL,1
+TSML,Tandlianwala Sugar Mills Limited,TSML.KA,TSML,1
+TSPL,Tri-Star Power Limited,TSPL.KA,TSPL,1
+UBDL,United Brands Limited,UBDL.KA,UBDL,1
+UBL,United Bank Limited,UBL.KA,UBL,1
+UCAPM,Unicap Modaraba,UCAPM.KA,UCAPM,1
+UDLI,UDL International Limited,UDLI.KA,UDLI,1
+UDPL,United Distributors Pakistan Limited,UDPL.KA,UDPL,1
+UNIC,The United Insurance Company,UNIC.KA,UNIC,1
+UNITY,Unity Foods Limited,UNITY.KA,UNITY,1
+UPFL,Unilever Pakistan Foods Limited,UPFL.KA,UPFL,1
+UVIC,The Universal Insurance Company Limited,UVIC.KA,UVIC,1
+WAFI,Wafi Energy Pakistan Limited,WAFI.KA,WAFI,1
+WAHDAT,Wahdat Poultry Farm Limited,WAHDAT.KA,WAHDAT,1
+WAHN,Wah Noble Chemicals Limited,WAHN.KA,WAHN,1
+WASL,Wasl Mobility Modaraba,WASL.KA,WASL,1
+WAVES,Waves Corporation Limited,WAVES.KA,WAVES,1
+WAVESAPP,Waves Home Appliances Limited,WAVESAPP.KA,WAVESAPP,1
+WTL,Worldcall Telecom Limited,WTL.KA,WTL,1
+YOUW,Yousaf Weaving Mills Limited,YOUW.KA,YOUW,1
+ZAHID,Zahidjee Textile Mills Limited,ZAHID.KA,ZAHID,1
+ZAL,Zarea Limited,ZAL.KA,ZAL,1
+ZIL,ZIL Limited,ZIL.KA,ZIL,1
+ZTL,Zephyr Textiles Limited,ZTL.KA,ZTL,1
+ZUMA,Zuma Resources Limited,ZUMA.KA,ZUMA,1

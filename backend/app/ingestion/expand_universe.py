@@ -158,6 +158,9 @@ _SOURCES = {
     "us": fetch_us_symbols,
     "india": _merged("india", fetch_nse_symbols),
     "australia": _merged("australia", fetch_asx_symbols),
+    # PSX has no machine-readable directory we can reach - its own portal has been down for
+    # stretches of this project - so the captured listing is the whole source here.
+    "psx": lambda: fetch_listed_symbols("psx"),
 }
 
 # Windows can't create files whose base name is a reserved device (PRN.AX.json fails). The
