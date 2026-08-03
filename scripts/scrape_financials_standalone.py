@@ -55,6 +55,7 @@ import json
 import sys
 import threading
 import time
+import traceback
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -427,6 +428,34 @@ def already_done(region: str, sym: str) -> bool:
                for name in STATEMENTS)
 
 
+def open_browser(p, headless: bool, slow_mo: int, block_assets: bool = True):
+    """A real browser window by default.
+
+    Headless Chromium is detectable and, more practically, gives you nothing to look at when a
+    run misbehaves - you cannot see a consent wall, a challenge page, or a layout change. A
+    visible window with a small delay between actions is slower per page but far easier to
+    trust, and it is what a person driving the site would produce.
+
+    Images and fonts are still blocked: they are most of the bytes and none of the data. Pass
+    block_assets=False if you want the window to look completely normal.
+    """
+    browser = p.chromium.launch(
+        headless=headless,
+        slow_mo=slow_mo,
+        args=["--disable-blink-features=AutomationControlled", "--no-sandbox",
+              "--start-maximized"],
+    )
+    ctx = browser.new_context(
+        viewport={"width": 1440, "height": 900},
+        user_agent=UA,
+        locale="en-US",
+    )
+    if block_assets:
+        ctx.route("**/*", lambda route: route.abort()
+                  if route.request.resource_type in SKIP_RESOURCES else route.continue_())
+    return browser, ctx, ctx.new_page()
+
+
 def scrape_symbol(page, region: str, sym: str, page_pause: float) -> int:
     d = OUT_DIR / region
     d.mkdir(parents=True, exist_ok=True)
@@ -453,8 +482,12 @@ def main() -> int:
                     help="comma list: us,india,australia,gcc,psx")
     ap.add_argument("--symbols", default=None, help="comma list; forces a refresh of these")
     ap.add_argument("--symbols-file", default=None, help="CSV/TXT, one symbol per line")
-    ap.add_argument("--workers", type=int, default=2,
-                    help="parallel browsers. 3+ got us rate limited; raise carefully")
+    ap.add_argument("--workers", type=int, default=1,
+                    help="parallel browsers. 3+ got us rate limited; each opens its own window")
+    ap.add_argument("--headless", action="store_true",
+                    help="hide the browser. Default is a real visible window")
+    ap.add_argument("--slow-mo", type=int, default=120,
+                    help="ms Playwright waits between actions, so it moves at human pace")
     ap.add_argument("--page-pause", type=float, default=1.0, help="seconds between pages")
     ap.add_argument("--work", type=float, default=90.0, help="minutes of scraping per cycle")
     ap.add_argument("--rest", type=float, default=30.0, help="minutes of rest between cycles")
@@ -469,11 +502,7 @@ def main() -> int:
     # Resolve the symbol lists first, in one short-lived browser. Harvesting the listing here
     # is what lets this run on a machine with nothing but the script.
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
-        ctx = browser.new_context(user_agent=UA)
-        ctx.route("**/*", lambda route: route.abort()
-                  if route.request.resource_type in SKIP_RESOURCES else route.continue_())
-        page = ctx.new_page()
+        browser, _ctx, page = open_browser(p, args.headless, args.slow_mo)
         for region in regions:
             if args.symbols:
                 wanted = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
@@ -495,41 +524,53 @@ def main() -> int:
     if not todo:
         log("nothing to do - everything already downloaded")
         return 0
+    if args.workers > 1 and not args.headless:
+        log(f"note: {args.workers} workers means {args.workers} browser windows")
     log(f"=== start: {len(todo)} symbols across {regions} "
-        f"({args.workers} workers, work {args.work}m / rest {args.rest}m) ===")
+        f"({args.workers} workers, {'headless' if args.headless else 'visible browser'}, "
+        f"work {args.work}m / rest {args.rest}m) ===")
 
     state = {"idx": 0, "done": 0, "failed": 0}
     lock = threading.Lock()
 
     def worker(cycle_end: float) -> None:
         with sync_playwright() as p:
-            browser = p.chromium.launch(
-                headless=True,
-                args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
-            )
-            ctx = browser.new_context(viewport={"width": 1280, "height": 850}, user_agent=UA)
-            ctx.route("**/*", lambda route: route.abort()
-                      if route.request.resource_type in SKIP_RESOURCES else route.continue_())
-            page = ctx.new_page()
-            while True:
-                with lock:
-                    if state["idx"] >= len(todo) or time.time() >= cycle_end:
-                        break
-                    i = state["idx"]
-                    state["idx"] += 1
-                region, sym = todo[i]
+            browser, ctx, page = open_browser(p, args.headless, args.slow_mo)
+            try:
+                while True:
+                    with lock:
+                        if state["idx"] >= len(todo) or time.time() >= cycle_end:
+                            break
+                        i = state["idx"]
+                        state["idx"] += 1
+                    region, sym = todo[i]
+                    try:
+                        key = ("done" if scrape_symbol(page, region, sym, args.page_pause)
+                               else "failed")
+                    except Exception as exc:  # noqa: BLE001
+                        key = "failed"
+                        log(f"  {region}/{sym}: {type(exc).__name__}: {exc}")
+                        # A crashed or closed tab poisons every later symbol on this worker, so
+                        # rebuild it rather than logging thousands of identical failures.
+                        if page.is_closed() or "closed" in str(exc).lower() or                                 "crash" in str(exc).lower():
+                            log("  browser tab died - reopening")
+                            try:
+                                browser.close()
+                            except Exception:  # noqa: BLE001
+                                pass
+                            browser, ctx, page = open_browser(
+                                p, args.headless, args.slow_mo)
+                    with lock:
+                        state[key] += 1
+                        seen = state["idx"]
+                    if seen % 50 == 0:
+                        log(f"  progress {seen}/{len(todo)} | saved {state['done']} "
+                            f"| no-data {state['failed']}")
+            finally:
                 try:
-                    key = "done" if scrape_symbol(page, region, sym, args.page_pause) else "failed"
-                except Exception as exc:  # noqa: BLE001
-                    key = "failed"
-                    log(f"  {region}/{sym}: {type(exc).__name__}")
-                with lock:
-                    state[key] += 1
-                    seen = state["idx"]
-                if seen % 50 == 0:
-                    log(f"  progress {seen}/{len(todo)} | saved {state['done']} "
-                        f"| no-data {state['failed']}")
-            browser.close()
+                    browser.close()
+                except Exception:  # noqa: BLE001
+                    pass
 
     while state["idx"] < len(todo):
         cycle_end = time.time() + args.work * 60
@@ -549,4 +590,16 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # A crash must leave evidence. Without this the run dies with a traceback in a console
+    # window that gets closed, and "it crashed" is all anyone can say afterwards - which is
+    # exactly what happened. The log file survives the window.
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        log("interrupted - progress is on disk, rerun to resume")
+        sys.exit(130)
+    except Exception:  # noqa: BLE001
+        log("CRASHED:\n" + traceback.format_exc())
+        log(f"full traceback written to {LOG_FILE}")
+        input("Press Enter to close...")   # keep the window open so the error is readable
+        sys.exit(1)
