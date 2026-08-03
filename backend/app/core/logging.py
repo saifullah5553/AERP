@@ -20,7 +20,11 @@ def configure_logging() -> None:
         return
 
     level = logging.DEBUG if settings.debug else logging.INFO
-    handler = logging.StreamHandler(sys.stdout)
+    # stderr, not stdout. Some CLI commands emit machine-readable output that gets piped -
+    # the fundamentals refresh pipes a symbol list straight into the scraper - and a log line
+    # sharing stdout is read as data. It arrived as a symbol named
+    # "... | INFO | results_watch.pick: 1 reported + 5 stale backstop".
+    handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(
         logging.Formatter(
             fmt="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
