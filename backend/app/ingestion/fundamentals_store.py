@@ -51,12 +51,12 @@ log = get_logger(__name__)
 
 STORE_VERSION = 1
 
-# provider_symbol suffix and reporting currency per market. GCC is absent because
-# stockanalysis does not carry Tadawul.
+# provider_symbol suffix and reporting currency per market.
 REGION_META: dict[str, tuple[str, str]] = {
     "us": ("", "USD"),
     "india": (".NS", "INR"),
     "australia": (".AX", "AUD"),
+    "gcc": (".SR", "SAR"),
     "psx": (".KA", "PKR"),
 }
 

@@ -50,6 +50,9 @@ MARKET_PREFIX = {
     "us": "stocks",
     "india": "quote/nse",
     "australia": "quote/asx",
+    # Tadawul IS carried, despite the quote path resembling none of the others. GCC was left
+    # out of earlier runs on the assumption it was not - verified against Aramco (2222).
+    "gcc": "quote/tadawul",
     "psx": "quote/psx",
 }
 STATEMENTS = {
@@ -358,7 +361,7 @@ def scrape_symbol(page, region: str, sym: str, page_pause: float) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--regions", default="us,india,australia,psx")
+    ap.add_argument("--regions", default="us,india,australia,gcc,psx")
     ap.add_argument("--work", type=float, default=120.0, help="minutes of scraping per cycle")
     ap.add_argument("--rest", type=float, default=30.0, help="minutes of rest between cycles")
     ap.add_argument("--page-pause", type=float, default=0.8, help="seconds between page loads")

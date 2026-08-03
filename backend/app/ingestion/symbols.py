@@ -45,11 +45,12 @@ YAHOO_SUFFIX = {
     "gcc": ".SR",
 }
 
-# URL prefix stockanalysis uses per market. GCC is absent - it does not carry Tadawul.
+# URL prefix stockanalysis uses per market.
 SA_PREFIX = {
     "us": "stocks",
     "india": "quote/nse",
     "australia": "quote/asx",
+    "gcc": "quote/tadawul",
     "psx": "quote/psx",
 }
 
