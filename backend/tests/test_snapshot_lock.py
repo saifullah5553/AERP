@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from app.core.snapshot_lock import LOCK_NAME, MAX_HOLD_MINUTES, snapshot_lock
 
@@ -59,3 +61,26 @@ def test_corrupt_lock_file_is_not_a_lock(tmp_path) -> None:
     (tmp_path / LOCK_NAME).write_text("{not json", encoding="utf-8")
     with snapshot_lock("newcomer", tmp_path) as ok:
         assert ok is True
+
+
+def test_recycled_pid_owned_by_another_program_is_broken(tmp_path) -> None:
+    # A live PID, inside the deadline, but the image name does not match the recorded owner.
+    # This is the real-world case: the pipeline churns through hundreds of browser processes,
+    # Windows hands the dead owner's number to one of them, and a bare PID check then reports
+    # the lock as live forever - wedging every scheduled writer behind a process that is gone.
+    (tmp_path / LOCK_NAME).write_text(json.dumps({
+        "owner": "ghost", "pid": os.getpid(), "exe": "definitely-not-this.exe",
+        "started_at": datetime.now(UTC).isoformat(),
+    }), encoding="utf-8")
+    with snapshot_lock("newcomer", tmp_path) as ok:
+        assert ok is True
+
+
+def test_live_owner_with_matching_exe_still_holds(tmp_path) -> None:
+    # The guard above must not make the lock useless: a genuine live holder is respected.
+    (tmp_path / LOCK_NAME).write_text(json.dumps({
+        "owner": "busy", "pid": os.getpid(), "exe": Path(sys.executable).name,
+        "started_at": datetime.now(UTC).isoformat(),
+    }), encoding="utf-8")
+    with snapshot_lock("newcomer", tmp_path) as ok:
+        assert ok is False

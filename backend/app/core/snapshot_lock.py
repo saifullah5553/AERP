@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -40,8 +41,15 @@ LOCK_NAME = ".snapshot.lock"
 MAX_HOLD_MINUTES = 90
 
 
-def _alive(pid: int) -> bool:
-    """Is that PID still running? Used to spot a lock whose owner died mid-write."""
+def _alive(pid: int, exe: str | None = None) -> bool:
+    """Is the lock's owner still running?
+
+    A bare PID check is not enough. Windows recycles PIDs aggressively, and this pipeline
+    spawns hundreds of short-lived browser processes, so a dead owner's number is very likely
+    to be live again as something else - which is exactly how a stale lock survived long enough
+    to block a scheduled run. Matching the image name too makes a false "alive" require both a
+    recycled PID and the same executable.
+    """
     if pid <= 0:
         return False
     try:
@@ -50,7 +58,11 @@ def _alive(pid: int) -> bool:
                 ["tasklist", "/FI", f"PID eq {pid}", "/NH", "/FO", "CSV"],
                 capture_output=True, text=True, timeout=15,
             ).stdout
-            return str(pid) in out
+            if str(pid) not in out:
+                return False
+            # First CSV field is the image name: "python.exe","34060",...
+            name = out.strip().split('","')[0].lstrip('"').lower() if '","' in out else ""
+            return not exe or not name or name == exe.lower()
         os.kill(pid, 0)
     except (OSError, subprocess.SubprocessError, ValueError):
         return False
@@ -64,7 +76,7 @@ def _stale(path: Path) -> bool:
         return True  # unreadable lock is not a lock
 
     pid = int(info.get("pid") or 0)
-    if not _alive(pid):
+    if not _alive(pid, info.get("exe")):
         log.warning("snapshot lock: owner pid %s is gone - breaking it", pid)
         return True
 
@@ -104,6 +116,7 @@ def snapshot_lock(owner: str, data_dir: str | Path) -> Iterator[bool]:
 
         path.write_text(json.dumps({
             "owner": owner, "pid": os.getpid(),
+            "exe": Path(sys.executable).name,
             "started_at": datetime.now(UTC).isoformat(),
         }), encoding="utf-8")
         held = True
