@@ -51,6 +51,49 @@ def cmd_ingest_psx(args: argparse.Namespace) -> None:
         log.info("ingest-psx: %s", ingest_psx_csv(db))
 
 
+def cmd_consolidate_fundamentals(args: argparse.Namespace) -> None:
+    """Distil the scraped CSVs into the compact per-market store that CI reads."""
+    from pathlib import Path
+
+    from app.ingestion.fundamentals_store import consolidate
+
+    regions = [r.strip() for r in args.regions.split(",")] if args.regions else None
+    log.info("consolidate-fundamentals: %s",
+             consolidate(Path(args.csv_dir), Path(args.store_dir), regions))
+
+
+def cmd_ingest_fundamentals_store(args: argparse.Namespace) -> None:
+    """Load the per-market store into the database."""
+    from pathlib import Path
+
+    from app.db.session import session_scope
+    from app.ingestion.fundamentals_store import REGION_META, ingest_region
+
+    regions = ([r.strip() for r in args.regions.split(",")]
+               if args.regions else list(REGION_META))
+    with session_scope() as db:
+        for region in regions:
+            log.info("ingest-fundamentals-store(%s): %s",
+                     region, ingest_region(db, region, Path(args.store_dir)))
+
+
+def cmd_apply_fundamentals(args: argparse.Namespace) -> None:
+    """Push the stored fundamentals into the snapshot's company files."""
+    from pathlib import Path
+
+    from app.core.snapshot_lock import snapshot_lock
+    from app.ingestion.fundamentals_store import apply_to_snapshot
+
+    data_dir = args.data_dir or "../frontend/public/data"
+    regions = [r.strip() for r in args.regions.split(",")] if args.regions else None
+    with snapshot_lock("apply-fundamentals", data_dir) as ok:
+        if not ok:
+            log.info("apply-fundamentals: another writer holds the snapshot - skipping")
+            return
+        log.info("apply-fundamentals: %s",
+                 apply_to_snapshot(Path(data_dir), Path(args.store_dir), regions))
+
+
 def cmd_ingest_psx_market(args: argparse.Namespace) -> None:
     from app.db.session import session_scope
     from app.ingestion.psx_market import ingest_psx_market
@@ -742,6 +785,17 @@ def build_parser() -> argparse.ArgumentParser:
     usu.add_argument("--curated", action="store_true", help="S&P 500 + large-cap allowlist")
     add("load-markets", cmd_load_markets)
     add("ingest-psx", cmd_ingest_psx)
+    cons = add("consolidate-fundamentals", cmd_consolidate_fundamentals)
+    cons.add_argument("--csv-dir", default="../data/fundamentals_csv")
+    cons.add_argument("--store-dir", default="../data/fundamentals_ttm")
+    cons.add_argument("--regions", default=None, help="comma list, default all")
+    appf = add("apply-fundamentals", cmd_apply_fundamentals)
+    appf.add_argument("--store-dir", default="../data/fundamentals_ttm")
+    appf.add_argument("--data-dir", default=None)
+    appf.add_argument("--regions", default=None, help="comma list, default all")
+    ifs = add("ingest-fundamentals-store", cmd_ingest_fundamentals_store)
+    ifs.add_argument("--store-dir", default="../data/fundamentals_ttm")
+    ifs.add_argument("--regions", default=None, help="comma list, default all")
     psxm = add("ingest-psx-market", cmd_ingest_psx_market, limit=True)
     psxm.add_argument("--no-history", action="store_true", help="quotes+names only")
     add("ingest-macro", cmd_ingest_macro)

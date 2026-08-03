@@ -54,6 +54,11 @@ redisdata/
 # ...but DO version the compressed PSX inputs so the free CI refresh is self-contained.
 !/data/psx_csv.tar.gz
 !/data/psx_insider.csv
+# Scraped fundamentals: the raw per-company CSVs (~45k files, ~300MB) stay local as the source
+# of truth. What ships is the distilled store - an order of magnitude smaller, holding only the
+# metrics the engines read - so CI stays self-contained without carrying dead line items.
+!/data/fundamentals_ttm/
+!/data/fundamentals_ttm/*.json.gz
 data/fund_cache/
 
 data/earnings_refresh.log

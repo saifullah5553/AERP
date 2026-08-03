@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 from datetime import date, datetime
 from pathlib import Path
 
@@ -71,9 +72,18 @@ _SUFFIX = {
 }
 
 
+# Some exports render the period header responsively and the cell carries both labels, e.g.
+# "Jun '26 Jun 30, 2026". Searching for the full date instead of matching the whole cell keeps
+# those readable - an unparsed header silently drops every period for that company.
+_DATE_RE = re.compile(r"[A-Z][a-z]{2}\s+\d{1,2},\s*\d{4}")
+
+
 def _parse_date(text: str) -> date | None:
+    m = _DATE_RE.search(text or "")
+    if not m:
+        return None
     try:
-        return datetime.strptime(text.strip(), "%b %d, %Y").date()
+        return datetime.strptime(m.group(0).replace("  ", " "), "%b %d, %Y").date()
     except ValueError:
         return None
 

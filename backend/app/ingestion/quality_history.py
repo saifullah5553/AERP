@@ -10,9 +10,11 @@ point is a full trailing twelve months, so consecutive points differ only by wha
 changed year-on-year.
 
 Two sources, both already local — nothing is re-fetched:
+  * statements_ttm          - ~20 quarterly TTM columns straight from the scraped store. Best
+    source and the only one that covers every market uniformly.
   * data/fund_cache/*.json  - up to 12 raw QUARTERS per name, rolled into ~8 quarterly-spaced
-    TTM points. This is the good one: quarterly resolution.
-  * the stored statements   - PSX carries 5 TTM snapshots a year apart, so its trend is annual.
+    TTM points. Only exists for names yfinance managed to serve.
+  * the stored statements   - one point a year, so the trend is annual. Last resort.
 """
 
 from __future__ import annotations
@@ -76,9 +78,9 @@ def _series_from_cache(sym: str) -> list[dict] | None:
     return out[-MAX_POINTS:] or None
 
 
-def _series_from_statements(doc: dict) -> list[dict] | None:
-    """Fallback for names without a cache (notably PSX): progressively hide newer periods."""
-    st = doc.get("statements") or {}
+def _series_from_statements(doc: dict, key: str = "statements") -> list[dict] | None:
+    """Score at successive past points by progressively hiding newer periods."""
+    st = doc.get(key) or {}
     inc = st.get("income") or []
     if len(inc) < 2:
         return None
@@ -124,7 +126,7 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
     if limit is not None:
         targets = targets[:limit]
 
-    built = from_cache = improving = deteriorating = 0
+    built = from_store = from_cache = improving = deteriorating = 0
     for i, r in enumerate(targets, 1):
         # This is a read-modify-write over every company file, so a full pass takes tens of
         # minutes. Without a heartbeat it is indistinguishable from a hang, and a silent
@@ -139,11 +141,18 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
         except (OSError, json.JSONDecodeError):
             continue
 
-        series = _series_from_cache(r["provider_symbol"])
+        # Preference order is a data-quality order. The scraped store carries ~20 quarterly TTM
+        # columns for every market; the yfinance cache carries at most 12 raw quarters and only
+        # for names it managed to fetch; the annual statements give one point a year.
+        series = _series_from_statements(doc, "statements_ttm")
         if series:
-            from_cache += 1
+            from_store += 1
         else:
-            series = _series_from_statements(doc)
+            series = _series_from_cache(r["provider_symbol"])
+            if series:
+                from_cache += 1
+            else:
+                series = _series_from_statements(doc)
         if not series:
             continue
 
@@ -166,7 +175,8 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
 
     (out / "screener.json").write_text(json.dumps(rows), encoding="utf-8")
     result: dict[str, Any] = {
-        "targets": len(targets), "built": built, "quarterly_from_cache": from_cache,
+        "targets": len(targets), "built": built,
+        "quarterly_from_store": from_store, "quarterly_from_cache": from_cache,
         "improving": improving, "deteriorating": deteriorating,
     }
     log.info("refresh-quality-history: %s", result)
