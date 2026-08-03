@@ -135,3 +135,20 @@ def test_reserved_device_names_are_recognised() -> None:
 
     assert safe_file(Path("company"), "CON.json") is None
     assert safe_file(Path("company"), "AAPL.json") == Path("company") / "AAPL.json"
+
+
+def test_news_query_names_the_country() -> None:
+    from types import SimpleNamespace
+
+    from app.ingestion.news import _query_for
+
+    # A quoted name still matches inside a longer one: "Systems Limited" (Pakistan) pulled back
+    # Persistent Systems Limited's Indian results, which read as Systems having reported.
+    psx = SimpleNamespace(name="Systems Limited", symbol="SYS", country="PK")
+    assert _query_for(psx) == '"Systems Limited" Pakistan'
+
+    us = SimpleNamespace(name="Apple Inc", symbol="AAPL", country="US")
+    assert _query_for(us) == '"Apple Inc"'
+
+    unnamed = SimpleNamespace(name=None, symbol="XYZ", country="IN")
+    assert _query_for(unnamed) == "XYZ stock India"

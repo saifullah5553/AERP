@@ -87,10 +87,20 @@ class GoogleNewsClient:
             return []
 
 
+# A quoted company name still matches inside a longer one: searching "Systems Limited" for
+# Pakistan's Systems Limited returned Persistent Systems Limited's Indian results, which then
+# looked like Systems had reported. Naming the country is the cheapest way to separate two
+# companies whose names are substrings of each other.
+_COUNTRY_HINT = {
+    "PK": "Pakistan", "IN": "India", "AU": "Australia", "SA": "Saudi Arabia",
+}
+
+
 def _query_for(security: Security) -> str:
+    hint = _COUNTRY_HINT.get((security.country or "").upper(), "")
     if security.name:
-        return f'"{security.name}"'
-    return f"{security.symbol} stock"
+        return f'"{security.name}" {hint}'.strip()
+    return f"{security.symbol} stock {hint}".strip()
 
 
 def ingest_news_for_security(
