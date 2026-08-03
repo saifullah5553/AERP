@@ -15,6 +15,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -96,7 +97,68 @@ def fetch_asx_symbols() -> list[dict]:
     return out
 
 
-_SOURCES = {"us": fetch_us_symbols, "india": fetch_nse_symbols, "australia": fetch_asx_symbols}
+_LISTED_DIR = Path(__file__).resolve().parents[3] / "data" / "universe"
+_LISTED_META = {
+    "india": ("NSE", ".NS"),
+    "australia": ("ASX", ".AX"),
+    "psx": ("PSX", ".KA"),
+}
+
+
+def fetch_listed_symbols(region: str) -> list[dict]:
+    """Companies from data/universe/<region>.csv, captured from stockanalysis's own listing.
+
+    The exchange feeds are narrower than what we can actually score. NSE's archive carries only
+    the EQ series - ~2,050 names against the 3,020 stockanalysis lists - and fundamentals come
+    from stockanalysis, so a name it lists is a name we can score. Kept as a versioned file
+    rather than a live fetch so CI never depends on scraping to know the universe.
+    """
+    meta = _LISTED_META.get(region)
+    path = _LISTED_DIR / f"{region}.csv"
+    if not meta or not path.exists():
+        return []
+    market_code, suffix = meta
+    out: list[dict] = []
+    with open(path, encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            sym = (row.get("symbol") or "").strip().upper()
+            if not sym:
+                continue
+            # stockanalysis writes NSE's hyphens as underscores (BAJAJ_AUTO); the exchange
+            # spelling is what the rest of the platform and the price feeds use.
+            sym = sym.replace("_", "-") if region == "india" else sym
+            out.append({"symbol": sym, "name": (row.get("name") or "").strip() or sym,
+                        "market_code": market_code, "region": region,
+                        "provider_symbol": f"{sym}{suffix}"})
+    return out
+
+
+def _norm_key(symbol: str) -> str:
+    """Match spellings across sources: stockanalysis writes both NSE's '-' and '&' as '_'."""
+    return symbol.upper().replace("&", "_").replace("-", "_")
+
+
+def _merged(region: str, exchange_feed: Callable[[], list[dict]]) -> Callable[[], list[dict]]:
+    """Exchange feed first (authoritative spelling), topped up with anything else listed."""
+    def fetch() -> list[dict]:
+        rows = exchange_feed()
+        # Dedupe on the normalised form, not the literal symbol. stockanalysis collapses both
+        # '-' and '&' to '_', so ARE_M cannot be told apart from NSE's ARE&M by spelling alone -
+        # matching literally would add a second, wrongly-named row for a company we already have.
+        seen = {_norm_key(r["symbol"]) for r in rows}
+        for r in fetch_listed_symbols(region):
+            if _norm_key(r["symbol"]) not in seen:
+                seen.add(_norm_key(r["symbol"]))
+                rows.append(r)
+        return rows
+    return fetch
+
+
+_SOURCES = {
+    "us": fetch_us_symbols,
+    "india": _merged("india", fetch_nse_symbols),
+    "australia": _merged("australia", fetch_asx_symbols),
+}
 
 # Windows can't create files whose base name is a reserved device (PRN.AX.json fails). The
 # snapshot is authored on Windows, so skip those few tickers rather than crash the batch.

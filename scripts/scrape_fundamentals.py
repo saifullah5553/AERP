@@ -64,6 +64,19 @@ STATEMENTS = {
 }
 
 
+# stockanalysis spells multi-class and ampersand tickers differently from the exchange feeds we
+# build the universe from, and differently per market. Getting this wrong is silent: the URL
+# 404s, the symbol is logged as "no data", and it looks like a company without financials.
+#   US     SEC gives BRK-B, stockanalysis wants BRK.B      (427 of our US symbols carry a dash)
+#   India  NSE gives BAJAJ-AUTO, stockanalysis wants BAJAJ_AUTO
+def slug(region: str, symbol: str) -> str:
+    if region == "us":
+        return symbol.replace("-", ".")
+    if region == "india":
+        return symbol.replace("-", "_")
+    return symbol
+
+
 def log(msg: str) -> None:
     line = f"{datetime.now(UTC).isoformat(timespec='seconds')}  {msg}"
     print(line, flush=True)
@@ -75,6 +88,12 @@ def log(msg: str) -> None:
         pass
 
 
+def _clean(sym: str) -> str:
+    for ch in ".-&_":
+        sym = sym.replace(ch, "")
+    return sym
+
+
 def targets(regions: list[str]) -> list[tuple[str, str]]:
     """(region, symbol) for every name we could fetch, densest markets first."""
     rows = json.loads(SCREENER.read_text(encoding="utf-8"))
@@ -82,7 +101,9 @@ def targets(regions: list[str]) -> list[tuple[str, str]]:
     for r in rows:
         region = r.get("region")
         sym = (r.get("symbol") or "").strip().upper()
-        if region in regions and sym and sym.replace(".", "").replace("-", "").isalnum():
+        # & and _ are legitimate in Indian tickers (M&M, ARE_M). Excluding them dropped
+        # those companies from the run entirely rather than failing visibly.
+        if region in regions and sym and _clean(sym).isalnum():
             out.append((region, sym))
     # Highest-quality names first so the most useful data lands earliest, in case the run is
     # interrupted or blocked partway through.
@@ -297,7 +318,7 @@ def scrape_symbol(page, region: str, sym: str, page_pause: float) -> int:
             continue
         # ?p=trailing gives the quarterly-spaced TTM columns - each already a full trailing
         # year, which is exactly what the quality engine and its trend need.
-        url = f"https://stockanalysis.com/{prefix}/{sym}/{path}/?p=trailing"
+        url = f"https://stockanalysis.com/{prefix}/{slug(region, sym)}/{path}/?p=trailing"
         df = scrape_table(page, url, statement=name)
         if df is not None and not df.empty:
             df.fillna("", inplace=True)

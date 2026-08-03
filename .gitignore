@@ -59,6 +59,10 @@ redisdata/
 # metrics the engines read - so CI stays self-contained without carrying dead line items.
 !/data/fundamentals_ttm/
 !/data/fundamentals_ttm/*.json.gz
+# The listed-company lists are the universe definition, small and worth versioning - CI must
+# not have to scrape to know which companies exist.
+!/data/universe/
+!/data/universe/*.csv
 data/fund_cache/
 
 data/earnings_refresh.log
