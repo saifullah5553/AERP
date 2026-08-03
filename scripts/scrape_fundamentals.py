@@ -101,10 +101,62 @@ def targets(regions: list[str]) -> list[tuple[str, str]]:
 MIN_ROWS = 12
 
 
-def scrape_table(page, url: str, attempts: int = 2):
+# Shared cooldown. A 429 is not a property of one page - the server is telling every worker to
+# back off, so one worker seeing it must pause all of them. Without this the run keeps hammering
+# through the throttle and the miss rate climbs (observed: 25% -> 70% over one work window),
+# which quietly costs far more time than waiting would.
+_COOLDOWN_UNTIL = 0.0
+_COOLDOWN_LOCK = threading.Lock()
+COOLDOWN_SECONDS = 120.0
+
+
+def _throttled() -> None:
+    global _COOLDOWN_UNTIL
+    with _COOLDOWN_LOCK:
+        first = time.time() >= _COOLDOWN_UNTIL
+        _COOLDOWN_UNTIL = max(_COOLDOWN_UNTIL, time.time() + COOLDOWN_SECONDS)
+    if first:
+        log(f"  rate limited (429) - all workers backing off {COOLDOWN_SECONDS:.0f}s")
+
+
+def _wait_out_cooldown() -> None:
+    while True:
+        with _COOLDOWN_LOCK:
+            remaining = _COOLDOWN_UNTIL - time.time()
+        if remaining <= 0:
+            return
+        time.sleep(min(remaining, 5.0))
+
+
+# Row counts alone do not prove a statement is whole. These pages split a statement across
+# several tables, and a half-captured balance sheet - assets present, liabilities and equity
+# missing - still clears MIN_ROWS while quietly removing debt and equity from the quality gate.
+# Each entry is a list of alternatives; every group must match something.
+REQUIRED_LABELS: dict[str, tuple[set[str], ...]] = {
+    "Balance_Sheet": (
+        {"Total Liabilities"},
+        {"Shareholders' Equity", "Total Common Shareholders' Equity", "Total Equity"},
+    ),
+    "Income_Statement": ({"Net Income"},),
+    "Cash_Flow": ({"Operating Cash Flow"},),
+}
+
+
+def _complete(df, statement: str) -> bool:
+    groups = REQUIRED_LABELS.get(statement)
+    if not groups:
+        return True
+    labels = {str(x).strip() for x in df.iloc[:, 0]}
+    return all(labels & group for group in groups)
+
+
+def scrape_table(page, url: str, attempts: int = 3, statement: str | None = None):
     for n in range(attempts):
+        _wait_out_cooldown()
         df = _scrape_once(page, url)
-        if df is not None and len(df) >= MIN_ROWS:
+        if df is not None and len(df) >= MIN_ROWS and (
+            statement is None or _complete(df, statement)
+        ):
             return df
         if n + 1 < attempts:
             page.wait_for_timeout(1500)
@@ -117,6 +169,9 @@ def _scrape_once(page, url: str):
 
     try:
         resp = page.goto(url, wait_until="domcontentloaded", timeout=45000)
+        if resp and resp.status == 429:
+            _throttled()
+            return None
         if not resp or resp.status >= 400:
             return None
         # These pages carry several tables (a condensed summary, segment splits, valuation
@@ -129,19 +184,47 @@ def _scrape_once(page, url: str):
             ".some(t => t.querySelectorAll('tbody tr').length >= n)",
             arg=MIN_ROWS, timeout=20000,
         )
+        # ...then wait for the row count to STOP growing. Waiting only for "enough rows" grabs
+        # the table mid-render: it captured Indian balance sheets that stopped at Total Assets,
+        # with the whole liabilities-and-equity half missing, and they passed the row check
+        # because a half-rendered table still clears MIN_ROWS. A truncated statement is the
+        # worst outcome here - it looks like real data and silently removes debt and equity
+        # from the quality gate.
+        prev = -1
+        for _ in range(12):
+            count = page.evaluate(
+                "() => Math.max(0, ...[...document.querySelectorAll('table')]"
+                ".map(t => t.querySelectorAll('tbody tr').length))"
+            )
+            if count == prev:
+                break
+            prev = count
+            page.wait_for_timeout(400)
         # Extract entirely in the page: one round trip instead of a few hundred locator calls,
         # which was most of the per-page cost.
         data = page.evaluate("""() => {
             const tables = [...document.querySelectorAll('table')];
             if (!tables.length) return null;
-            const t = tables.reduce((a, b) =>
-                b.querySelectorAll('tbody tr').length > a.querySelectorAll('tbody tr').length
-                    ? b : a);
-            const headers = [...t.querySelectorAll('thead th')]
+            const rowsOf = t => t.querySelectorAll('tbody tr').length;
+            const anchor = tables.reduce((a, b) => rowsOf(b) > rowsOf(a) ? b : a);
+            const headers = [...anchor.querySelectorAll('thead th')]
                 .map(h => h.innerText.replace(/\\n/g, ' ').trim()).filter(Boolean);
-            const rows = [...t.querySelectorAll('tbody tr')]
-                .map(r => [...r.querySelectorAll('td')].map(c => c.innerText.trim()))
-                .filter(cells => cells.length);
+            // A statement is split across several tables sharing one period grid - a balance
+            // sheet arrives as assets / liabilities / equity / supplementary. Same column
+            // count means same grid, so take them all; anything else on the page (condensed
+            // summaries, valuation teasers) has a different width and is left out.
+            const width = anchor.querySelectorAll('thead th').length;
+            const rows = [];
+            const seen = new Set();
+            for (const t of tables) {
+                if (t.querySelectorAll('thead th').length !== width) continue;
+                for (const r of t.querySelectorAll('tbody tr')) {
+                    const cells = [...r.querySelectorAll('td')].map(c => c.innerText.trim());
+                    if (!cells.length || seen.has(cells[0])) continue;
+                    seen.add(cells[0]);
+                    rows.push(cells);
+                }
+            }
             return {headers, rows};
         }""")
         if not data or not data["headers"] or not data["rows"]:
@@ -177,7 +260,7 @@ def scrape_symbol(page, region: str, sym: str, page_pause: float) -> int:
         # ?p=trailing gives the quarterly-spaced TTM columns - each already a full trailing
         # year, which is exactly what the quality engine and its trend need.
         url = f"https://stockanalysis.com/{prefix}/{sym}/{path}/?p=trailing"
-        df = scrape_table(page, url)
+        df = scrape_table(page, url, statement=name)
         if df is not None and not df.empty:
             df.fillna("", inplace=True)
             df.to_csv(csv_file, index=False, encoding="utf-8")
