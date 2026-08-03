@@ -118,33 +118,50 @@ def bars_from_chart(res: dict) -> list[dict]:
 
 
 def refresh(region: str, symbols: list[str], range_: str = "1y",
-            store: Path | None = None, pause: float = 0.15) -> dict[str, int]:
-    """Fetch each symbol's daily history from Yahoo and append what is new."""
+            store: Path | None = None, pause: float = 0.05,
+            workers: int = 8) -> dict[str, int]:
+    """Fetch each symbol's daily history from Yahoo and append what is new.
+
+    Concurrent because these are thousands of small independent GETs and serial fetching put a
+    full backfill in the hours. Each symbol owns its own file, so only the counters are shared.
+    """
+    import threading
     import time
+    from concurrent.futures import ThreadPoolExecutor
 
     import httpx
 
     url = "https://query1.finance.yahoo.com/v8/finance/chart/{sym}"
     ua = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
           "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+    lock = threading.Lock()
     seen = added = failed = 0
-    with httpx.Client(timeout=20, headers={"User-Agent": ua}) as client:
-        for sym in symbols:
+
+    def one(sym: str, client: httpx.Client) -> None:
+        nonlocal seen, added, failed
+        got, bad = 0, False
+        try:
+            r = client.get(url.format(sym=yahoo(region, sym)),
+                           params={"range": range_, "interval": "1d"})
+            res = ((r.json().get("chart") or {}).get("result") or [None])[0]
+            if r.status_code != 200 or not res:
+                bad = True
+            else:
+                got = save_bars(region, sym, bars_from_chart(res), store)
+        except Exception:  # noqa: BLE001 - one bad symbol must not stop the sweep
+            bad = True
+        with lock:
             seen += 1
-            try:
-                r = client.get(url.format(sym=yahoo(region, sym)),
-                               params={"range": range_, "interval": "1d"})
-                res = ((r.json().get("chart") or {}).get("result") or [None])[0]
-                if r.status_code != 200 or not res:
-                    failed += 1
-                else:
-                    added += save_bars(region, sym, bars_from_chart(res), store)
-            except Exception:  # noqa: BLE001 - one bad symbol must not stop the sweep
-                failed += 1
-            if seen % 250 == 0:
+            added += got
+            failed += bad
+            if seen % 500 == 0:
                 log.info("ohlc %s: %d/%d (%d bars added, %d failed)",
                          region, seen, len(symbols), added, failed)
-            time.sleep(pause)
+        time.sleep(pause)
+
+    with httpx.Client(timeout=20, headers={"User-Agent": ua}) as client:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            list(pool.map(lambda s: one(s, client), symbols))
 
     result = {"symbols": seen, "bars_added": added, "failed": failed}
     log.info("ohlc refresh %s: %s", region, result)

@@ -68,6 +68,10 @@ redisdata/
 # not as an unexplained gap months later.
 !/data/symbols/
 !/data/symbols/*.csv
+# Resolved sectors, versioned so no run ever re-derives them from an external service. A sector
+# changes about never; re-fetching it every time was a dependency we did not need.
+!/data/sectors/
+!/data/sectors/*.csv
 # Our own accumulated daily OHLC is the opposite - hundreds of MB and growing every day, so it
 # stays local. Yahoo serves a rolling window, which is exactly why we keep our own copy.
 /data/ohlc/

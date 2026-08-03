@@ -152,3 +152,16 @@ def test_news_query_names_the_country() -> None:
 
     unnamed = SimpleNamespace(name=None, symbol="XYZ", country="IN")
     assert _query_for(unnamed) == "XYZ stock India"
+
+
+def test_non_equity_instruments_are_labelled_by_asset_class() -> None:
+    from app.ingestion.sectors_web import _ASSET_CLASS_SECTOR
+
+    # Forex, crypto and indices have no company sector to find. Leaving them blank makes them
+    # invisible to the sector filter and mixes them in with equities whose sector we simply
+    # failed to look up - two very different things.
+    assert _ASSET_CLASS_SECTOR["forex"] == "Forex"
+    assert _ASSET_CLASS_SECTOR["crypto"] == "Crypto"
+    assert _ASSET_CLASS_SECTOR["index"] == "Index"
+    # An ETF only falls back to "ETF"; a sector fund keeps the sector it tracks.
+    assert _ASSET_CLASS_SECTOR["etf"] == "ETF"
