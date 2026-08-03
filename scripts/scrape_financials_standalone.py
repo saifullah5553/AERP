@@ -15,6 +15,8 @@ WHERE THE SYMBOLS COME FROM, in order:
     2. --symbols-file, a CSV/TXT with one symbol per line (a `symbol` column if CSV)
     3. data/symbols/<region>.csv or data/universe/<region>.csv beside this script or its parent
     4. frontend/public/data/screener.json (the AERP snapshot)
+    5. HARVESTED from the site's own list page, and cached to data/universe/<region>.csv so it
+       happens once. This is what lets the script run on a machine holding nothing but itself.
 
 OUTPUT: data/fundamentals_csv/<region>/<SYMBOL>_<Statement>.csv
         ~20 quarterly TTM columns per statement, each column already a full trailing year.
@@ -134,30 +136,163 @@ def _find(*relatives: str) -> Path | None:
     return None
 
 
-def load_symbols(region: str, symbols_file: str | None) -> list[str]:
-    """Symbols for one market, from whichever source is available."""
+# Where each market's full listing lives. Harvesting these is what makes the script
+# self-sufficient: without it there is no symbol list on a fresh machine and the run silently
+# does nothing, which is exactly how the first version failed.
+LIST_URL = {
+    "us": "https://stockanalysis.com/stocks/",
+    "india": "https://stockanalysis.com/list/nse-india/",
+    "australia": "https://stockanalysis.com/list/australian-securities-exchange/",
+    "gcc": "https://stockanalysis.com/list/saudi-stock-exchange/",
+    "psx": "https://stockanalysis.com/list/pakistan-stock-exchange/",
+}
+UNIVERSE_DIR = Path("data/universe")
+
+_LIST_JS = """() => {
+    const tables = [...document.querySelectorAll('table')];
+    if (!tables.length) return [];
+    const t = tables.reduce((a, b) =>
+        b.querySelectorAll('tbody tr').length > a.querySelectorAll('tbody tr').length ? b : a);
+    const heads = [...t.querySelectorAll('thead th')].map(h => h.innerText.trim().toLowerCase());
+    let iSym = heads.indexOf('symbol');
+    if (iSym < 0) iSym = heads.length > 1 ? 1 : 0;   // some lists lead with a row number
+    return [...t.querySelectorAll('tbody tr')]
+        .map(r => {
+            const tds = [...r.querySelectorAll('td')].map(c => c.innerText.trim());
+            return iSym < tds.length ? tds[iSym] : '';
+        })
+        .filter(Boolean);
+}"""
+
+
+def harvest_symbols(page, region: str) -> list[str]:
+    """Every listed ticker for a market, straight off the site's own list page.
+
+    The lists page 500 at a time behind a "Next" link (a link, not a button - matching it as a
+    button silently stops at the first 500). After clicking we wait for the first row to
+    actually change rather than for a fixed interval: a fixed wait truncated this at 1,000 of
+    3,020 the moment a page rendered slowly, and truncation looks exactly like "that is the
+    whole market".
+    """
+    url = LIST_URL.get(region)
+    if not url:
+        return []
+    found: list[str] = []
+    seen: set[str] = set()
+    stalls = 0
+    try:
+        page.goto(url, wait_until="domcontentloaded", timeout=45000)
+        page.wait_for_function(
+            "() => [...document.querySelectorAll('table')]"
+            ".some(t => t.querySelectorAll('tbody tr').length > 10)",
+            timeout=25000,
+        )
+        # The page states its own size ("383 Stocks"). Trust it as the bound: when a market
+        # fits on one page there is still a "Next" control, and following it walked off the
+        # Saudi list into a US table - 983 "Saudi" symbols, 600 of them XOM, JNJ, ASML. A
+        # symbol list that is quietly 60% another market is worse than no list at all.
+        declared = page.evaluate(
+            r"""() => {
+                const m = document.body.innerText.match(/([0-9][0-9,]*)\s+[Ss]tocks?\b/);
+                return m ? parseInt(m[1].replace(/,/g, ''), 10) : null;
+            }"""
+        )
+        if declared:
+            log(f"  {region}: listing declares {declared} stocks")
+
+        for _ in range(60):
+            rows = page.evaluate(_LIST_JS)
+            for sym in rows:
+                s = sym.strip().upper()
+                if s and s not in seen:
+                    seen.add(s)
+                    found.append(s)
+            if declared and len(found) >= declared:
+                break
+            nxt = page.locator("button:has-text('Next'), a:has-text('Next')")
+            if nxt.count() == 0 or not nxt.first.is_enabled():
+                break
+            head = rows[0] if rows else ""
+            nxt.first.click()
+            try:
+                # Compare the SYMBOL, resolved by header exactly as the extractor does. An
+                # earlier version compared against every cell in the row, so a leading "No."
+                # column made it true instantly: we then re-read the stale page, saw only
+                # symbols we already had, and stopped early - 2,020 of 3,020 Indian names,
+                # reported as success.
+                page.wait_for_function(
+                    """h => {
+                        const ts = [...document.querySelectorAll('table')];
+                        if (!ts.length) return false;
+                        const t = ts.reduce((a, b) =>
+                            b.querySelectorAll('tbody tr').length >
+                            a.querySelectorAll('tbody tr').length ? b : a);
+                        const heads = [...t.querySelectorAll('thead th')]
+                            .map(x => x.innerText.trim().toLowerCase());
+                        let i = heads.indexOf('symbol');
+                        if (i < 0) i = heads.length > 1 ? 1 : 0;
+                        const first = t.querySelector('tbody tr');
+                        if (!first) return false;
+                        const tds = [...first.querySelectorAll('td')];
+                        return i < tds.length && tds[i].innerText.trim() !== h;
+                    }""",
+                    arg=head, timeout=20000,
+                )
+            except Exception:  # noqa: BLE001
+                # A slow page is not the end of the list. Giving up on the first timeout
+                # stopped the US harvest at 3,509 of 5,601 and called it done.
+                if declared and len(found) < declared and stalls < 3:
+                    stalls += 1
+                    page.wait_for_timeout(3000)
+                    continue
+                break
+    except Exception as exc:  # noqa: BLE001
+        log(f"  {region}: could not harvest the listing ({type(exc).__name__})")
+
+    if declared and len(found) > declared:
+        log(f"  {region}: trimming {len(found)} harvested to the declared {declared}")
+        found = found[:declared]
+    return found
+
+
+def load_symbols(page, region: str, symbols_file: str | None) -> list[str]:
+    """Symbols for one market. Cached after the first harvest so it happens once."""
     if symbols_file:
         path = Path(symbols_file)
         if path.exists():
-            text = path.read_text(encoding="utf-8")
-            if "," in text.splitlines()[0]:
+            lines = path.read_text(encoding="utf-8").splitlines()
+            if lines and "," in lines[0]:
                 return [r["symbol"].strip().upper()
-                        for r in csv.DictReader(text.splitlines()) if r.get("symbol")]
-            return [ln.strip().upper() for ln in text.splitlines() if ln.strip()]
+                        for r in csv.DictReader(lines) if r.get("symbol")]
+            return [ln.strip().upper() for ln in lines if ln.strip()]
 
-    listing = _find(f"data/symbols/{region}.csv", f"data/universe/{region}.csv")
-    if listing:
-        with open(listing, encoding="utf-8") as fh:
-            return [r["symbol"].strip().upper()
-                    for r in csv.DictReader(fh) if r.get("symbol")]
+    cached = UNIVERSE_DIR / f"{region}.csv"
+    for listing in (cached, _find(f"data/symbols/{region}.csv") or cached):
+        if listing.exists():
+            with open(listing, encoding="utf-8") as fh:
+                syms = [r["symbol"].strip().upper()
+                        for r in csv.DictReader(fh) if r.get("symbol")]
+            if syms:
+                return syms
 
     snapshot = _find("frontend/public/data/screener.json")
     if snapshot:
         rows = json.loads(snapshot.read_text(encoding="utf-8"))
-        return [str(r["symbol"]).strip().upper() for r in rows
+        syms = [str(r["symbol"]).strip().upper() for r in rows
                 if r.get("region") == region and r.get("symbol")]
+        if syms:
+            return syms
 
-    return []
+    log(f"  {region}: no local list - harvesting from {LIST_URL.get(region, '?')}")
+    syms = harvest_symbols(page, region)
+    if syms:
+        UNIVERSE_DIR.mkdir(parents=True, exist_ok=True)
+        with open(cached, "w", encoding="utf-8", newline="") as fh:
+            w = csv.writer(fh)
+            w.writerow(["symbol"])
+            w.writerows([[s] for s in syms])
+        log(f"  {region}: harvested {len(syms)} symbols -> {cached}")
+    return syms
 
 
 # ── rate limiting ────────────────────────────────────────────────────────────────────────
@@ -330,20 +465,30 @@ def main() -> int:
 
     regions = [r.strip() for r in args.regions.split(",") if r.strip() in MARKET_PREFIX]
     todo: list[tuple[str, str]] = []
-    for region in regions:
-        if args.symbols:
-            wanted = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
-            for sym in wanted:
-                for name in STATEMENTS:      # a forced refresh must clear the skip
-                    (OUT_DIR / region / f"{sym}_{name}.csv").unlink(missing_ok=True)
-            todo += [(region, s) for s in wanted]
-        else:
-            syms = load_symbols(region, args.symbols_file)
+
+    # Resolve the symbol lists first, in one short-lived browser. Harvesting the listing here
+    # is what lets this run on a machine with nothing but the script.
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
+        ctx = browser.new_context(user_agent=UA)
+        ctx.route("**/*", lambda route: route.abort()
+                  if route.request.resource_type in SKIP_RESOURCES else route.continue_())
+        page = ctx.new_page()
+        for region in regions:
+            if args.symbols:
+                wanted = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
+                for sym in wanted:
+                    for name in STATEMENTS:   # a forced refresh must clear the skip
+                        (OUT_DIR / region / f"{sym}_{name}.csv").unlink(missing_ok=True)
+                todo += [(region, s) for s in wanted]
+                continue
+            syms = load_symbols(page, region, args.symbols_file)
             if not syms:
-                log(f"{region}: no symbol list found - skipping")
+                log(f"{region}: no symbols - skipping")
                 continue
             todo += [(region, s) for s in syms
                      if _clean(s).isalnum() and not already_done(region, s)]
+        browser.close()
 
     if args.limit:
         todo = todo[: args.limit]
