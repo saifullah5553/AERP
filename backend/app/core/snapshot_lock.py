@@ -28,7 +28,7 @@ import subprocess
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from app.core.logging import get_logger
@@ -41,14 +41,33 @@ LOCK_NAME = ".snapshot.lock"
 MAX_HOLD_MINUTES = 90
 
 
-def _alive(pid: int, exe: str | None = None) -> bool:
-    """Is the lock's owner still running?
+def _started_at(pid: int) -> datetime | None:
+    """When did that pid start? None if unknown or the process is gone."""
+    if os.name != "nt":
+        return None
+    try:
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+             f"(Get-Process -Id {pid} -ErrorAction SilentlyContinue).StartTime.ToUniversalTime()"
+             ".ToString('o')"],
+            capture_output=True, text=True, timeout=20,
+        ).stdout.strip()
+        return datetime.fromisoformat(out).replace(tzinfo=UTC) if out else None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
 
-    A bare PID check is not enough. Windows recycles PIDs aggressively, and this pipeline
-    spawns hundreds of short-lived browser processes, so a dead owner's number is very likely
-    to be live again as something else - which is exactly how a stale lock survived long enough
-    to block a scheduled run. Matching the image name too makes a false "alive" require both a
-    recycled PID and the same executable.
+
+def _alive(pid: int, exe: str | None = None, lock_started: datetime | None = None) -> bool:
+    """Is the lock's OWNER still running - not merely something wearing its pid?
+
+    A bare pid check is not enough, and this is not theoretical: a stale lock blocked a
+    scheduled writer because its dead owner's number had been handed to a live process. The
+    pipeline churns through hundreds of short-lived browser and worker processes, so Windows
+    recycles pids fast, and many of them are python.exe - meaning the image name alone does not
+    separate them either.
+
+    Start time does. A process that began AFTER the lock was written cannot be the writer that
+    wrote it, whatever its pid or executable says.
     """
     if pid <= 0:
         return False
@@ -62,7 +81,16 @@ def _alive(pid: int, exe: str | None = None) -> bool:
                 return False
             # First CSV field is the image name: "python.exe","34060",...
             name = out.strip().split('","')[0].lstrip('"').lower() if '","' in out else ""
-            return not exe or not name or name == exe.lower()
+            if exe and name and name != exe.lower():
+                return False
+            if lock_started:
+                begun = _started_at(pid)
+                # Small grace: the owner writes the lock a moment after it starts, and the two
+                # clocks are not the same source.
+                if begun and begun > lock_started + timedelta(seconds=90):
+                    log.warning("snapshot lock: pid %s started after the lock - recycled", pid)
+                    return False
+            return True
         os.kill(pid, 0)
     except (OSError, subprocess.SubprocessError, ValueError):
         return False
@@ -75,16 +103,18 @@ def _stale(path: Path) -> bool:
     except (OSError, json.JSONDecodeError):
         return True  # unreadable lock is not a lock
 
+    started = info.get("started_at")
+    try:
+        lock_started = datetime.fromisoformat(started)
+    except (TypeError, ValueError):
+        return True
+
     pid = int(info.get("pid") or 0)
-    if not _alive(pid, info.get("exe")):
+    if not _alive(pid, info.get("exe"), lock_started):
         log.warning("snapshot lock: owner pid %s is gone - breaking it", pid)
         return True
 
-    started = info.get("started_at")
-    try:
-        age = (datetime.now(UTC) - datetime.fromisoformat(started)).total_seconds() / 60.0
-    except (TypeError, ValueError):
-        return True
+    age = (datetime.now(UTC) - lock_started).total_seconds() / 60.0
     if age > MAX_HOLD_MINUTES:
         log.warning(
             "snapshot lock: held %.0f min by %s (pid %s) - assuming wedged, breaking it",

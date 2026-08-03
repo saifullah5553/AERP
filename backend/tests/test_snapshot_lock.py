@@ -84,3 +84,16 @@ def test_live_owner_with_matching_exe_still_holds(tmp_path) -> None:
     }), encoding="utf-8")
     with snapshot_lock("newcomer", tmp_path) as ok:
         assert ok is False
+
+
+def test_recycled_pid_of_the_same_program_is_broken(tmp_path) -> None:
+    # The case that actually bit us, and the one the image-name check alone cannot catch: the
+    # dead owner's pid now belongs to a *python* process too, and the lock is still inside the
+    # deadline. Only start time separates them - this process began well after the lock was
+    # written, so it cannot be the writer.
+    (tmp_path / LOCK_NAME).write_text(json.dumps({
+        "owner": "ghost", "pid": os.getpid(), "exe": Path(sys.executable).name,
+        "started_at": (datetime.now(UTC) - timedelta(minutes=10)).isoformat(),
+    }), encoding="utf-8")
+    with snapshot_lock("newcomer", tmp_path) as ok:
+        assert ok is True
