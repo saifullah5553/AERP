@@ -77,6 +77,43 @@ def cmd_ingest_fundamentals_store(args: argparse.Namespace) -> None:
                      region, ingest_region(db, region, Path(args.store_dir)))
 
 
+def cmd_build_symbols(args: argparse.Namespace) -> None:
+    """Write data/symbols/<region>.csv - one canonical spelling per company, plus each
+    provider's. Prices come from Yahoo and fundamentals from stockanalysis, so the two must
+    agree on which company they mean."""
+    import json as _json
+    from pathlib import Path
+
+    from app.ingestion.symbols import build_registry
+
+    data_dir = args.data_dir or "../frontend/public/data"
+    rows = _json.loads(Path(f"{data_dir}/screener.json").read_text(encoding="utf-8"))
+    log.info("build-symbols: %s", build_registry(rows))
+
+
+def cmd_refresh_ohlc(args: argparse.Namespace) -> None:
+    """Append today's daily bars to our own OHLC history."""
+    import json as _json
+    from pathlib import Path
+
+    from app.ingestion.ohlc_store import coverage, refresh
+    from app.ingestion.symbols import YAHOO_SUFFIX
+
+    data_dir = args.data_dir or "../frontend/public/data"
+    rows = _json.loads(Path(f"{data_dir}/screener.json").read_text(encoding="utf-8"))
+    regions = ([r.strip() for r in args.regions.split(",")]
+               if args.regions else list(YAHOO_SUFFIX))
+    for region in regions:
+        syms = [r["symbol"] for r in rows
+                if r.get("region") == region and r.get("symbol")]
+        if args.limit:
+            syms = syms[: args.limit]
+        if syms:
+            log.info("refresh-ohlc(%s): %s",
+                     region, refresh(region, syms, range_=args.range, pause=args.pause))
+    log.info("ohlc coverage: %s", coverage())
+
+
 def cmd_list_reported_fundamentals(args: argparse.Namespace) -> None:
     """Print symbols that just reported (plus a staleness quota), one per line."""
     from pathlib import Path
@@ -821,6 +858,13 @@ def build_parser() -> argparse.ArgumentParser:
     cons.add_argument("--csv-dir", default="../data/fundamentals_csv")
     cons.add_argument("--store-dir", default="../data/fundamentals_ttm")
     cons.add_argument("--regions", default=None, help="comma list, default all")
+    bsym = add("build-symbols", cmd_build_symbols)
+    bsym.add_argument("--data-dir", default=None)
+    ohlc = add("refresh-ohlc", cmd_refresh_ohlc, limit=True)
+    ohlc.add_argument("--data-dir", default=None)
+    ohlc.add_argument("--regions", default=None, help="comma list, default all")
+    ohlc.add_argument("--range", default="1y", help="Yahoo range: 1y, 5y, max")
+    ohlc.add_argument("--pause", type=float, default=0.15)
     rep = add("list-reported-fundamentals", cmd_list_reported_fundamentals, limit=True)
     rep.add_argument("--store-dir", default="../data/fundamentals_ttm")
     rep.add_argument("--data-dir", default=None)

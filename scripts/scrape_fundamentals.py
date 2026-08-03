@@ -27,6 +27,7 @@ restarted freely, and a later run costs nothing for work already done.
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 import sys
@@ -68,12 +69,39 @@ STATEMENTS = {
 # build the universe from, and differently per market. Getting this wrong is silent: the URL
 # 404s, the symbol is logged as "no data", and it looks like a company without financials.
 #   US     SEC gives BRK-B, stockanalysis wants BRK.B      (427 of our US symbols carry a dash)
-#   India  NSE gives BAJAJ-AUTO, stockanalysis wants BAJAJ_AUTO
+#   India  NSE gives BAJAJ-AUTO, stockanalysis wants BAJAJ_AUTO; M&M becomes M_M
+#
+# data/symbols/<region>.csv is the registry that settles this for the whole platform (built by
+# app.ingestion.symbols, which also derives the yfinance spelling used for prices). Reading it
+# here keeps one answer per company rather than a copy of the rules that can drift; the inline
+# rules below are only the fallback for a market with no registry file yet.
+SYMBOLS_DIR = REPO / "data" / "symbols"
+_SLUGS: dict[str, dict[str, str]] = {}
+
+
+def _registry(region: str) -> dict[str, str]:
+    if region not in _SLUGS:
+        table: dict[str, str] = {}
+        path = SYMBOLS_DIR / f"{region}.csv"
+        if path.exists():
+            with open(path, encoding="utf-8") as fh:
+                for row in csv.DictReader(fh):
+                    sym = (row.get("symbol") or "").strip().upper()
+                    sa = (row.get("stockanalysis") or "").strip()
+                    if sym and sa:
+                        table[sym] = sa
+        _SLUGS[region] = table
+    return _SLUGS[region]
+
+
 def slug(region: str, symbol: str) -> str:
+    known = _registry(region).get(symbol.upper())
+    if known:
+        return known
     if region == "us":
         return symbol.replace("-", ".")
     if region == "india":
-        return symbol.replace("-", "_")
+        return symbol.replace("-", "_").replace("&", "_")
     return symbol
 
 

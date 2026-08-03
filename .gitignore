@@ -63,6 +63,14 @@ redisdata/
 # not have to scrape to know which companies exist.
 !/data/universe/
 !/data/universe/*.csv
+# The symbol registry reconciles the exchange, Yahoo and stockanalysis spellings of every
+# company. Small, and versioned deliberately: a mismatch should show up as a reviewable diff,
+# not as an unexplained gap months later.
+!/data/symbols/
+!/data/symbols/*.csv
+# Our own accumulated daily OHLC is the opposite - hundreds of MB and growing every day, so it
+# stays local. Yahoo serves a rolling window, which is exactly why we keep our own copy.
+/data/ohlc/
 data/fund_cache/
 
 data/earnings_refresh.log
