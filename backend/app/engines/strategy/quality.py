@@ -51,36 +51,36 @@ _DEBT_CHECKS = ("debt_low_or_falling",)
 # Weights are renormalised over whatever could be evaluated, so a missing line item never reads
 # as a failed test.
 CHECK_WEIGHTS: dict[str, float] = {
-    # GROWTH - 40%. The thesis: buy businesses that are getting bigger.
-    "revenue_rising": 0.1334,
-    "operating_profit_rising": 0.1333,
-    "eps_rising": 0.1333,
-    # CASH - 20%. Operating and free cash flow carry it; the other three corroborate rather
-    # than justify, so they take the remainder.
-    "cash_flow_positive": 0.07,
-    "free_cash_flow_positive": 0.07,
-    "earnings_backed_by_cash": 0.025,
-    "cash_reserves_healthy": 0.0175,
-    "cash_building": 0.0175,
-    # DEBT - 20%. A guardrail, but a heavy one: leverage is what turns a bad quarter fatal.
-    "debt_low_or_falling": 0.20,
-    # VALUATION AND RETURNS - 20%, split evenly.
-    #
-    # Valuation (10%): a great business bought at any price is not a good investment. These are
-    # the only checks that need a quote, so they are the only ones that go unknown for a
-    # company we have statements but no price for.
-    "earnings_yield_attractive": 0.025,
-    "fcf_yield_attractive": 0.025,
-    "price_to_book_reasonable": 0.025,
-    "margin_of_safety": 0.025,
-    # Returns and margins (10%): how well the business converts capital and sales into profit.
-    # Growth tells you a company is getting bigger; these tell you whether that is worth
-    # anything. Computed from statements alone, so they score even without a quote.
-    "roe_strong": 0.025,
-    "roa_strong": 0.025,
-    "operating_margin_healthy": 0.025,
-    "net_margin_healthy": 0.025,
+    # GROWTH - 35%. Still the thesis: buy businesses that are getting bigger.
+    "revenue_rising": 0.1167,
+    "operating_profit_rising": 0.1167,
+    "eps_rising": 0.1166,
+    # MARGINS - 15%. Growth in revenue is worth little if it is bought by giving margin away.
+    "gross_margin_healthy": 0.05,
+    "operating_margin_healthy": 0.05,
+    "net_margin_healthy": 0.05,
+    # CASH - 25%. Generating it, keeping it after capex, and earnings actually backed by it.
+    # OCF vs net income carries real weight here: it is the closest thing to a lie detector on
+    # reported profit, and at 2.5% it was decorative.
+    "cash_flow_positive": 0.08,
+    "free_cash_flow_positive": 0.08,
+    "earnings_backed_by_cash": 0.06,
+    "cash_building": 0.03,
+    # SOLVENCY AND LIQUIDITY - 25%. Previously 20% resting on ONE binary test, which a company
+    # at 2.5x debt-to-equity could pass by repaying a token amount. Leverage is what turns a bad
+    # quarter fatal, so it now gets the metrics that actually predict distress.
+    "net_debt_to_ebitda_safe": 0.06,
+    "interest_coverage_safe": 0.06,
+    "debt_to_equity_reasonable": 0.05,
+    "current_ratio_healthy": 0.04,
+    "quick_ratio_healthy": 0.04,
 }
+
+# Still computed and shown, but no longer scored: this is a business-quality score, and price
+# is a separate question. Kept because the company page and the screener use the numbers.
+_UNSCORED_CHECKS = ("earnings_yield_attractive", "fcf_yield_attractive",
+                    "price_to_book_reasonable", "margin_of_safety",
+                    "roe_strong", "roa_strong", "cash_reserves_healthy")
 
 _VALUATION_CHECKS = ("earnings_yield_attractive", "fcf_yield_attractive",
                      "price_to_book_reasonable", "margin_of_safety")
@@ -96,8 +96,17 @@ MARGIN_OF_SAFETY_YIELD = 0.10   # P/E <= 10 - the classic value cushion
 
 ROE_GOOD = 0.15                 # 15% on equity
 ROA_GOOD = 0.05                 # 5% on total assets
+GROSS_MARGIN_GOOD = 0.25
 OPERATING_MARGIN_GOOD = 0.10
 NET_MARGIN_GOOD = 0.05
+
+# Solvency and liquidity thresholds, taken from the standard analyst screens rather than
+# invented: above 3x net debt to EBITDA is high leverage, below 3x interest cover is thin.
+NET_DEBT_TO_EBITDA_MAX = 3.0
+INTEREST_COVERAGE_MIN = 3.0
+DEBT_TO_EQUITY_MAX = 1.0
+CURRENT_RATIO_MIN = 1.5         # the conventional line, not the 1.2 we used to accept
+QUICK_RATIO_MIN = 1.0           # excludes inventory: it is the slowest thing to turn into cash
 
 
 def _f(v: Any) -> float | None:
@@ -176,8 +185,15 @@ def _add_return_checks(checks: dict, metrics: dict, inc: list[dict], bal: list[d
     op_margin = op_income / revenue if (op_income is not None and revenue and revenue > 0) else None
     net_margin = net_income / revenue if (net_income is not None and revenue and revenue > 0) else None
 
-    metrics.update({"roe": roe, "roa": roa,
+    gross_profit = _f(latest_inc.get("gross_profit"))
+    gross_margin = (gross_profit / revenue
+                    if (gross_profit is not None and revenue and revenue > 0) else None)
+
+    metrics.update({"roe": roe, "roa": roa, "gross_margin": gross_margin,
                     "operating_margin": op_margin, "net_margin": net_margin})
+    checks.setdefault("gross_margin_healthy", None)
+    if gross_margin is not None:
+        checks["gross_margin_healthy"] = gross_margin >= GROSS_MARGIN_GOOD
     if roe is not None:
         checks["roe_strong"] = roe >= ROE_GOOD
     if roa is not None:
@@ -186,6 +202,66 @@ def _add_return_checks(checks: dict, metrics: dict, inc: list[dict], bal: list[d
         checks["operating_margin_healthy"] = op_margin >= OPERATING_MARGIN_GOOD
     if net_margin is not None:
         checks["net_margin_healthy"] = net_margin >= NET_MARGIN_GOOD
+
+
+def _add_solvency_checks(checks: dict, metrics: dict, inc: list[dict], bal: list[dict]) -> None:
+    """Can it survive a bad year? Solvency is structural, liquidity is immediate.
+
+    Replaces a single "debt is low or fell" test that a company at 2.5x debt-to-equity could
+    pass by repaying a token amount. These are the ratios that actually precede distress.
+    """
+    for key in ("net_debt_to_ebitda_safe", "interest_coverage_safe", "debt_to_equity_reasonable",
+                "current_ratio_healthy", "quick_ratio_healthy"):
+        checks.setdefault(key, None)
+
+    latest_inc = inc[0] if inc else {}
+    latest_bal = bal[0] if bal else {}
+    ebitda = _f(latest_inc.get("ebitda"))
+    op_income = _f(latest_inc.get("operating_income"))
+    interest = _f(latest_inc.get("interest_expense"))
+    debt = _f(latest_bal.get("total_debt"))
+    equity = _f(latest_bal.get("total_equity"))
+    cash = _f(latest_bal.get("cash_and_equivalents"))
+    sti = _f(latest_bal.get("short_term_investments")) or 0.0
+    receivables = _f(latest_bal.get("receivables"))
+    cur_assets = _f(latest_bal.get("current_assets"))
+    cur_liab = _f(latest_bal.get("current_liabilities"))
+
+    # Net debt to EBITDA. Net of cash, because a company holding its debt in cash is not levered
+    # in any way that matters.
+    if debt is not None and ebitda is not None and ebitda > 0:
+        net_debt = debt - (cash or 0.0)
+        ratio = net_debt / ebitda
+        metrics["net_debt_to_ebitda"] = ratio
+        # Net cash is unambiguously safe and would otherwise read as a large negative.
+        checks["net_debt_to_ebitda_safe"] = ratio <= NET_DEBT_TO_EBITDA_MAX
+
+    # Interest coverage. Reported interest expense is often negative (an outflow), so compare
+    # magnitudes - a sign convention should not decide whether a company looks solvent.
+    if op_income is not None and interest is not None and abs(interest) > 0:
+        cover = op_income / abs(interest)
+        metrics["interest_coverage"] = cover
+        checks["interest_coverage_safe"] = cover >= INTEREST_COVERAGE_MIN
+    elif op_income is not None and (interest is None or interest == 0):
+        metrics["interest_coverage"] = None      # no debt service to cover
+        checks["interest_coverage_safe"] = True
+
+    if debt is not None and equity and equity > 0:
+        de = debt / equity
+        metrics["debt_to_equity"] = de
+        checks["debt_to_equity_reasonable"] = de <= DEBT_TO_EQUITY_MAX
+
+    if cur_assets is not None and cur_liab and cur_liab > 0:
+        cr = cur_assets / cur_liab
+        metrics["current_ratio"] = cr
+        checks["current_ratio_healthy"] = cr >= CURRENT_RATIO_MIN
+
+    # Quick ratio deliberately excludes inventory: it is the slowest current asset to turn into
+    # cash, and precisely the one that stops selling when a business gets into trouble.
+    if cash is not None and receivables is not None and cur_liab and cur_liab > 0:
+        qr = (cash + sti + receivables) / cur_liab
+        metrics["quick_ratio"] = qr
+        checks["quick_ratio_healthy"] = qr >= QUICK_RATIO_MIN
 
 
 def _add_valuation_checks(checks: dict, metrics: dict, inc: list[dict], bal: list[dict],
@@ -359,6 +435,7 @@ def assess_quality(statements: dict[str, list[dict]], min_checks: int = 5,
 
     _add_valuation_checks(checks, metrics, inc, bal, cf, market)
     _add_return_checks(checks, metrics, inc, bal)
+    _add_solvency_checks(checks, metrics, inc, bal)
 
     reasons = [k for k, v in checks.items() if v is False]
     if not growth_ok:
