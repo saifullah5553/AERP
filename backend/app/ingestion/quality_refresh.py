@@ -31,6 +31,66 @@ def refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str,
         return _refresh_quality(data_dir, limit)
 
 
+# A peer group needs enough members for its median to mean anything. Below this we fall back
+# to the sector, and failing that to the absolute anchors - a median of three companies is not
+# an industry norm, it is an accident.
+MIN_PEER_GROUP = 5
+
+
+def _peer_margins(rows: list[dict], cdir: Path) -> dict[str, dict[str, float]]:
+    """Median gross / operating / net margin per industry, and per sector as a fallback.
+
+    Margins only rank companies once they are compared with comparable businesses: an absolute
+    threshold ranks industries instead, putting every software company above every retailer
+    regardless of which is the better operator.
+    """
+    buckets: dict[str, dict[str, list[float]]] = {}
+
+    for r in rows:
+        cf = safe_file(cdir, f"{r.get('provider_symbol')}.json")
+        if cf is None or not cf.exists():
+            continue
+        try:
+            doc = json.loads(cf.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        inc = ((doc.get("statements") or {}).get("income") or [{}])[0]
+        revenue = inc.get("revenue")
+        if not revenue or revenue <= 0:
+            continue
+
+        for key, group in (("industry", r.get("industry")), ("sector", r.get("sector"))):
+            if not group:
+                continue
+            bucket = buckets.setdefault(f"{key}:{group}", {})
+            for metric, field in (("gross_margin", "gross_profit"),
+                                  ("operating_margin", "operating_income"),
+                                  ("net_margin", "net_income")):
+                value = inc.get(field)
+                if value is not None:
+                    bucket.setdefault(metric, []).append(value / revenue)
+
+    medians: dict[str, dict[str, float]] = {}
+    for group, metrics in buckets.items():
+        out = {}
+        for metric, values in metrics.items():
+            if len(values) >= MIN_PEER_GROUP:
+                values.sort()
+                out[metric] = values[len(values) // 2]
+        if out:
+            medians[group] = out
+    log.info("peer margins: %d groups with a usable median", len(medians))
+    return medians
+
+
+def _peers_for(row: dict, medians: dict[str, dict[str, float]]) -> dict[str, float] | None:
+    """Industry median where the group is big enough, otherwise the sector's."""
+    for key, group in (("industry", row.get("industry")), ("sector", row.get("sector"))):
+        if group and f"{key}:{group}" in medians:
+            return medians[f"{key}:{group}"]
+    return None
+
+
 def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
     out = Path(data_dir)
     cdir = out / "company"
@@ -39,6 +99,8 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
     targets = [r for r in rows if r.get("provider_symbol")]
     if limit is not None:
         targets = targets[:limit]
+
+    medians = _peer_margins(targets, cdir)
 
     scored = passed = improving = no_data = 0
     for r in targets:
@@ -59,7 +121,7 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
         q = assess_quality(statements, market={
             "price": r.get("price"),
             "market_cap": r.get("market_cap"),
-        })
+        }, peers=_peers_for(r, medians))
         r["quality_score"] = q.score
         r["quality_passed"] = q.passed
         r["quality_improving"] = q.improving

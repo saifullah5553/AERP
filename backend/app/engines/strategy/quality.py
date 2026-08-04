@@ -109,6 +109,118 @@ CURRENT_RATIO_MIN = 1.5         # the conventional line, not the 1.2 we used to 
 QUICK_RATIO_MIN = 1.0           # excludes inventory: it is the slowest thing to turn into cash
 
 
+def _scale(value: float | None, at_zero: float, at_hundred: float) -> float | None:
+    """Map a metric onto 0-100, linearly between two anchors and clamped outside them.
+
+    Pass at_zero > at_hundred for metrics where lower is better (leverage, for instance) and
+    the same function inverts.
+    """
+    if value is None or at_zero == at_hundred:
+        return None
+    t = (value - at_zero) / (at_hundred - at_zero)
+    return round(100.0 * max(0.0, min(1.0, t)), 2)
+
+
+# Growth is banded rather than scaled, because growth is not experienced linearly: the gap
+# between 2% and 7% is a different kind of difference from the gap between 22% and 27%. Bands
+# also make the score legible - you can say which band a company is in and why.
+#
+#   shrinking  0   |  <5%  20  |  <10%  40  |  <15%  60  |  <20%  80  |  >20%  100
+GROWTH_BANDS: tuple[tuple[float, float], ...] = (
+    (0.00, 0.0),      # anything negative
+    (0.05, 20.0),
+    (0.10, 40.0),
+    (0.15, 60.0),
+    (0.20, 80.0),
+)
+GROWTH_TOP_BAND = 100.0   # above 20%
+
+
+def _band(value: float | None) -> float | None:
+    """Which growth band a rate falls into, as a 0-100 grade."""
+    if value is None:
+        return None
+    for threshold, grade in GROWTH_BANDS:
+        if value < threshold:
+            return grade
+    return GROWTH_TOP_BAND
+
+
+# Growth checks are banded; everything else is scaled between anchors.
+_BANDED = {"revenue_rising": "revenue_growth",
+           "operating_profit_rising": "operating_profit_growth",
+           "eps_rising": "eps_growth"}
+
+
+# How each check converts its metric into a 0-100 grade: (metric, score-0 anchor, score-100
+# anchor). Every pair is set so the check's own pass threshold lands at roughly 50, which keeps
+# the grade and the boolean telling the same story.
+#
+# This is what stops the score being blind to magnitude. Binary checks made 30% revenue growth
+# and 2% growth identical, and 2.9x net debt indistinguishable from having none - so companies
+# clustered at the top of the ranking with no way to separate them, which is precisely where
+# separation matters.
+GRADE_ANCHORS: dict[str, tuple[str, float, float]] = {
+    # Growth: flat sits at 50, so shrinking is punished and compounding is rewarded.
+    "revenue_rising": ("revenue_growth", -0.25, 0.25),
+    "operating_profit_rising": ("operating_profit_growth", -0.30, 0.30),
+    "eps_rising": ("eps_growth", -0.30, 0.30),
+    # Margins.
+    "gross_margin_healthy": ("gross_margin", 0.0, 0.50),
+    "operating_margin_healthy": ("operating_margin", -0.05, 0.25),
+    "net_margin_healthy": ("net_margin", -0.05, 0.15),
+    # Cash. Measured against revenue so a large company and a small one compare fairly.
+    "cash_flow_positive": ("ocf_margin", -0.15, 0.15),
+    "free_cash_flow_positive": ("fcf_margin", -0.15, 0.15),
+    "earnings_backed_by_cash": ("cash_conversion", 0.2, 1.2),
+    "cash_building": ("cash_growth", -0.30, 0.30),
+    # Solvency and liquidity - all inverted except the coverage and liquidity ratios.
+    "net_debt_to_ebitda_safe": ("net_debt_to_ebitda", 6.0, 0.0),
+    "interest_coverage_safe": ("interest_coverage", 0.0, 6.0),
+    "debt_to_equity_reasonable": ("debt_to_equity", 2.0, 0.0),
+    "current_ratio_healthy": ("current_ratio", 0.5, 2.5),
+    "quick_ratio_healthy": ("quick_ratio", 0.3, 1.7),
+}
+
+
+# Margins are the one family where an absolute number means little. 25% gross margin is poor
+# for software and excellent for a grocer, so a fixed threshold does not rank companies, it
+# ranks industries. These are graded against the peer median instead: at the median a company
+# scores 50, at half or one-and-a-half times it scores 0 or 100.
+_PEER_GRADED = ("gross_margin_healthy", "operating_margin_healthy", "net_margin_healthy")
+
+
+def _grade_checks(checks: dict[str, bool | None], metrics: dict[str, float | None],
+                  peers: dict[str, float] | None = None) -> dict[str, float]:
+    """0-100 for every check we can evaluate, by magnitude rather than pass/fail.
+
+    Falls back to the boolean when the underlying metric is missing but the check still
+    resolved - a known result graded coarsely beats discarding it.
+    """
+    out: dict[str, float] = {}
+    for key in CHECK_WEIGHTS:
+        verdict = checks.get(key)
+        if verdict is None:
+            continue
+        graded = None
+        if key in _BANDED:
+            graded = _band(metrics.get(_BANDED[key]))
+        anchors = GRADE_ANCHORS.get(key)
+        if graded is None and anchors:
+            metric, lo, hi = anchors
+            value = metrics.get(metric)
+            median = (peers or {}).get(metric)
+            if key in _PEER_GRADED and median is not None and median > 0:
+                # Half the peer median scores 0, the median 50, half again above it 100.
+                graded = _scale(value, median * 0.5, median * 1.5)
+            else:
+                # No usable peer group - a thin industry, or one losing money on average, where
+                # a relative score would be noise. Fall back to the absolute anchors.
+                graded = _scale(value, lo, hi)
+        out[key] = graded if graded is not None else (100.0 if verdict else 0.0)
+    return out
+
+
 def _f(v: Any) -> float | None:
     try:
         x = float(v)
@@ -148,6 +260,7 @@ class QualityResult:
     passed: bool                   # fully strong: majority of BOTH pillars
     score: float | None            # 0-100, only meaningful for names that pass
     checks: dict[str, bool | None] = field(default_factory=dict)
+    grades: dict[str, float] = field(default_factory=dict)   # 0-100 per check, by magnitude
     metrics: dict[str, float | None] = field(default_factory=dict)
     reasons: list[str] = field(default_factory=list)
     improving: bool = False        # not yet fully strong, but the trend is the right way
@@ -321,10 +434,14 @@ def _add_valuation_checks(checks: dict, metrics: dict, inc: list[dict], bal: lis
 
 
 def assess_quality(statements: dict[str, list[dict]], min_checks: int = 5,
-                   market: dict | None = None) -> QualityResult:
+                   market: dict | None = None,
+                   peers: dict[str, float] | None = None) -> QualityResult:
     """Run the quality tests. `passed` requires the non-negotiables (positive operating cash
     flow, rising EPS) plus a majority of BOTH the growth and cash pillars - growth and cash are
     the thesis, so neither can be waved through by the other.
+
+    `peers` carries the median margin of this company's industry (or sector), so margins are
+    ranked against comparable businesses rather than a universal threshold.
 
     `market` carries {price, market_cap, shares} when a quote is available. Valuation is scored
     only when it is: absent, those checks stay unknown and the weights renormalise, so a
@@ -456,21 +573,15 @@ def assess_quality(statements: dict[str, list[dict]], min_checks: int = 5,
     # Score is pillar-weighted, not a flat tally: growth and cash decide quality, debt is a
     # guardrail. Only scored when enough tests have data - otherwise "1 of 1 check passed"
     # would render as a perfect 100 for a company we know almost nothing about.
+    grades = _grade_checks(checks, metrics, peers)
+
     score = None
     if known >= 5:
-        avail = [(100.0 if checks[k] else 0.0, w)
-                 for k, w in CHECK_WEIGHTS.items() if checks.get(k) is not None]
+        avail = [(grades[k], w) for k, w in CHECK_WEIGHTS.items() if k in grades]
         if avail:
             # Renormalised over the checks we could actually evaluate, so a company missing a
             # line item is not scored as if it had failed that test.
-            base = sum(v * w for v, w in avail) / sum(w for _v, w in avail)
-            # Reward the magnitude of growth and cash build, not just their direction.
-            bonus = 0.0
-            for key, cap in (("revenue_growth", 0.5), ("eps_growth", 1.0), ("cash_growth", 1.0)):
-                gv = metrics.get(key)
-                if gv is not None:
-                    bonus += max(-1.0, min(gv / cap, 1.0)) * 4.0
-            score = round(max(0.0, min(100.0, base + bonus)), 2)
+            score = round(sum(v * w for v, w in avail) / sum(w for _v, w in avail), 2)
 
-    return QualityResult(passed=passed, score=score, checks=checks,
+    return QualityResult(passed=passed, score=score, checks=checks, grades=grades,
                          metrics=metrics, reasons=reasons, improving=improving)

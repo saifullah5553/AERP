@@ -113,3 +113,66 @@ def test_returns_are_computed_even_though_they_are_not_scored() -> None:
     assert q.metrics["roe"] == 150.0 / 500.0
     assert q.metrics["roa"] == 150.0 / 1200.0
     assert q.metrics["gross_margin"] == 400.0 / 1000.0
+
+
+def test_growth_is_banded_with_over_20_percent_at_the_top() -> None:
+    """Growth is not experienced linearly - the gap between 2% and 7% is a different kind of
+    difference from 22% to 27% - so it is banded, and the bands are legible."""
+    from app.engines.strategy.quality import _band
+
+    assert _band(-0.05) == 0      # shrinking
+    assert _band(0.03) == 20      # under 5%
+    assert _band(0.07) == 40      # under 10%
+    assert _band(0.12) == 60      # under 15%
+    assert _band(0.18) == 80      # under 20%
+    assert _band(0.25) == 100     # over 20%
+    assert _band(0.60) == 100     # and no more credit beyond that
+    assert _band(None) is None
+
+
+def test_higher_growth_scores_higher() -> None:
+    """The whole point of grading: a binary check made 2% and 35% growth identical."""
+    def grower(rate):
+        older = 1000.0 / (1 + rate)
+        return {
+            "income": [
+                {"fiscal_date": "2025-12-31", "revenue": 1000.0, "gross_profit": 400.0,
+                 "operating_income": 200.0, "net_income": 150.0, "eps": 1.5, "ebitda": 250.0,
+                 "interest_expense": -20.0},
+                {"fiscal_date": "2024-12-31", "revenue": older, "gross_profit": 380.0,
+                 "operating_income": 180.0, "net_income": 130.0, "eps": 1.3},
+            ],
+            "balance": [{"fiscal_date": "2025-12-31", "total_equity": 500.0,
+                         "total_assets": 1200.0, "total_debt": 400.0,
+                         "cash_and_equivalents": 100.0, "receivables": 200.0,
+                         "current_assets": 600.0, "current_liabilities": 300.0}],
+            "cashflow": [{"fiscal_date": "2025-12-31", "operating_cash_flow": 180.0,
+                          "free_cash_flow": 120.0}],
+        }
+
+    slow = assess_quality(grower(0.02))
+    fast = assess_quality(grower(0.35))
+    assert fast.score > slow.score
+    assert fast.grades["revenue_rising"] > slow.grades["revenue_rising"]
+
+
+def test_margins_are_graded_against_peers_not_a_fixed_line() -> None:
+    """25% gross margin is poor for software and excellent for a grocer. A fixed threshold does
+    not rank companies, it ranks industries."""
+    st = _company(gross_profit=300.0, revenue=1000.0)     # 30% gross margin
+
+    software = assess_quality(st, peers={"gross_margin": 0.70})
+    grocery = assess_quality(st, peers={"gross_margin": 0.15})
+
+    assert software.grades["gross_margin_healthy"] == 0.0
+    assert grocery.grades["gross_margin_healthy"] == 100.0
+    assert grocery.score > software.score
+
+
+def test_a_loss_making_peer_group_falls_back_to_absolute_anchors() -> None:
+    """A negative median cannot anchor a relative score, and pretending otherwise would rank
+    companies against nonsense."""
+    st = _company(gross_profit=300.0, revenue=1000.0)
+    q = assess_quality(st, peers={"gross_margin": -0.10})
+    # Absolute anchors put 30% gross margin at 60.
+    assert q.grades["gross_margin_healthy"] == 60.0
