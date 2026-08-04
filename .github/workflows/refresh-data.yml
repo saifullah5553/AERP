@@ -9,7 +9,14 @@ name: Refresh Demo Data
 # with the default GITHUB_TOKEN do not trigger other workflows.)
 on:
   schedule:
-    - cron: "*/30 * * * *" # every 30 minutes (min practical for scheduled Actions)
+    # Deliberately NOT "*/30" (i.e. :00 and :30). Measured over 8 days on that cron, GitHub
+    # actually STARTED this workflow 3-7 times a day instead of 48 - the runs were dropped,
+    # not failed (44 of 48 that did start succeeded). Scheduled Actions are best-effort and
+    # the top and bottom of the hour are the most contended slots on the platform, so an
+    # odd minute gets dropped less. It is still best-effort: the only way to guarantee the
+    # 30-minute cadence is an external workflow_dispatch, which is never dropped
+    # (scripts/dispatch_refresh.ps1).
+    - cron: "13,43 * * * *"
   workflow_dispatch:
   push:
     paths: [".github/workflows/refresh-data.yml"] # self-test on changes
