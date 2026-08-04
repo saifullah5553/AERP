@@ -82,6 +82,12 @@ export default function MarketRegime() {
                         <span className="text-slate-400" title={s.note}>{s.label}</span>
                         <span className="flex items-center gap-2">
                           <span className="text-slate-300">{s.value}</span>
+                          {/* The period, stated. These feeds publish in arrears - CPI showed
+                              June's 11.1% while July's 9.2% was already public - and a macro
+                              reading with no date reads as today's. */}
+                          {s.as_of && (
+                            <span className="text-[10px] text-slate-500">{s.as_of}</span>
+                          )}
                           <span
                             className="h-1.5 w-10 overflow-hidden rounded bg-base-700"
                             title={s.score == null ? "" : `${Math.round(s.score)}/100`}

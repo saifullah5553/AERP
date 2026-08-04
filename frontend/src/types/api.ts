@@ -16,6 +16,8 @@ export interface RegimeSignal {
   value: string;
   score: number | null;
   note: string;
+  /** Period the reading describes ("Jun 26"). Absent for signals with no dated series. */
+  as_of?: string;
 }
 export interface CountryRegime {
   region: MarketRegion;

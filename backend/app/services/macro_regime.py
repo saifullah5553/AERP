@@ -61,6 +61,10 @@ class Signal:
     value: str
     score: float | None   # 0..100, higher = more supportive
     note: str = ""
+    # Period the figure describes. Not decoration: these feeds publish a month or more in
+    # arrears, so "CPI Inflation 11.1%" was read as today's inflation when it was June's, and
+    # nothing on the card said otherwise. A macro reading without its date is a guess.
+    as_of: str = ""
 
 
 @dataclass(slots=True)
@@ -79,6 +83,21 @@ def _latest(pts: list[dict]) -> float | None:
         if p.get("v") is not None:
             return float(p["v"])
     return None
+
+
+def _latest_date(pts: list[dict]) -> str:
+    """'Jun 26' for the newest point that actually carries a value."""
+    for p in reversed(pts or []):
+        if p.get("v") is not None:
+            when = str(p.get("t") or "")[:10]
+            try:
+                year, month = int(when[:4]), int(when[5:7])
+            except (ValueError, IndexError):
+                return ""
+            names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+            return f"{names[month - 1]} {str(year)[2:]}"
+    return ""
 
 
 def _value_months_ago(pts: list[dict], months: int) -> float | None:
@@ -203,19 +222,21 @@ def _pakistan_signals(pk: dict[str, list[dict]], kse_live: float | None = None) 
         disp = kse_live if kse_live else latest
         out.append(Signal("index_trend", "Index Trend (KSE-100)",
                           f"{d} {disp:,.0f}" if disp else "—", score,
-                          "vs 3 months ago"))
+                          "vs 3 months ago", _latest_date(kse)))
     rate = pk.get("sbp_policy_rate_pct") or []
     if rate:
         latest, ago = _latest(rate), _value_months_ago(rate, 6)
         out.append(Signal("rate_cycle", "SBP Policy Rate",
                           f"{_direction(latest, ago)} {latest:.1f}%" if latest else "—",
-                          _score_falling_good(latest, ago), "vs 6 months ago"))
+                          _score_falling_good(latest, ago), "vs 6 months ago",
+                          _latest_date(rate)))
     cpi = pk.get("cpi_yoy_pct") or []
     if cpi:
         latest, ago = _latest(cpi), _value_months_ago(cpi, 6)
         out.append(Signal("inflation_trend", "CPI Inflation",
                           f"{_direction(latest, ago)} {latest:.1f}%" if latest else "—",
-                          _score_falling_good(latest, ago), "vs 6 months ago"))
+                          _score_falling_good(latest, ago), "vs 6 months ago",
+                          _latest_date(cpi)))
     fx = pk.get("usd_pkr") or []
     if fx:
         latest, ago = _latest(fx), _value_months_ago(fx, 6)
@@ -223,7 +244,7 @@ def _pakistan_signals(pk: dict[str, list[dict]], kse_live: float | None = None) 
         score = {"↓": 75.0, "→": 62.0, "↑": 35.0}.get(d)
         out.append(Signal("currency_trend", "USD / PKR",
                           f"{d} {latest:.1f}" if latest else "—", score,
-                          "rising = PKR weakness"))
+                          "rising = PKR weakness", _latest_date(fx)))
     res = pk.get("fx_reserves_musd") or []
     if res:
         latest, ago = _latest(res), _value_months_ago(res, 6)
