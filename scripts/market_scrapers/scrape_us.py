@@ -83,7 +83,27 @@ CHALLENGE_POLL_SECONDS = 45
 CHALLENGE_RELOADS = 3          # poll, reload, poll, reload, poll - then give the browser up
 CHALLENGE_COOLDOWN = 120       # after clearing one, slow right down; the site is throttling us
 
-MIN_ROWS = 12         # a real statement has ~30 rows; less means a summary or a half-load
+# A floor, not a judgement. Row count alone cannot tell a genuinely short statement from a
+# truncated one, and at 12 it was wrong in both directions: real 9- and 11-row statements were
+# thrown away, while a balance sheet missing its whole liabilities half sailed through.
+MIN_ROWS = 5
+
+# What a real statement must actually SAY. Derived from the 7,837 US statements already on
+# disk, not guessed: every group below appears in 99.4-100% of them, and replaying these rules
+# over all of them rejected exactly one file - a balance sheet with no "Total Assets" row,
+# which is the defect this is meant to catch.
+#
+# Requiring assets AND liabilities is the point for the balance sheet: stockanalysis splits it
+# across several tables, and an assets-only capture is a plausible-looking half-statement that
+# nothing downstream can detect.
+REQUIRED_LABELS = {
+    "Income_Statement": [("net income", "pretax income")],
+    "Balance_Sheet": [("total assets",), ("total liabilities", "shareholders' equity")],
+    "Cash_Flow": [("operating cash flow", "net cash flow")],
+    # No single label is universal here, so any one of the common ones will do.
+    "Ratios": [("return on equity", "market cap", "pb ratio", "debt / equity",
+                "last close price")],
+}
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
 
@@ -299,7 +319,16 @@ def record_no_data(symbol, statement, reason, settled=None):
         settled.setdefault(symbol, {})[statement] = reason
 
 
-def scrape_statement(page, url):
+def missing_label(statement, rows):
+    """Which required line item is absent, or None when the statement looks complete."""
+    labels = {str(r[0]).strip().lower() for r in rows if r}
+    for group in REQUIRED_LABELS.get(statement, ()):
+        if not any(any(alt in lab for lab in labels) for alt in group):
+            return group[0].replace(" ", "_").replace("/", "").replace("'", "")
+    return None
+
+
+def scrape_statement(page, url, statement):
     """The statement table at `url`. Returns (dataframe_or_None, reason)."""
     try:
         resp = page.goto(url, wait_until="domcontentloaded", timeout=60000)
@@ -327,11 +356,13 @@ def scrape_statement(page, url):
                 cells = cells[: len(headers)] + [""] * max(0, len(headers) - len(cells))
             rows.append(cells)
         if len(rows) < MIN_ROWS:
-            # The count goes in the reason. MIN_ROWS sits right on the observed floor for the
-            # ratios page (real ones run 12-36 rows), so whether a rejection is a genuinely
-            # short statement or a half-rendered one cannot be told apart afterwards - and a
-            # rejected statement is retried on every restart, forever.
             return None, f"too_few_rows_{len(rows)}"
+        missing = missing_label(statement, rows)
+        if missing:
+            # Kept out deliberately. A statement missing one of these is not short, it is
+            # incomplete, and saving it would put a half-figure into the scoring engine with
+            # nothing downstream able to tell.
+            return None, f"missing_{missing}"
         return pd.DataFrame(rows, columns=headers), "ok"
     except Exception as exc:
         # A challenge page has no table, so the selector wait times out - check before
@@ -395,14 +426,14 @@ def scrape_symbol(page, symbol, settled=None):
             continue        # already confirmed absent; asking again just costs time
         url = (f"https://stockanalysis.com/{QUOTE_PREFIX}/"
                f"{symbol_to_slug(symbol)}/{path}/?p=trailing")
-        df, reason = scrape_statement(page, url)
+        df, reason = scrape_statement(page, url, name)
         if reason == "bot_check":
             # Do NOT record this as missing data: the company may well file statements, we were
             # simply stopped. Clear the check, then retry this same statement once.
             print("    human-verification check - retrying")
             if not clear_challenge(page, url):
                 raise RuntimeError("blocked by human-verification check")
-            df, reason = scrape_statement(page, url)
+            df, reason = scrape_statement(page, url, name)
             # Having been challenged once, keep well clear of whatever rate triggered it.
             pause(CHALLENGE_COOLDOWN)
         if df is not None and not df.empty:
