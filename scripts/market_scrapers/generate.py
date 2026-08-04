@@ -28,6 +28,10 @@ MARKETS = [
         "out": "us_data",
         "list_url": "https://stockanalysis.com/stocks/",
         "quote_prefix": "stocks",
+        # US only, and only because its download is in flight. Changing the statement set
+        # mid-run redefines "already done" for the 2,000 companies it has finished. Flip this
+        # to False once that run completes - nothing consumes the file.
+        "ratios": True,
         "slug": ("    # SEC writes class shares with a dash; stockanalysis uses a dot.\n"
                  '    return symbol.strip().upper().replace("-", ".")'),
     },
@@ -92,6 +96,7 @@ def main() -> None:
                 .replace("@@MARKET@@", m["market"])
                 .replace("@@LIST_URL@@", m["list_url"])
                 .replace("@@QUOTE_PREFIX@@", m["quote_prefix"])
+                .replace("@@DOWNLOAD_RATIOS@@", "True" if m.get("ratios") else "False")
                 .replace("@@SLUG_BODY@@", m["slug"]))
         if "@@" in body:
             leftover = body[body.index("@@"):][:40]

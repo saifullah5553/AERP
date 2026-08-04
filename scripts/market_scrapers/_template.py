@@ -53,12 +53,24 @@ NO_DATA_FILE = os.path.join(DATA_DIR, "_no_data.csv")
 CRASH_LOG = os.path.join(DATA_DIR, "_crashes.log")
 os.makedirs(DATA_DIR, exist_ok=True)
 
+# The ratios page is a quarter of every company's page loads and nothing reads the result.
+# The consolidator (backend fundamentals_store) loads income, balance sheet and cash flow and
+# nothing else, and every ratio the scoring engine uses - ROIC, current and quick ratios, debt
+# to equity, interest cover, net debt to EBITDA, the margins - is computed from those three in
+# engines/fundamental/ratios.py. The file was downloaded, checked, written to disk and never
+# opened again.
+#
+# Dropping it removes a page load and its pause per company, and - the part that matters more
+# after today - a quarter of the requests that provoke the human-verification check.
+DOWNLOAD_RATIOS = @@DOWNLOAD_RATIOS@@
+
 STATEMENTS = {
     "Income_Statement": "financials/income-statement",
     "Balance_Sheet": "financials/balance-sheet",
     "Cash_Flow": "financials/cash-flow-statement",
-    "Ratios": "financials/ratios",
 }
+if DOWNLOAD_RATIOS:
+    STATEMENTS["Ratios"] = "financials/ratios"
 
 # Pacing. Slower than feels necessary on purpose: stockanalysis starts serving a "verify you
 # are human" challenge when requests arrive at a machine-like rate, and a challenge costs far
