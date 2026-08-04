@@ -225,6 +225,14 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
         # anonymous line. Parallel arrays keep screener.json small - pairing them as objects
         # would repeat two keys 20 times for every one of 12,000 rows.
         r["score_history_dates"] = [p["date"] for p in series]
+        # One flat field per quarter (q_2026Q2), because the grid sorts by column id and the
+        # static sort path reads a plain numeric field. Emitted only for quarters a company
+        # actually reported, so a name with three points costs three fields rather than twenty.
+        for point in series:
+            when = str(point.get("date") or "")
+            if len(when) >= 7:
+                year, month = int(when[:4]), int(when[5:7])
+                r[f"q_{year}Q{(month - 1) // 3 + 1}"] = point["score"]
         # Which set of results this name's numbers are through - shown on the portfolio.
         r["results_through"] = series[-1]["date"]
         built += 1

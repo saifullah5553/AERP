@@ -48,6 +48,11 @@ function quarterLabel(key: string): string {
   return `${month} ${year.slice(2)}`;
 }
 
+/** "2026-Q2" -> "q_2026Q2", the row field holding that quarter's score. */
+function quarterField(key: string): string {
+  return `q_${key.replace("-", "")}`;
+}
+
 /**
  * The twelve-month window a column covers, spelled out: "Apr 25 - Mar 26".
  *
@@ -100,13 +105,16 @@ function recentQuarters(count: number): string[] {
 /** One column per quarter: that quarter's fundamental score, and the move against the prior one. */
 function quarterColumns(): ColDef<ScreenerRow>[] {
   return recentQuarters(20).map((key) => ({
-    colId: `q_${key}`,
+    // colId must equal the row field: the grid sends the sorted column's id as sort_by, and the
+    // sort reads that field directly. A mismatch sorts by nothing, silently.
+    colId: quarterField(key),
+    field: quarterField(key) as keyof ScreenerRow,
     headerName: quarterLabel(key),
     headerTooltip:
       `Fundamental score for the TWELVE MONTHS ended ${quarterLabel(key)} ` +
       `(${quarterWindow(key)}) - not the quarter alone`,
     width: 78,
-    sortable: false,
+    sortable: true,
     cellRenderer: QuarterScoreCell,
     cellRendererParams: { quarterKey: key },
   }));
