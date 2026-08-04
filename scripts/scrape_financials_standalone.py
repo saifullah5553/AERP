@@ -135,6 +135,46 @@ REQUIRED_LABELS: dict[str, tuple[set[str], ...]] = {
 }
 
 SKIP_RESOURCES = {"image", "media", "font", "stylesheet"}  # never needed to read a table
+
+# Timeouts, scaled by --patience. Being impatient does not make a slow page arrive sooner; it
+# just discards it. The US harvest stopped at 3,509 of 5,601 because one page took longer than
+# the old 20s allowance and the whole harvest was abandoned.
+PATIENCE = 1.0
+
+
+def ms(base: int) -> int:
+    return int(base * PATIENCE)
+
+
+# Waiting for "networkidle" is off by default because it is actively harmful here, which is
+# the opposite of what you would expect. Measured on the same page, same machine:
+#
+#     with networkidle    -> FAILED,      130s
+#     without             -> 46x42 rows,  1.2s
+#
+# These pages never go quiet - ad and analytics scripts hold connections open - so the wait
+# burns its full allowance on every attempt and the table check then expires. Enable it with
+# --wait-networkidle if a particular network needs it.
+WAIT_NETWORKIDLE = False
+
+# Extra pause after a page is judged loaded. Cheap insurance against reading a fraction of a
+# second too early, which is the failure that produced half-captured statements.
+BUFFER_MS = 600
+
+
+def settle(page, timeout_base: int = 8000) -> None:
+    """Give the page a moment to render after navigation.
+
+    A short fixed pause, not a load-state wait. The real proof the page is ready is the
+    table-row check that follows: it tests the thing we actually need instead of a proxy.
+    """
+    if WAIT_NETWORKIDLE:
+        try:
+            page.wait_for_load_state("networkidle", timeout=ms(timeout_base))
+            return
+        except Exception:  # noqa: BLE001 - a page that never idles is still usable
+            return
+    page.wait_for_timeout(ms(500))
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
 
@@ -219,11 +259,12 @@ def harvest_symbols(page, region: str) -> list[str]:
     seen: set[str] = set()
     stalls = 0
     try:
-        page.goto(url, wait_until="domcontentloaded", timeout=45000)
+        page.goto(url, wait_until="domcontentloaded", timeout=ms(60000))
+        settle(page)
         page.wait_for_function(
             "() => [...document.querySelectorAll('table')]"
             ".some(t => t.querySelectorAll('tbody tr').length > 10)",
-            timeout=25000,
+            timeout=ms(40000),
         )
         # The page states its own size ("383 Stocks"). Trust it as the bound: when a market
         # fits on one page there is still a "Next" control, and following it walked off the
@@ -251,7 +292,18 @@ def harvest_symbols(page, region: str) -> list[str]:
             if nxt.count() == 0 or not nxt.first.is_enabled():
                 break
             head = rows[0] if rows else ""
-            nxt.first.click()
+            try:
+                nxt.first.click(timeout=ms(20000))
+            except Exception:  # noqa: BLE001
+                # This click sat outside the retry below, so a single slow "Next" aborted the
+                # entire harvest - which is how the US list stopped at 3,509 of 5,601 and
+                # reported "could not harvest the listing".
+                if stalls < 5:
+                    stalls += 1
+                    log(f"  {region}: next page slow, waiting ({stalls}/5)")
+                    page.wait_for_timeout(ms(5000))
+                    continue
+                break
             try:
                 # Compare the SYMBOL, resolved by header exactly as the extractor does. An
                 # earlier version compared against every cell in the row, so a leading "No."
@@ -274,14 +326,16 @@ def harvest_symbols(page, region: str) -> list[str]:
                         const tds = [...first.querySelectorAll('td')];
                         return i < tds.length && tds[i].innerText.trim() !== h;
                     }""",
-                    arg=head, timeout=20000,
+                    arg=head, timeout=ms(35000),
                 )
+                settle(page, 8000)
             except Exception:  # noqa: BLE001
                 # A slow page is not the end of the list. Giving up on the first timeout
                 # stopped the US harvest at 3,509 of 5,601 and called it done.
-                if declared and len(found) < declared and stalls < 3:
+                if declared and len(found) < declared and stalls < 5:
                     stalls += 1
-                    page.wait_for_timeout(3000)
+                    log(f"  {region}: page slow to change, waiting ({stalls}/5)")
+                    page.wait_for_timeout(ms(5000))
                     continue
                 break
     except Exception as exc:  # noqa: BLE001
@@ -290,6 +344,9 @@ def harvest_symbols(page, region: str) -> list[str]:
     if declared and len(found) > declared:
         log(f"  {region}: trimming {len(found)} harvested to the declared {declared}")
         found = found[:declared]
+    if declared and len(found) < declared:
+        log(f"  {region}: WARNING - harvested {len(found)} of {declared}. "
+            f"Delete data/universe/{region}.csv and rerun, or raise --patience.")
     return found
 
 
@@ -414,20 +471,41 @@ def _scrape_once(page, url: str):
     import pandas as pd
 
     try:
-        resp = page.goto(url, wait_until="domcontentloaded", timeout=45000)
+        resp = page.goto(url, wait_until="domcontentloaded", timeout=ms(60000))
         if resp and resp.status == 429:
             _throttled()
             return None
+        if resp and resp.status == 404:
+            # "This stock exists, but the specific page type was not found" - shells and SPACs
+            # genuinely have no financials. That is an answer, not a timeout, so it must not be
+            # retried: three attempts across four statements on every such name is pure waste.
+            return NO_SUCH_PAGE
         if not resp or resp.status >= 400:
             return None
+        settle(page)                      # let the page finish fetching before we read it
 
         # Wait for a table big enough to BE a statement. Waiting for "a table" returns
         # instantly on the static summary.
         page.wait_for_function(
             "n => [...document.querySelectorAll('table')]"
             ".some(t => t.querySelectorAll('tbody tr').length >= n)",
-            arg=MIN_ROWS, timeout=20000,
+            arg=MIN_ROWS, timeout=ms(30000),
         )
+        # ...then wait until the table STOPS GROWING. "Enough rows" is not "finished": these
+        # statements render in pieces, and reading at the first sign of a table captured half
+        # of them. Two identical counts in a row is the cheap, reliable definition of loaded -
+        # unlike networkidle, it tests the thing we actually need.
+        previous = -1
+        for _ in range(int(20 * PATIENCE)):
+            count = page.evaluate(
+                "() => [...document.querySelectorAll('table')]"
+                ".reduce((n, t) => n + t.querySelectorAll('tbody tr').length, 0)"
+            )
+            if count == previous:
+                break
+            previous = count
+            page.wait_for_timeout(ms(500))
+        page.wait_for_timeout(ms(int(BUFFER_MS)))
         data = page.evaluate(_EXTRACT_JS)
         if not data or not data["headers"] or not data["rows"]:
             return None
@@ -444,17 +522,23 @@ def _scrape_once(page, url: str):
         return None
 
 
+# Sentinel: the page does not exist, so retrying cannot help.
+NO_SUCH_PAGE = object()
+
+
 def scrape_table(page, url: str, statement: str | None = None, attempts: int = 3):
     for n in range(attempts):
         _wait_out_cooldown()
         df = _scrape_once(page, url)
+        if df is NO_SUCH_PAGE:
+            return None
         if df is not None and len(df) >= MIN_ROWS and (
             statement is None or _complete(df, statement)
         ):
             _cleared()
             return df
         if n + 1 < attempts:
-            page.wait_for_timeout(1500)
+            page.wait_for_timeout(ms(2500))
     return None
 
 
@@ -535,8 +619,19 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--out", default=None,
                     help="where to write data/ (default: next to this script)")
+    ap.add_argument("--patience", type=float, default=1.0,
+                    help="multiply every timeout. Use 2 on a slow connection")
+    ap.add_argument("--buffer", type=float, default=0.6,
+                    help="seconds to pause after each page settles, before reading it")
+    ap.add_argument("--wait-networkidle", action="store_true",
+                    help="wait for the network to go quiet after each page. Measured as "
+                         "SLOWER and less reliable here - these pages never idle")
     args = ap.parse_args()
 
+    global PATIENCE, WAIT_NETWORKIDLE, BUFFER_MS
+    PATIENCE = max(0.5, args.patience)
+    WAIT_NETWORKIDLE = args.wait_networkidle
+    BUFFER_MS = max(0.0, args.buffer) * 1000
     if args.out:
         set_base_dir(Path(args.out))
     check_writable()
