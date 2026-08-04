@@ -578,6 +578,41 @@ def _merge_sector_stats(fresh: dict, path) -> dict:
     return merged
 
 
+# Screener fields produced by the fundamentals pass, not by the pipeline that rebuilds rows.
+# Anything derived from scraped TTM statements belongs here: the quality engine, the twenty
+# quarter columns, the strategy verdict that gates on them.
+_ENRICHMENT_FIELDS = (
+    "quality_score", "quality_passed", "quality_trend", "quality_change",
+    "score_history", "score_history_dates", "results_through",
+    "strategy_action", "strategy_conviction",
+)
+# Same idea for the per-company files: the scraped twenty-quarter statements and the series
+# built from them. `statements` is deliberately NOT here - a refresh does produce that.
+_ENRICHMENT_DOC_KEYS = ("statements_ttm", "quality_history", "quality_trend", "score_history")
+
+
+def _empty(value: object) -> bool:
+    return value is None or value == [] or value == "" or value == {}
+
+
+def _carry_enrichment(fresh: dict, prior: dict | None) -> dict:
+    """Let a rebuilt row keep what the rebuild could not compute.
+
+    A fresh row wins every field it actually has. Where it has nothing and the previous
+    snapshot did, the old value stands rather than being overwritten with a blank.
+    """
+    if not prior:
+        return fresh
+    for key in _ENRICHMENT_FIELDS:
+        if _empty(fresh.get(key)) and not _empty(prior.get(key)):
+            fresh[key] = prior[key]
+    # Quarter columns are named for the quarter (q_2026Q2), so they go by prefix.
+    for key, value in prior.items():
+        if key.startswith("q_") and _empty(fresh.get(key)) and not _empty(value):
+            fresh[key] = value
+    return fresh
+
+
 def cmd_export_static(args: argparse.Namespace) -> None:
     """Export the computed data as static JSON for a backend-less Pages demo."""
     import json
@@ -621,6 +656,14 @@ def cmd_export_static(args: argparse.Namespace) -> None:
         # produced win; rows only in the old snapshot are preserved. This lets the
         # free CI refresh (PSX-only, since Yahoo 429s on datacenter IPs) update PSX
         # without wiping US rows that were populated locally from a residential IP.
+        #
+        # "Rows this run produced win" is not enough on its own, and the gap was invisible
+        # for exactly the same reason the merge exists. A CI row wins on every field - INCLUDING
+        # the ones CI cannot compute. The runner rebuilds PSX from the portal feed alone: no
+        # scraped TTM statements, no quality pass. So every refresh replaced each PSX row with
+        # one carrying no fundamental score, no quarter columns and no trend, and PSX is the one
+        # market with twenty quarters of them. US/India/Australia looked fine only because they
+        # are absent from the CI database and so were never rewritten at all.
         screener_path = out / "screener.json"
         prior_by_symbol: dict = {}
         if merge and screener_path.exists():
@@ -631,7 +674,8 @@ def cmd_export_static(args: argparse.Namespace) -> None:
             prior_by_symbol = {r.get("provider_symbol"): r for r in old}
             by_symbol = {r.get("provider_symbol"): r for r in old}
             for r in fresh:
-                by_symbol[r.get("provider_symbol")] = r
+                sym = r.get("provider_symbol")
+                by_symbol[sym] = _carry_enrichment(r, prior_by_symbol.get(sym))
             merged = list(by_symbol.values())
         else:
             merged = fresh
@@ -792,9 +836,20 @@ def cmd_export_static(args: argparse.Namespace) -> None:
                 d["signal"]["signal_since"] = row.get("signal_since")
                 d["signal"]["signal_return_pct"] = row.get("signal_return_pct")
                 d["signal"]["price_at_signal"] = row.get("price_at_signal")
-            (out / "company" / f"{r.provider_symbol}.json").write_text(
-                json.dumps(d), encoding="utf-8"
-            )
+            # The company file gets the same treatment as the screener row above, and needs it
+            # just as badly: a rebuilt PSX document arrives with five annual statements and no
+            # statements_ttm, so a plain write threw away the twenty scraped quarters and the
+            # score series built from them - the inputs, not just the outputs.
+            target = out / "company" / f"{r.provider_symbol}.json"
+            if target.exists():
+                try:
+                    prior_doc = json.loads(target.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    prior_doc = {}
+                for key in _ENRICHMENT_DOC_KEYS:
+                    if _empty(d.get(key)) and not _empty(prior_doc.get(key)):
+                        d[key] = prior_doc[key]
+            target.write_text(json.dumps(d), encoding="utf-8")
             exported += 1
         # Company files for securities only in the old snapshot are left in place.
         company_files = len(list((out / "company").glob("*.json")))
