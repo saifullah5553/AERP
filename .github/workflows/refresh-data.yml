@@ -103,10 +103,35 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add frontend/public/data
+
+          # screener.json (11.6 MB) and movers.json (4.3 MB) are ~1.4 MB of packed history
+          # EVERY run. That was fine at the 5 runs a day GitHub's scheduler actually
+          # delivered; at 48 it is ~2 GB a month, and the repo is already 246 MB. So they go
+          # in every 6 hours rather than every run.
+          #
+          # Safe to hold back because neither is state: export-static rebuilds both from the
+          # database on every run, and Pages is built from the working tree, not from git -
+          # so the published site always carries the newest copy either way. Everything else
+          # under data/ is still committed every run, catalysts.json above all: the new-alert
+          # diff reads its previous version out of git, so throttling THAT would re-send the
+          # same alerts for six hours.
+          mark=frontend/public/data/.snapshot_committed_at
+          last=$(cat "$mark" 2>/dev/null || echo 0)
+          if [ "$(( $(date +%s) - last ))" -ge 21600 ]; then
+            date +%s > "$mark"
+            git add -f "$mark" frontend/public/data/screener.json \
+                               frontend/public/data/movers.json
+          else
+            git restore --staged frontend/public/data/screener.json \
+                                 frontend/public/data/movers.json 2>/dev/null || true
+          fi
+
           if git diff --cached --quiet; then
             echo "No data changes."
           else
             git commit -m "chore: refresh demo data snapshot"
+            # Rebase first: a chained run every 30 minutes will regularly race a human push.
+            git pull --rebase --autostash -q origin main || true
             git push || echo "push skipped"
           fi
 
@@ -134,3 +159,47 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  # Each run asks for the next one, so the cadence does not depend on GitHub's scheduler -
+  # which measurably drops ~90% of what the cron above asks for. A workflow_dispatch is the
+  # documented exception to "the default GITHUB_TOKEN cannot trigger workflows", so this
+  # needs no personal access token and nothing outside GitHub. The cron stays as the thing
+  # that restarts the loop if it ever stops.
+  chain:
+    needs: [build, deploy]
+    if: always() # a failed run must still hand off, or the loop dies on the first bad day
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      # Target wall-clock between run STARTS. A run takes ~13 min, so most of this is the
+      # wait. Set it to 0 for back-to-back runs (~13-minute data, same runner cost).
+      CYCLE_MINUTES: "30"
+    steps:
+      - name: Wait out the cycle, then ask for the next run
+        run: |
+          set -euo pipefail
+          started=$(gh api "repos/$REPO/actions/runs/${{ github.run_id }}" --jq .run_started_at)
+          elapsed=$(( $(date +%s) - $(date -d "$started" +%s) ))
+          remain=$(( CYCLE_MINUTES * 60 - elapsed ))
+          if [ "$remain" -gt 0 ]; then
+            echo "Run started $started (${elapsed}s ago); waiting ${remain}s."
+            sleep "$remain"
+          fi
+
+          # Checked AFTER the wait, not before: the cron can fire while we sleep, and that
+          # run is then the loop. Dispatching anyway would leave two chains, then four - the
+          # interval halving every time until the repo is running Actions continuously.
+          live=$(gh api "repos/$REPO/actions/workflows/refresh-data.yml/runs?per_page=50" \
+                   --jq "[.workflow_runs[]
+                          | select(.id != ${{ github.run_id }})
+                          | select(.status != \"completed\")] | length")
+          if [ "$live" -gt 0 ]; then
+            echo "$live other run(s) already pending - they carry the loop. Not chaining."
+            exit 0
+          fi
+
+          gh workflow run refresh-data.yml --ref main
+          echo "Next refresh requested."
