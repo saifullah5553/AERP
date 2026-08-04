@@ -93,10 +93,18 @@ def pause(seconds):
     time.sleep(max(0.2, seconds * (1 + random.uniform(-JITTER, JITTER))))
 
 
-# Text that appears on the challenge page instead of the data.
+# Whole phrases that appear ONLY on an interstitial. Single words do not work here: the list
+# used to include "cloudflare" and "captcha", and Cloudflare, Inc. (NET) is a company on this
+# site, so its income statement - fully loaded, table and all - was read as a bot check and
+# stopped the entire US run on it.
 CHALLENGE_MARKERS = (
-    "verify you are human", "are you a robot", "not a robot", "just a moment",
-    "checking your browser", "cloudflare", "captcha", "unusual traffic",
+    "verify you are human",
+    "checking your browser before accessing",
+    "just a moment...",
+    "attention required! | cloudflare",
+    "enable javascript and cookies to continue",
+    "please complete the security check",
+    "unusual traffic from your computer network",
 )
 
 
@@ -106,8 +114,14 @@ def is_challenged(page):
     Worth detecting explicitly: a challenge page has no statement table, so it is otherwise
     indistinguishable from a company that files nothing - and that would quietly drop a real
     company from the platform.
+
+    The table check comes FIRST and settles it. If the statement is on the page then we were
+    served the data, whatever words happen to appear elsewhere on it. Judging by text alone is
+    what let a company NAME masquerade as a block.
     """
     try:
+        if page.query_selector("table tbody tr"):
+            return False
         body = (page.inner_text("body") or "").lower()[:4000]
     except Exception:
         return False
