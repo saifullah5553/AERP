@@ -6,6 +6,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
 from app.core.snapshot_lock import LOCK_NAME, MAX_HOLD_MINUTES, snapshot_lock
 
 
@@ -63,6 +64,7 @@ def test_corrupt_lock_file_is_not_a_lock(tmp_path) -> None:
         assert ok is True
 
 
+@pytest.mark.skipif(os.name != "nt", reason="the image-name check is Windows-only by design")
 def test_recycled_pid_owned_by_another_program_is_broken(tmp_path) -> None:
     # A live PID, inside the deadline, but the image name does not match the recorded owner.
     # This is the real-world case: the pipeline churns through hundreds of browser processes,

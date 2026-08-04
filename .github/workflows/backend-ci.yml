@@ -32,4 +32,18 @@ jobs:
         continue-on-error: true  # advisory in Phase 1; enforced from Phase 3
 
       - name: Tests (pytest)
-        run: pytest -q
+        # The summary is echoed back as ::error:: annotations on failure. Downloading job logs
+        # from the API needs admin rights on the repo; annotations do not, so a red build can
+        # actually be diagnosed from the notification instead of guessed at. This suite passes
+        # on Windows and has failed on this Linux runner before, so "it works locally" is not
+        # evidence of anything.
+        run: |
+          set +e
+          pytest -q --tb=short 2>&1 | tee pytest-out.txt
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            grep -E "^(FAILED|ERROR)" pytest-out.txt | while read -r line; do
+              echo "::error::$line"
+            done
+          fi
+          exit "$code"

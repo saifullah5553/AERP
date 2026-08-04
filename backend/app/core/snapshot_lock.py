@@ -44,16 +44,60 @@ MAX_HOLD_MINUTES = 90
 
 def _started_at(pid: int) -> datetime | None:
     """When did that pid start? None if unknown or the process is gone."""
+    if os.name == "nt":
+        try:
+            out = subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                 f"(Get-Process -Id {pid} -ErrorAction SilentlyContinue)"
+                 ".StartTime.ToUniversalTime().ToString('o')"],
+                capture_output=True, text=True, timeout=20,
+            ).stdout.strip()
+            return datetime.fromisoformat(out).replace(tzinfo=UTC) if out else None
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return None
+    # Linux: /proc/<pid> is created when the process starts, so the directory's own timestamp
+    # IS the start time. Worth having because the whole pipeline also runs on the CI runner,
+    # where this lock is taken for real. Anything without /proc (macOS) just returns None and
+    # the caller falls back to the age deadline.
+    try:
+        return datetime.fromtimestamp(Path(f"/proc/{pid}").stat().st_ctime, UTC)
+    except (OSError, ValueError, OverflowError):
+        return None
+
+
+def _running(pid: int) -> bool:
+    """Does any process hold this pid right now?"""
+    try:
+        if os.name == "nt":
+            out = subprocess.run(
+                ["tasklist", "/FI", f"PID eq {pid}", "/NH", "/FO", "CSV"],
+                capture_output=True, text=True, timeout=15,
+            ).stdout
+            return str(pid) in out
+        os.kill(pid, 0)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return False
+    return True
+
+
+def _image_name(pid: int) -> str | None:
+    """Executable name behind a pid - Windows only, deliberately.
+
+    Linux can be asked the same question via /proc/<pid>/exe, but the answer does not compare
+    cleanly: the lock records `Path(sys.executable).name`, and on a CI runner that is "python"
+    while the resolved binary is "python3.12". A mismatch there would break every live lock
+    rather than only the recycled ones, so on Linux this check is simply not made and the
+    start-time check below carries the load.
+    """
     if os.name != "nt":
         return None
     try:
         out = subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command",
-             f"(Get-Process -Id {pid} -ErrorAction SilentlyContinue).StartTime.ToUniversalTime()"
-             ".ToString('o')"],
-            capture_output=True, text=True, timeout=20,
-        ).stdout.strip()
-        return datetime.fromisoformat(out).replace(tzinfo=UTC) if out else None
+            ["tasklist", "/FI", f"PID eq {pid}", "/NH", "/FO", "CSV"],
+            capture_output=True, text=True, timeout=15,
+        ).stdout
+        # First CSV field is the image name: "python.exe","34060",...
+        return out.strip().split('","')[0].lstrip('"').lower() if '","' in out else None
     except (OSError, subprocess.SubprocessError, ValueError):
         return None
 
@@ -70,31 +114,20 @@ def _alive(pid: int, exe: str | None = None, lock_started: datetime | None = Non
     Start time does. A process that began AFTER the lock was written cannot be the writer that
     wrote it, whatever its pid or executable says.
     """
-    if pid <= 0:
+    if pid <= 0 or not _running(pid):
         return False
-    try:
-        if os.name == "nt":
-            out = subprocess.run(
-                ["tasklist", "/FI", f"PID eq {pid}", "/NH", "/FO", "CSV"],
-                capture_output=True, text=True, timeout=15,
-            ).stdout
-            if str(pid) not in out:
-                return False
-            # First CSV field is the image name: "python.exe","34060",...
-            name = out.strip().split('","')[0].lstrip('"').lower() if '","' in out else ""
-            if exe and name and name != exe.lower():
-                return False
-            if lock_started:
-                begun = _started_at(pid)
-                # Small grace: the owner writes the lock a moment after it starts, and the two
-                # clocks are not the same source.
-                if begun and begun > lock_started + timedelta(seconds=90):
-                    log.warning("snapshot lock: pid %s started after the lock - recycled", pid)
-                    return False
-            return True
-        os.kill(pid, 0)
-    except (OSError, subprocess.SubprocessError, ValueError):
+
+    name = _image_name(pid)
+    if exe and name and name != exe.lower():
         return False
+
+    if lock_started:
+        begun = _started_at(pid)
+        # Small grace: the owner writes the lock a moment after it starts, and the two clocks
+        # are not the same source.
+        if begun and begun > lock_started + timedelta(seconds=90):
+            log.warning("snapshot lock: pid %s started after the lock - recycled", pid)
+            return False
     return True
 
 
