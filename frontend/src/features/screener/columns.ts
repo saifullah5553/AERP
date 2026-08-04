@@ -41,11 +41,31 @@ export function quarterKey(iso: string): string {
   return `${d.getFullYear()}-Q${Math.floor(d.getMonth() / 3) + 1}`;
 }
 
-/** "Jun 26" - the quarter END, which is what the statement is dated. */
+/** "Jun 26" - the period END, which is what the statement is dated. */
 function quarterLabel(key: string): string {
   const [year, q] = key.split("-Q");
   const month = ["Mar", "Jun", "Sep", "Dec"][Number(q) - 1] ?? "";
   return `${month} ${year.slice(2)}`;
+}
+
+/**
+ * The twelve-month window a column covers, spelled out: "Apr 25 - Mar 26".
+ *
+ * The header alone reads like a quarter, and every figure here is a TRAILING TWELVE MONTHS
+ * score - "Mar 26" is the year to 31 Mar 26, not the Jan-Mar quarter. Reading it as three
+ * months would misinterpret every number in the row, so the window is stated rather than
+ * implied.
+ */
+function quarterWindow(key: string): string {
+  const [yearStr, q] = key.split("-Q");
+  const year = Number(yearStr);
+  const endMonth = Number(q) * 3;                    // 3, 6, 9, 12
+  const startMonth = (endMonth % 12) + 1;            // the month after, a year earlier
+  const startYear = endMonth === 12 ? year : year - 1;
+  const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const two = (y: number) => String(y).slice(2);
+  return `${names[startMonth - 1]} ${two(startYear)} - ${names[endMonth - 1]} ${two(year)}`;
 }
 
 /**
@@ -82,7 +102,9 @@ function quarterColumns(): ColDef<ScreenerRow>[] {
   return recentQuarters(20).map((key) => ({
     colId: `q_${key}`,
     headerName: quarterLabel(key),
-    headerTooltip: `Fundamental score for the trailing twelve months ended ${quarterLabel(key)}`,
+    headerTooltip:
+      `Fundamental score for the TWELVE MONTHS ended ${quarterLabel(key)} ` +
+      `(${quarterWindow(key)}) - not the quarter alone`,
     width: 78,
     sortable: false,
     cellRenderer: QuarterScoreCell,
