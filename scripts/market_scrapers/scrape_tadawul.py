@@ -289,6 +289,15 @@ def scrape_statement(page, url):
         return None, type(exc).__name__
 
 
+def already_done(symbol):
+    """Are all four statements already on disk for this company?"""
+    return all(
+        os.path.exists(os.path.join(DATA_DIR, f"{symbol}_{name}.csv"))
+        and os.path.getsize(os.path.join(DATA_DIR, f"{symbol}_{name}.csv")) > 10
+        for name in STATEMENTS
+    )
+
+
 def scrape_symbol(page, symbol):
     saved = 0
     for name, path in STATEMENTS.items():
@@ -329,7 +338,20 @@ def main():
         ).new_page()
 
         symbols = collect_symbols(page)
-        print(f"\nSaudi (Tadawul): {len(symbols)} symbols. Writing to {DATA_DIR}\n")
+
+        # Drop what is already downloaded BEFORE the loop, not inside it. Skipping a finished
+        # company still cost a printed line and the full inter-company pause, so restarting
+        # with 2,000 done sat for over two hours doing nothing before reaching new work -
+        # which looks exactly like starting from zero.
+        total = len(symbols)
+        symbols = [s for s in symbols if not already_done(s)]
+        print(f"\nSaudi (Tadawul): {total} symbols, {total - len(symbols)} already "
+              f"downloaded, {len(symbols)} to go.")
+        print(f"Writing to {DATA_DIR}\n")
+        if not symbols:
+            print("Nothing left to fetch.")
+            browser.close()
+            return
 
         for i, symbol in enumerate(symbols, 1):
             print(f"[{i}/{len(symbols)}] {symbol}")
