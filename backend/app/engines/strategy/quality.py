@@ -40,6 +40,65 @@ _CASH_CHECKS = (
 )
 _DEBT_CHECKS = ("debt_low_or_falling",)
 
+# What the score is actually made of. Weighted per check rather than averaged within a pillar,
+# because averaging made every cash test count the same - "cash reserves look healthy" carried
+# as much as "the business generates operating cash", which is not how the thesis works.
+#
+# The four that decide it are growth, operating cash flow, free cash flow and debt: 85% of the
+# score between them. The remaining three are corroborating detail, not reasons to own a
+# business, so they share 15%.
+#
+# Weights are renormalised over whatever could be evaluated, so a missing line item never reads
+# as a failed test.
+CHECK_WEIGHTS: dict[str, float] = {
+    # GROWTH - 40%. The thesis: buy businesses that are getting bigger.
+    "revenue_rising": 0.1334,
+    "operating_profit_rising": 0.1333,
+    "eps_rising": 0.1333,
+    # CASH - 20%. Operating and free cash flow carry it; the other three corroborate rather
+    # than justify, so they take the remainder.
+    "cash_flow_positive": 0.07,
+    "free_cash_flow_positive": 0.07,
+    "earnings_backed_by_cash": 0.025,
+    "cash_reserves_healthy": 0.0175,
+    "cash_building": 0.0175,
+    # DEBT - 20%. A guardrail, but a heavy one: leverage is what turns a bad quarter fatal.
+    "debt_low_or_falling": 0.20,
+    # VALUATION AND RETURNS - 20%, split evenly.
+    #
+    # Valuation (10%): a great business bought at any price is not a good investment. These are
+    # the only checks that need a quote, so they are the only ones that go unknown for a
+    # company we have statements but no price for.
+    "earnings_yield_attractive": 0.025,
+    "fcf_yield_attractive": 0.025,
+    "price_to_book_reasonable": 0.025,
+    "margin_of_safety": 0.025,
+    # Returns and margins (10%): how well the business converts capital and sales into profit.
+    # Growth tells you a company is getting bigger; these tell you whether that is worth
+    # anything. Computed from statements alone, so they score even without a quote.
+    "roe_strong": 0.025,
+    "roa_strong": 0.025,
+    "operating_margin_healthy": 0.025,
+    "net_margin_healthy": 0.025,
+}
+
+_VALUATION_CHECKS = ("earnings_yield_attractive", "fcf_yield_attractive",
+                     "price_to_book_reasonable", "margin_of_safety")
+_RETURN_CHECKS = ("roe_strong", "roa_strong",
+                  "operating_margin_healthy", "net_margin_healthy")
+
+# Thresholds for the valuation pillar. Deliberately plain and absolute rather than relative to
+# a sector or an index: a rule you can check by hand is one you can disagree with.
+EARNINGS_YIELD_GOOD = 0.05      # P/E <= 20
+FCF_YIELD_GOOD = 0.04           # 4% of market cap in free cash flow
+PRICE_TO_BOOK_GOOD = 3.0
+MARGIN_OF_SAFETY_YIELD = 0.10   # P/E <= 10 - the classic value cushion
+
+ROE_GOOD = 0.15                 # 15% on equity
+ROA_GOOD = 0.05                 # 5% on total assets
+OPERATING_MARGIN_GOOD = 0.10
+NET_MARGIN_GOOD = 0.05
+
 
 def _f(v: Any) -> float | None:
     try:
@@ -95,10 +154,109 @@ class QualityResult:
         return self.passed or self.improving
 
 
-def assess_quality(statements: dict[str, list[dict]], min_checks: int = 5) -> QualityResult:
-    """Run the nine quality tests. `passed` requires the non-negotiables (positive operating
-    cash flow, rising EPS) plus a majority of BOTH the growth and cash pillars - growth and
-    cash are the thesis, so neither can be waved through by the other."""
+def _add_return_checks(checks: dict, metrics: dict, inc: list[dict], bal: list[dict]) -> None:
+    """Returns on capital and margins - how good the business is, not how big or how cheap.
+
+    Statement-only, so unlike the valuation tests these are answerable for every company we
+    have accounts for.
+    """
+    for key in _RETURN_CHECKS:
+        checks.setdefault(key, None)
+
+    latest_inc = inc[0] if inc else {}
+    latest_bal = bal[0] if bal else {}
+    net_income = _f(latest_inc.get("net_income"))
+    revenue = _f(latest_inc.get("revenue"))
+    op_income = _f(latest_inc.get("operating_income"))
+    equity = _f(latest_bal.get("total_equity"))
+    assets = _f(latest_bal.get("total_assets"))
+
+    roe = net_income / equity if (net_income is not None and equity and equity > 0) else None
+    roa = net_income / assets if (net_income is not None and assets and assets > 0) else None
+    op_margin = op_income / revenue if (op_income is not None and revenue and revenue > 0) else None
+    net_margin = net_income / revenue if (net_income is not None and revenue and revenue > 0) else None
+
+    metrics.update({"roe": roe, "roa": roa,
+                    "operating_margin": op_margin, "net_margin": net_margin})
+    if roe is not None:
+        checks["roe_strong"] = roe >= ROE_GOOD
+    if roa is not None:
+        checks["roa_strong"] = roa >= ROA_GOOD
+    if op_margin is not None:
+        checks["operating_margin_healthy"] = op_margin >= OPERATING_MARGIN_GOOD
+    if net_margin is not None:
+        checks["net_margin_healthy"] = net_margin >= NET_MARGIN_GOOD
+
+
+def _add_valuation_checks(checks: dict, metrics: dict, inc: list[dict], bal: list[dict],
+                          cf: list[dict], market: dict | None) -> None:
+    """Is it cheap enough to be worth owning? Only answerable with a price.
+
+    Every check defaults to None. A company we cannot price must not be scored as though it
+    were expensive - that would quietly punish exactly the illiquid names where a quote is
+    hardest to get.
+    """
+    for key in _VALUATION_CHECKS:
+        checks.setdefault(key, None)
+    if not market:
+        return
+
+    price = _f(market.get("price"))
+    market_cap = _f(market.get("market_cap"))
+    shares = _f(market.get("shares"))
+    if market_cap is None and price and shares:
+        market_cap = price * shares
+
+    latest_inc = inc[0] if inc else {}
+    latest_bal = bal[0] if bal else {}
+    latest_cf = cf[0] if cf else {}
+    eps = _f(latest_inc.get("eps"))
+    net_income = _f(latest_inc.get("net_income"))
+    equity = _f(latest_bal.get("total_equity"))
+    fcf = _f(latest_cf.get("free_cash_flow"))
+
+    # Earnings yield, the inverse of P/E. Used rather than P/E because a loss makes P/E
+    # meaningless while a negative yield is still an honest reading.
+    earnings_yield = None
+    if price and price > 0 and eps is not None:
+        earnings_yield = eps / price
+    elif market_cap and market_cap > 0 and net_income is not None:
+        earnings_yield = net_income / market_cap
+    metrics["earnings_yield"] = earnings_yield
+    if earnings_yield is not None:
+        checks["earnings_yield_attractive"] = earnings_yield >= EARNINGS_YIELD_GOOD
+        # Margin of safety: not a valuation model, just a demand to be paid enough for the
+        # risk. A doubled earnings yield is the classic cushion.
+        checks["margin_of_safety"] = earnings_yield >= MARGIN_OF_SAFETY_YIELD
+
+    fcf_yield = None
+    if market_cap and market_cap > 0 and fcf is not None:
+        fcf_yield = fcf / market_cap
+    metrics["fcf_yield"] = fcf_yield
+    if fcf_yield is not None:
+        checks["fcf_yield_attractive"] = fcf_yield >= FCF_YIELD_GOOD
+
+    price_to_book = None
+    if market_cap and market_cap > 0 and equity and equity > 0:
+        price_to_book = market_cap / equity
+    metrics["price_to_book"] = price_to_book
+    if price_to_book is not None:
+        checks["price_to_book_reasonable"] = price_to_book <= PRICE_TO_BOOK_GOOD
+
+
+def assess_quality(statements: dict[str, list[dict]], min_checks: int = 5,
+                   market: dict | None = None) -> QualityResult:
+    """Run the quality tests. `passed` requires the non-negotiables (positive operating cash
+    flow, rising EPS) plus a majority of BOTH the growth and cash pillars - growth and cash are
+    the thesis, so neither can be waved through by the other.
+
+    `market` carries {price, market_cap, shares} when a quote is available. Valuation is scored
+    only when it is: absent, those checks stay unknown and the weights renormalise, so a
+    company we cannot price is not scored as though it were expensive.
+
+    Valuation never affects `passed`. Whether a business is sound and whether it is cheap are
+    different questions, and collapsing them would hide a good company that is merely dear.
+    """
     inc = statements.get("income") or []
     bal = statements.get("balance") or []
     cf = statements.get("cashflow") or []
@@ -199,6 +357,9 @@ def assess_quality(statements: dict[str, list[dict]], min_checks: int = 5) -> Qu
         and trues >= min(min_checks, known)
     )
 
+    _add_valuation_checks(checks, metrics, inc, bal, cf, market)
+    _add_return_checks(checks, metrics, inc, bal)
+
     reasons = [k for k, v in checks.items() if v is False]
     if not growth_ok:
         reasons.append("growth_pillar_weak")
@@ -220,14 +381,11 @@ def assess_quality(statements: dict[str, list[dict]], min_checks: int = 5) -> Qu
     # would render as a perfect 100 for a company we know almost nothing about.
     score = None
     if known >= 5:
-        def _pillar(keys: tuple[str, ...]) -> float | None:
-            vals = [checks[k] for k in keys if checks.get(k) is not None]
-            return (100.0 * sum(vals) / len(vals)) if vals else None
-
-        g, c, d = _pillar(_GROWTH_CHECKS), _pillar(_CASH_CHECKS), _pillar(_DEBT_CHECKS)
-        parts = [(g, 0.45), (c, 0.40), (d, 0.15)]
-        avail = [(v, w) for v, w in parts if v is not None]
+        avail = [(100.0 if checks[k] else 0.0, w)
+                 for k, w in CHECK_WEIGHTS.items() if checks.get(k) is not None]
         if avail:
+            # Renormalised over the checks we could actually evaluate, so a company missing a
+            # line item is not scored as if it had failed that test.
             base = sum(v * w for v, w in avail) / sum(w for _v, w in avail)
             # Reward the magnitude of growth and cash build, not just their direction.
             bonus = 0.0

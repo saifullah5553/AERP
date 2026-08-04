@@ -54,7 +54,12 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
             no_data += 1
             continue
 
-        q = assess_quality(statements)
+        # Valuation needs a quote. Passing the row's own price keeps the two in step - a score
+        # computed against a different company's price would be worse than no score.
+        q = assess_quality(statements, market={
+            "price": r.get("price"),
+            "market_cap": r.get("market_cap"),
+        })
         r["quality_score"] = q.score
         r["quality_passed"] = q.passed
         r["quality_improving"] = q.improving

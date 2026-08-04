@@ -11,7 +11,8 @@ changed year-on-year.
 
 Two sources, both already local — nothing is re-fetched:
   * statements_ttm          - ~20 quarterly TTM columns straight from the scraped store. Best
-    source and the only one that covers every market uniformly.
+    source, the only one covering every market uniformly, and the reason the series runs to
+    20 points: PSX has five years of TTM today, other markets as their scrapes land.
   * data/fund_cache/*.json  - up to 12 raw QUARTERS per name, rolled into ~8 quarterly-spaced
     TTM points. Only exists for names yfinance managed to serve.
   * the stored statements   - one point a year, so the trend is annual. Last resort.
@@ -28,11 +29,15 @@ from app.core.safe_path import safe_file
 from app.core.snapshot_lock import snapshot_lock
 from app.engines.strategy.quality import assess_quality
 from app.ingestion.fundamentals_web import _cache_to_dtos, _roll_ttm
+from app.ingestion.ohlc_store import load_bars
 
 log = get_logger(__name__)
 
 CACHE = Path(__file__).resolve().parents[3] / "data" / "fund_cache"
-MAX_POINTS = 8
+# The scraped store carries ~20 quarterly TTM columns - five years - and that whole run is
+# worth showing: a five-year arc of fundamental quality says something a single score cannot.
+# Markets still short of 20 simply render fewer points rather than being padded.
+MAX_POINTS = 20
 
 
 def _statements_at(inc: list, bal: list, cf: list, upto: int) -> dict[str, list[dict]]:
@@ -79,7 +84,33 @@ def _series_from_cache(sym: str) -> list[dict] | None:
     return out[-MAX_POINTS:] or None
 
 
-def _series_from_statements(doc: dict, key: str = "statements") -> list[dict] | None:
+def _price_lookup(region: str, symbol: str):
+    """price_on(date) using our own stored daily bars, or None if we have no history.
+
+    A five-year score history must value each quarter at the price that quarter traded at.
+    Scoring 2021 against today's price would not be a trend, it would be an artefact - and one
+    that looks entirely plausible on a chart.
+    """
+    bars = load_bars(region, symbol)
+    if not bars:
+        return None
+    dates = sorted(bars)
+
+    def price_on(when: str):
+        # Last close at or before the period end - the price actually available then.
+        candidates = [d for d in dates if d <= when]
+        if not candidates:
+            return None
+        try:
+            return float(bars[candidates[-1]][4])
+        except (TypeError, ValueError, IndexError):
+            return None
+
+    return price_on
+
+
+def _series_from_statements(doc: dict, key: str = "statements",
+                            price_on=None) -> list[dict] | None:
     """Score at successive past points by progressively hiding newer periods."""
     st = doc.get(key) or {}
     inc = st.get("income") or []
@@ -94,7 +125,19 @@ def _series_from_statements(doc: dict, key: str = "statements") -> list[dict] | 
     # Statements are newest-first, so slicing from i hides everything more recent than i.
     for i in range(oldest, -1, -1):
         view = {k: (v or [])[i:] for k, v in st.items()}
-        res = assess_quality(view)
+        when = str(inc[i].get("fiscal_date") or "")[:10]
+        market = None
+        if price_on and when:
+            px = price_on(when)
+            if px:
+                shares = None
+                for row in (inc[i], {}):
+                    shares = row.get("weighted_shares") or row.get("shares_outstanding")
+                    if shares:
+                        break
+                market = {"price": px,
+                          "market_cap": (px * float(shares)) if shares else None}
+        res = assess_quality(view, market=market)
         if res.score is not None:
             out.append({
                 "date": str(inc[i].get("fiscal_date") or "")[:10],
@@ -151,7 +194,8 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
         # Preference order is a data-quality order. The scraped store carries ~20 quarterly TTM
         # columns for every market; the yfinance cache carries at most 12 raw quarters and only
         # for names it managed to fetch; the annual statements give one point a year.
-        series = _series_from_statements(doc, "statements_ttm")
+        price_on = _price_lookup(str(r.get("region") or ""), str(r.get("symbol") or ""))
+        series = _series_from_statements(doc, "statements_ttm", price_on)
         if series:
             from_store += 1
         else:
@@ -159,7 +203,7 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
             if series:
                 from_cache += 1
             else:
-                series = _series_from_statements(doc)
+                series = _series_from_statements(doc, "statements", price_on)
         if not series:
             continue
 
@@ -174,6 +218,9 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
 
         r["quality_trend"] = direction
         r["quality_change"] = change
+        # The series itself, oldest -> newest, so the screener can draw the arc rather than
+        # just name its direction. Scores only: dates live in the company file.
+        r["score_history"] = [p["score"] for p in series]
         # Which set of results this name's numbers are through - shown on the portfolio.
         r["results_through"] = series[-1]["date"]
         built += 1

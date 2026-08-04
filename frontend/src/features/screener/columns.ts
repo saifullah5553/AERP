@@ -2,7 +2,14 @@ import type { ColDef } from "ag-grid-community";
 
 import { fmtInt, fmtNumber, fmtPercent, scoreHeatBg, titleize } from "@/lib/format";
 import type { ScreenerRow } from "@/types/api";
-import { ActionCell, ChangeCell, PatternCell, ScoreCell, TrendCell } from "./cells";
+import {
+  ActionCell,
+  ChangeCell,
+  PatternCell,
+  ScoreCell,
+  ScoreHistoryCell,
+  TrendCell,
+} from "./cells";
 
 // Translucent heat fill for a score column cell.
 const heat = (p: { value: unknown }) => ({
@@ -74,41 +81,39 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
     },
     {
       field: "quality_score",
-      headerName: "Quality",
+      headerName: "Fund Score",
       headerTooltip:
-        "Fundamental quality: growth (45%) + cash (40%) + debt guardrail (15%), judged over " +
-        "multiple reported periods. This is the ranking the backtests validated.",
-      width: 100,
+        "Fundamental score: growth 40% + cash 20% + debt 20% + valuation & returns 20% " +
+        "(earnings yield, FCF yield, P/B, margin of safety, ROE, ROA, margins). " +
+        "Judged over multiple trailing-twelve-month periods.",
+      width: 110,
       sort: "desc",
       sortable: true,
       cellRenderer: ScoreCell,
       cellStyle: heat,
     },
     {
+      // The arc matters more than today's number: a 70 on the way up and a 70 on the way down
+      // are different businesses, and a single score cannot tell them apart.
+      field: "score_history",
+      headerName: "Fund Score - 20 Quarters",
+      headerTooltip:
+        "The fundamental score recomputed at each of the last 20 quarterly TTM points, " +
+        "oldest to newest. Every point is a full trailing year, so seasonality cannot " +
+        "masquerade as a trend, and each is valued at the price that quarter traded at. " +
+        "Markets still building TTM history show fewer points.",
+      width: 210,
+      sortable: false,
+      cellRenderer: ScoreHistoryCell,
+    },
+    {
       field: "quality_trend",
       headerName: "Trend",
       headerTooltip:
-        "Direction of the quality score across up to 8 trailing-twelve-month points. " +
-        "TTM throughout, so seasonality can't masquerade as a trend.",
+        "Direction of the fundamental score across its trailing-twelve-month history.",
       width: 110,
       sortable: true,
       cellRenderer: TrendCell,
-    },
-    {
-      field: "fundamental_score",
-      headerName: "Fund",
-      width: 90,
-      sortable: true,
-      cellRenderer: ScoreCell,
-      cellStyle: heat,
-    },
-    {
-      field: "entry_score",
-      headerName: "Entry",
-      headerTooltip: "Price-action timing quality (0-100): is the move just starting?",
-      width: 90,
-      sortable: true,
-      cellRenderer: ScoreCell,
     },
     {
       field: "technical_score",

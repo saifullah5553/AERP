@@ -119,6 +119,8 @@ export interface ScreenerRow {
   quality_passed?: boolean | null;
   quality_trend?: "improving" | "stable" | "deteriorating" | "unknown" | null;
   quality_change?: number | null;
+  /** Fundamental score at each trailing-twelve-month point, oldest to newest (up to 20). */
+  score_history?: number[] | null;
   results_through?: string | null;
   entry_score?: number | null;
   signal: SignalType | null;

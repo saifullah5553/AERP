@@ -106,3 +106,48 @@ export function PatternCell(p: ICellRendererParams) {
   if (!v) return <span className="text-slate-600">—</span>;
   return <span className="text-accent">{titleize(v)}</span>;
 }
+
+// The fundamental score across its trailing-twelve-month history, drawn inline.
+//
+// A sparkline rather than a number because the arc is the point: a 70 climbing out of 40 and a
+// 70 sliding down from 95 are different businesses, and no single figure separates them. Drawn
+// as an SVG polyline - no chart library for a 200px cell.
+export function ScoreHistoryCell(p: ICellRendererParams) {
+  const raw = p.value as number[] | null | undefined;
+  const pts = (raw ?? []).filter((n): n is number => typeof n === "number");
+  if (pts.length < 2) return <span className="text-slate-600">—</span>;
+
+  const W = 150;
+  const H = 22;
+  // Fixed 0-100 scale, never auto-fitted: autoscaling would make every company's history look
+  // equally dramatic and hide that one sits at 30 while another sits at 90.
+  const x = (i: number) => (i / (pts.length - 1)) * (W - 2) + 1;
+  const y = (v: number) => H - 2 - (Math.max(0, Math.min(100, v)) / 100) * (H - 4);
+  const path = pts.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+
+  const first = pts[0];
+  const last = pts[pts.length - 1];
+  const delta = last - first;
+  const stroke = delta > 5 ? "#22c55e" : delta < -5 ? "#ef4444" : "#94a3b8";
+
+  return (
+    <span
+      className="flex items-center gap-2"
+      title={`${pts.length} quarterly TTM points, oldest to newest: ${first.toFixed(0)} → ${last.toFixed(0)}`}
+    >
+      <svg width={W} height={H} className="shrink-0" aria-hidden>
+        <line x1={1} y1={y(50)} x2={W - 1} y2={y(50)} stroke="#334155" strokeWidth={0.5} />
+        <polyline
+          points={path}
+          fill="none"
+          stroke={stroke}
+          strokeWidth={1.5}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+        <circle cx={x(pts.length - 1)} cy={y(last)} r={2} fill={stroke} />
+      </svg>
+      <span className="num text-[11px] text-slate-400">{pts.length}q</span>
+    </span>
+  );
+}
