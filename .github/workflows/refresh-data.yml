@@ -180,8 +180,16 @@ jobs:
     steps:
       - name: Wait out the cycle, then ask for the next run
         run: |
-          set -euo pipefail
+          # Every failure reports itself as an ::error:: annotation, because downloading job
+          # logs from the API needs admin rights on the repo and annotations do not. If this
+          # step dies quietly the whole loop stops, so it must say why.
+          set -uo pipefail
+
           started=$(gh api "repos/$REPO/actions/runs/${{ github.run_id }}" --jq .run_started_at)
+          if [ -z "${started:-}" ]; then
+            echo "::error::chain: could not read run_started_at - not chaining."
+            exit 1
+          fi
           elapsed=$(( $(date +%s) - $(date -d "$started" +%s) ))
           remain=$(( CYCLE_MINUTES * 60 - elapsed ))
           if [ "$remain" -gt 0 ]; then
@@ -196,10 +204,16 @@ jobs:
                    --jq "[.workflow_runs[]
                           | select(.id != ${{ github.run_id }})
                           | select(.status != \"completed\")] | length")
+          live=${live:-0}
           if [ "$live" -gt 0 ]; then
             echo "$live other run(s) already pending - they carry the loop. Not chaining."
             exit 0
           fi
 
-          gh workflow run refresh-data.yml --ref main
+          # -R is not optional: this job deliberately skips actions/checkout (it only needs
+          # the API), so gh has no git remote to infer the repository from and exits 1.
+          if ! out=$(gh workflow run refresh-data.yml --ref main -R "$REPO" 2>&1); then
+            echo "::error::chain: dispatch failed: ${out}"
+            exit 1
+          fi
           echo "Next refresh requested."
