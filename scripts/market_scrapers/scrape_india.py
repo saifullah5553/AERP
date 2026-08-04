@@ -12,7 +12,10 @@ statement pages (income, balance sheet, cash flow, ratios) at ?p=trailing and sa
 Output goes NEXT TO THIS SCRIPT in india_data/, never into the folder you launched from -
 creating a folder in the Windows user profile is refused by Controlled Folder Access.
 
-Resumable: a statement whose CSV already exists is skipped, so stop and restart freely.
+Resumable and self-restarting. Each statement is written the moment it arrives, and anything
+already on disk is skipped, so stopping costs nothing. If the browser dies or the run crashes
+it restarts itself and carries on from where it stopped - leave it running and come back when
+it says Done. Ctrl-C is the way to stop it.
 
 Two details that matter, both of which fail silently if you change them:
 
@@ -29,6 +32,7 @@ import csv
 import os
 import random
 import time
+import traceback
 
 import pandas as pd
 from playwright.sync_api import sync_playwright
@@ -45,6 +49,8 @@ SYMBOL_FILE = os.path.join(DATA_DIR, "_symbols.csv")
 # failed" is about this run. Excluding a real company from the platform because of a timeout
 # would be a silent, permanent loss.
 NO_DATA_FILE = os.path.join(DATA_DIR, "_no_data.csv")
+# What actually killed the last run. Without this a crash is just "it stopped overnight".
+CRASH_LOG = os.path.join(DATA_DIR, "_crashes.log")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 STATEMENTS = {
@@ -63,6 +69,13 @@ SYMBOL_PAUSE = 4.0        # seconds between companies
 JITTER = 0.6              # +/- fraction, so the rhythm is not perfectly regular
 BREATHER_EVERY = 40       # companies
 BREATHER_SECONDS = 90
+
+# Restarting itself after a crash. A full market takes days; over that span the browser gets
+# killed, the driver dies and the machine sleeps, and every one of those used to end the
+# download until somebody noticed.
+MAX_RESTARTS = 500
+RESTART_WAIT = 60         # seconds after a crash that had made progress
+RESTART_WAIT_MAX = 900    # cap, reached only when restarts stop achieving anything
 
 MIN_ROWS = 12         # a real statement has ~30 rows; less means a summary or a half-load
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -290,22 +303,57 @@ def scrape_statement(page, url):
         return None, type(exc).__name__
 
 
-def already_done(symbol):
-    """Are all four statements already on disk for this company?"""
+def load_settled():
+    """{symbol: {statement: reason}} from _no_data.csv, newest reason winning.
+
+    Only "no_financials_page" is permanent - the company has no statements page at all, which
+    is true of SPACs, shells, warrants and rights. Everything else (a timeout, a half-rendered
+    table) is about the run, not the company, and must be tried again.
+    """
+    settled = {}
+    if not os.path.exists(NO_DATA_FILE):
+        return settled
+    try:
+        with open(NO_DATA_FILE, encoding="utf-8") as fh:
+            for row in csv.DictReader(fh):
+                sym, stmt = row.get("symbol"), row.get("statement")
+                if sym and stmt:
+                    settled.setdefault(sym, {})[stmt] = row.get("reason")
+    except OSError:
+        return {}
+    return settled
+
+
+def has_file(symbol, name):
+    path = os.path.join(DATA_DIR, f"{symbol}_{name}.csv")
+    return os.path.exists(path) and os.path.getsize(path) > 10
+
+
+def already_done(symbol, settled=None):
+    """Is there nothing left to fetch for this company?
+
+    Counting a confirmed 404 as done matters once the run restarts itself: 113 of the 5,438 US
+    names have no statements page, and re-walking them costs four page loads and their pauses
+    on EVERY restart - about twenty minutes of doing nothing but confirming what we already
+    know.
+    """
+    known = (settled or {}).get(symbol, {})
     return all(
-        os.path.exists(os.path.join(DATA_DIR, f"{symbol}_{name}.csv"))
-        and os.path.getsize(os.path.join(DATA_DIR, f"{symbol}_{name}.csv")) > 10
+        has_file(symbol, name) or known.get(name) == "no_financials_page"
         for name in STATEMENTS
     )
 
 
-def scrape_symbol(page, symbol):
+def scrape_symbol(page, symbol, settled=None):
     saved = 0
+    known = (settled or {}).get(symbol, {})
     for name, path in STATEMENTS.items():
         csv_file = os.path.join(DATA_DIR, f"{symbol}_{name}.csv")
         if os.path.exists(csv_file) and os.path.getsize(csv_file) > 10:
             saved += 1
             continue
+        if known.get(name) == "no_financials_page":
+            continue        # already confirmed absent; asking again just costs time
         url = (f"https://stockanalysis.com/{QUOTE_PREFIX}/"
                f"{symbol_to_slug(symbol)}/{path}/?p=trailing")
         df, reason = scrape_statement(page, url)
@@ -327,54 +375,143 @@ def scrape_symbol(page, symbol):
     return saved
 
 
-def main():
+# Anything that means "the browser is gone", as opposed to "this page misbehaved". The first
+# needs a new browser; the second is just the next company's problem.
+FATAL_MARKERS = (
+    "targetclosed", "target page, context or browser has been closed",
+    "browser has been closed", "browser closed", "connection closed",
+    "page has been closed", "has crashed", "driver",
+)
+
+
+def is_fatal(page, exc):
+    try:
+        if page.is_closed():
+            return True
+    except Exception:
+        return True
+    text = f"{type(exc).__name__} {exc}".lower()
+    return any(marker in text for marker in FATAL_MARKERS)
+
+
+def log_crash(exc):
+    """Record what killed a session. 'It stopped overnight' is not something you can fix."""
+    try:
+        with open(CRASH_LOG, "a", encoding="utf-8") as fh:
+            fh.write(f"\n{'=' * 70}\n{time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            fh.write("".join(traceback.format_exception(type(exc), exc,
+                                                        exc.__traceback__)))
+    except OSError:
+        pass
+
+
+def progress_marker():
+    """Cheap 'did the last session get anywhere' measure - file count plus skip-list size."""
+    try:
+        n = len(os.listdir(DATA_DIR))
+    except OSError:
+        n = 0
+    try:
+        return n + os.path.getsize(NO_DATA_FILE)
+    except OSError:
+        return n
+
+
+def run_session():
+    """One browser lifetime. True when there is nothing left to fetch."""
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=False,          # a real window: you can see what the site is doing
             slow_mo=100,
             args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
         )
-        page = browser.new_context(
-            viewport={"width": 1440, "height": 900}, user_agent=UA
-        ).new_page()
+        try:
+            page = browser.new_context(
+                viewport={"width": 1440, "height": 900}, user_agent=UA
+            ).new_page()
 
-        symbols = collect_symbols(page)
+            symbols = collect_symbols(page)
+            settled = load_settled()
 
-        # Drop what is already downloaded BEFORE the loop, not inside it. Skipping a finished
-        # company still cost a printed line and the full inter-company pause, so restarting
-        # with 2,000 done sat for over two hours doing nothing before reaching new work -
-        # which looks exactly like starting from zero.
-        total = len(symbols)
-        symbols = [s for s in symbols if not already_done(s)]
-        print(f"\nIndia (NSE): {total} symbols, {total - len(symbols)} already "
-              f"downloaded, {len(symbols)} to go.")
-        print(f"Writing to {DATA_DIR}\n")
-        if not symbols:
-            print("Nothing left to fetch.")
-            browser.close()
-            return
+            # Drop what is already downloaded BEFORE the loop, not inside it. Skipping a
+            # finished company still cost a printed line and the full inter-company pause, so
+            # restarting with 2,000 done sat for over two hours doing nothing before reaching
+            # new work - which looks exactly like starting from zero.
+            total = len(symbols)
+            symbols = [s for s in symbols if not already_done(s, settled)]
+            print(f"\nIndia (NSE): {total} symbols, {total - len(symbols)} already "
+                  f"settled, {len(symbols)} to go.")
+            print(f"Writing to {DATA_DIR}\n")
+            if not symbols:
+                return True
 
-        for i, symbol in enumerate(symbols, 1):
-            print(f"[{i}/{len(symbols)}] {symbol}")
+            for i, symbol in enumerate(symbols, 1):
+                print(f"[{i}/{len(symbols)}] {symbol}")
+                try:
+                    scrape_symbol(page, symbol, settled)
+                except RuntimeError as exc:
+                    # Being blocked is not a per-company problem. Carrying on would fail every
+                    # remaining symbol and fill the skip list with companies that are fine.
+                    print(f"\nPausing: {exc}")
+                    return False
+                except Exception as exc:
+                    if is_fatal(page, exc):
+                        raise       # the browser died - only a new one fixes this
+                    print(f"    skipped: {type(exc).__name__}: {exc}")
+                # A longer rest now and then, which is what a person browsing looks like.
+                if i % BREATHER_EVERY == 0:
+                    print(f"  ...resting {BREATHER_SECONDS}s after {i} companies")
+                    time.sleep(BREATHER_SECONDS)
+                else:
+                    pause(SYMBOL_PAUSE)
+            return True
+        finally:
             try:
-                scrape_symbol(page, symbol)
-            except RuntimeError as exc:
-                # Being blocked is not a per-company problem. Carrying on would fail every
-                # remaining symbol and fill the skip list with companies that are fine.
-                print(f"\nStopping: {exc}")
-                print("Everything downloaded so far is saved. Rerun later to continue.\n")
-                break
-            except Exception as exc:
-                print(f"    skipped: {type(exc).__name__}: {exc}")
-            # A longer rest now and then, which is what a person browsing actually looks like.
-            if i % BREATHER_EVERY == 0:
-                print(f"  ...resting {BREATHER_SECONDS}s after {i} companies")
-                time.sleep(BREATHER_SECONDS)
-            else:
-                pause(SYMBOL_PAUSE)
+                browser.close()
+            except Exception:
+                pass
 
-        browser.close()
-    print(f"\\nDone. Files in {DATA_DIR}")
+
+def main():
+    """Keep a session alive until the market is downloaded.
+
+    A run over thousands of companies takes days, and in that time the browser gets killed,
+    the driver dies, the machine sleeps and the network drops. Every one of those used to end
+    the download and wait for someone to notice and retype the command. Nothing is lost when
+    it happens - each statement is written the moment it arrives, so a restart picks up
+    exactly where it stopped - but only if something restarts it.
+    """
+    wait = RESTART_WAIT
+    for attempt in range(1, MAX_RESTARTS + 1):
+        before = progress_marker()
+        try:
+            if run_session():
+                print(f"\nDone. Files in {DATA_DIR}")
+                return
+            reason = "session ended with work left"
+        except KeyboardInterrupt:
+            print("\nStopped by you. Everything downloaded so far is saved.")
+            return
+        except Exception as exc:
+            reason = f"{type(exc).__name__}: {exc}"
+            log_crash(exc)
+
+        # The wait only grows when a restart achieved nothing. A crash that still got through
+        # 300 companies should not be followed by a quarter of an hour of sitting still.
+        moved = progress_marker() - before
+        wait = RESTART_WAIT if moved else min(wait * 2, RESTART_WAIT_MAX)
+        print(f"\n{'-' * 70}")
+        print(f"  restart {attempt}/{MAX_RESTARTS}: {reason}")
+        print(f"  progress since last start: {'yes' if moved else 'none'}"
+              f" - resuming in {wait}s")
+        print(f"  details in {CRASH_LOG}")
+        print(f"{'-' * 70}\n")
+        try:
+            time.sleep(wait)
+        except KeyboardInterrupt:
+            print("\nStopped by you. Everything downloaded so far is saved.")
+            return
+    print(f"\nGave up after {MAX_RESTARTS} restarts. Rerun to continue - nothing is lost.")
 
 
 if __name__ == "__main__":
