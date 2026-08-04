@@ -92,8 +92,10 @@ def _quarters(rows: list[dict]) -> dict[str, dict[str, float]]:
         dates = r.get("score_history_dates") or []
         if not symbol:
             continue
-        for score, when in zip(scores, dates):
-            if isinstance(score, (int, float)) and when:
+        # strict=False on purpose: a truncated dates array should drop the extra
+        # scores, not raise mid-sweep.
+        for score, when in zip(scores, dates, strict=False):
+            if isinstance(score, int | float) and when:
                 out.setdefault(str(when)[:10], {})[str(symbol)] = float(score)
     return out
 

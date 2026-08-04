@@ -303,7 +303,8 @@ def _add_return_checks(checks: dict, metrics: dict, inc: list[dict], bal: list[d
     roe = net_income / equity if (net_income is not None and equity and equity > 0) else None
     roa = net_income / assets if (net_income is not None and assets and assets > 0) else None
     op_margin = op_income / revenue if (op_income is not None and revenue and revenue > 0) else None
-    net_margin = net_income / revenue if (net_income is not None and revenue and revenue > 0) else None
+    net_margin = (net_income / revenue
+                  if (net_income is not None and revenue and revenue > 0) else None)
 
     # Cash measured against revenue, so a large company and a small one compare on the same
     # terms. These anchor the two heaviest cash checks and were referenced before they existed,

@@ -22,6 +22,7 @@ broken automatically, so a frozen process can't wedge the pipeline permanently.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import subprocess
@@ -153,7 +154,5 @@ def snapshot_lock(owner: str, data_dir: str | Path) -> Iterator[bool]:
         yield True
     finally:
         if held:
-            try:
+            with contextlib.suppress(OSError):
                 path.unlink(missing_ok=True)
-            except OSError:
-                pass

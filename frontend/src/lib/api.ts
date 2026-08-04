@@ -188,7 +188,10 @@ function applyScreener(all: ScreenerRow[], q: ScreenerQuery): Page<ScreenerRow> 
     });
   }
 
-  const key = (q.sort_by ?? "composite_score") as keyof ScreenerRow;
+  // Default ranking is the fundamental score. It used to come from the Fund Score column's
+  // own `sort: "desc"`; that column was removed as a duplicate of the newest quarter, so the
+  // default lives here instead rather than silently reverting to composite_score.
+  const key = (q.sort_by ?? "quality_score") as keyof ScreenerRow;
   const dir = q.sort_dir === "asc" ? 1 : -1;
   rows = [...rows].sort((a, b) => {
     const av = num(a[key]);

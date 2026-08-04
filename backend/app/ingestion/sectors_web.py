@@ -234,9 +234,11 @@ def fetch_yahoo_sectors(provider_symbols: list[str], throttle: float = 0.05,
                     log.info("yahoo sectors: %d/%d", done, len(todo))
             time.sleep(throttle)
 
-        with httpx.Client(timeout=20, headers={"User-Agent": _UA}) as client:
-            with ThreadPoolExecutor(max_workers=workers) as pool:
-                list(pool.map(lambda s: fetch_one(s, client), todo))
+        with (
+            httpx.Client(timeout=20, headers={"User-Agent": _UA}) as client,
+            ThreadPoolExecutor(max_workers=workers) as pool,
+        ):
+            list(pool.map(lambda s: fetch_one(s, client), todo))
         _YCACHE.write_text(json.dumps(cache), encoding="utf-8")
 
     for sym in provider_symbols:

@@ -165,20 +165,10 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
       sortable: true,
       cellRenderer: ActionCell,
     },
-    {
-      field: "quality_score",
-      headerName: "Fund Score",
-      headerTooltip:
-        "Fundamental score: growth 35% + profitability 15% (gross/operating/net margin, ROIC) + cash 25% " +
-        "(operating CF, free CF, earnings backed by cash) + solvency & liquidity 25% " +
-        "(net debt/EBITDA, interest cover, D/E, current and quick ratios). " +
-        "Business quality only - price is a separate question.",
-      width: 110,
-      sort: "desc",
-      sortable: true,
-      cellRenderer: ScoreCell,
-      cellStyle: heat,
-    },
+    // No standalone "Fund Score" column: the headline score IS the newest quarter, so it
+    // repeated whichever quarter column that company last reported. The grid still OPENS
+    // ranked by it (lib/api.ts sorts on quality_score when no column is sorted) - the
+    // duplicate display is what went, not the ordering.
     {
       field: "quality_trend",
       headerName: "Trend",

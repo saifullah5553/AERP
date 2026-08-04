@@ -159,9 +159,11 @@ def refresh(region: str, symbols: list[str], range_: str = "1y",
                          region, seen, len(symbols), added, failed)
         time.sleep(pause)
 
-    with httpx.Client(timeout=20, headers={"User-Agent": ua}) as client:
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            list(pool.map(lambda s: one(s, client), symbols))
+    with (
+        httpx.Client(timeout=20, headers={"User-Agent": ua}) as client,
+        ThreadPoolExecutor(max_workers=workers) as pool,
+    ):
+        list(pool.map(lambda s: one(s, client), symbols))
 
     result = {"symbols": seen, "bars_added": added, "failed": failed}
     log.info("ohlc refresh %s: %s", region, result)
@@ -177,6 +179,11 @@ def coverage(store: Path | None = None) -> dict[str, dict]:
         if not d.exists():
             continue
         files = list(d.glob("*.csv"))
-        bars = sum(max(0, sum(1 for _ in open(f, encoding="utf-8")) - 1) for f in files)
+        bars = 0
+        for f in files:
+            # Counted with the handle closed each time: coverage() walks ~12k files, and
+            # leaking a descriptor per file exhausts the limit long before it finishes.
+            with open(f, encoding="utf-8") as fh:
+                bars += max(0, sum(1 for _ in fh) - 1)
         out[region] = {"symbols": len(files), "bars": bars}
     return out
