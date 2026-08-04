@@ -77,6 +77,12 @@ MAX_RESTARTS = 500
 RESTART_WAIT = 60         # seconds after a crash that had made progress
 RESTART_WAIT_MAX = 900    # cap, reached only when restarts stop achieving anything
 
+# Human-verification checks. Answered by waiting briefly and then by coming back with a new
+# browser - never by waiting for a person, because nobody is watching a run that takes days.
+CHALLENGE_POLL_SECONDS = 45
+CHALLENGE_RELOADS = 3          # poll, reload, poll, reload, poll - then give the browser up
+CHALLENGE_COOLDOWN = 120       # after clearing one, slow right down; the site is throttling us
+
 MIN_ROWS = 12         # a real statement has ~30 rows; less means a summary or a half-load
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
@@ -108,25 +114,31 @@ def is_challenged(page):
     return any(marker in body for marker in CHALLENGE_MARKERS)
 
 
-def wait_out_challenge(page, minutes=10):
-    """Stop and let a human clear the check in the visible browser window.
+def clear_challenge(page, url):
+    """Get past a human-verification interstitial without anyone being at the keyboard.
 
-    The browser is deliberately not headless, so the check is solvable: solve it once and the
-    run continues. Waiting beats skipping - a skipped company is data we never come back for.
+    Most of these clear on their own within seconds, so a short poll answers them. The ones
+    that do not are answered by coming back later with a FRESH browser - which is what ending
+    the session does, and why this gives up quickly instead of sitting for ten minutes hoping
+    someone is watching. Reloading forever would only convince the site we are a bot.
+
+    If you are at the keyboard, solving it in the window is still picked up by the poll.
     """
-    print("\n" + "=" * 70)
-    print("  The site is asking to verify you are human.")
-    print("  Solve the check in the browser window - the run continues automatically.")
-    print(f"  Waiting up to {minutes} minutes...")
-    print("=" * 70 + "\n")
-    deadline = time.time() + minutes * 60
-    while time.time() < deadline:
-        page.wait_for_timeout(3000)
-        if not is_challenged(page):
-            print("  Check cleared, continuing.\n")
-            pause(5)
-            return True
-    print("  Still challenged after waiting. Stopping so nothing is skipped silently.\n")
+    for attempt in range(1, CHALLENGE_RELOADS + 1):
+        deadline = time.time() + CHALLENGE_POLL_SECONDS
+        while time.time() < deadline:
+            page.wait_for_timeout(3000)
+            if not is_challenged(page):
+                print("    check cleared, continuing")
+                pause(5)
+                return True
+        if attempt < CHALLENGE_RELOADS:
+            print(f"    still challenged - reloading ({attempt}/{CHALLENGE_RELOADS - 1})")
+            try:
+                page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            except Exception:
+                return False
+    print("    still challenged - handing back for a fresh browser")
     return False
 
 
@@ -254,14 +266,23 @@ def collect_symbols(page):
     return symbols
 
 
-def record_no_data(symbol, statement, reason):
-    """Note why a statement was not saved, so exclusions can later be based on evidence."""
+def record_no_data(symbol, statement, reason, settled=None):
+    """Note why a statement was not saved, so exclusions can later be based on evidence.
+
+    Written once per distinct outcome, not once per attempt. Now that a crashed run restarts
+    itself, an unchanged failure would otherwise add a row every pass - the US file already
+    held 943 rows describing 130 symbols before the restart loop existed.
+    """
+    if settled is not None and settled.get(symbol, {}).get(statement) == reason:
+        return
     new = not os.path.exists(NO_DATA_FILE)
     with open(NO_DATA_FILE, "a", encoding="utf-8", newline="") as fh:
         w = csv.writer(fh)
         if new:
             w.writerow(["symbol", "statement", "reason"])
         w.writerow([symbol, statement, reason])
+    if settled is not None:
+        settled.setdefault(symbol, {})[statement] = reason
 
 
 def scrape_statement(page, url):
@@ -292,7 +313,11 @@ def scrape_statement(page, url):
                 cells = cells[: len(headers)] + [""] * max(0, len(headers) - len(cells))
             rows.append(cells)
         if len(rows) < MIN_ROWS:
-            return None, "too_few_rows"
+            # The count goes in the reason. MIN_ROWS sits right on the observed floor for the
+            # ratios page (real ones run 12-36 rows), so whether a rejection is a genuinely
+            # short statement or a half-rendered one cannot be told apart afterwards - and a
+            # rejected statement is retried on every restart, forever.
+            return None, f"too_few_rows_{len(rows)}"
         return pd.DataFrame(rows, columns=headers), "ok"
     except Exception as exc:
         # A challenge page has no table, so the selector wait times out - check before
@@ -332,10 +357,10 @@ def has_file(symbol, name):
 def already_done(symbol, settled=None):
     """Is there nothing left to fetch for this company?
 
-    Counting a confirmed 404 as done matters once the run restarts itself: 113 of the 5,438 US
-    names have no statements page, and re-walking them costs four page loads and their pauses
-    on EVERY restart - about twenty minutes of doing nothing but confirming what we already
-    know.
+    Counting a confirmed 404 as done matters once the run restarts itself. Every market has a
+    tail with no statements page at all - 113 of the 5,438 US names, mostly SPACs, shells,
+    warrants and rights - and re-walking them costs four page loads and their pauses on EVERY
+    restart, twenty minutes of confirming what is already known.
     """
     known = (settled or {}).get(symbol, {})
     return all(
@@ -359,10 +384,13 @@ def scrape_symbol(page, symbol, settled=None):
         df, reason = scrape_statement(page, url)
         if reason == "bot_check":
             # Do NOT record this as missing data: the company may well file statements, we were
-            # simply stopped. Wait for a human, then retry this same statement once.
-            if not wait_out_challenge(page):
+            # simply stopped. Clear the check, then retry this same statement once.
+            print("    human-verification check - retrying")
+            if not clear_challenge(page, url):
                 raise RuntimeError("blocked by human-verification check")
             df, reason = scrape_statement(page, url)
+            # Having been challenged once, keep well clear of whatever rate triggered it.
+            pause(CHALLENGE_COOLDOWN)
         if df is not None and not df.empty:
             df.fillna("", inplace=True)
             df.to_csv(csv_file, index=False, encoding="utf-8")
@@ -370,7 +398,7 @@ def scrape_symbol(page, symbol, settled=None):
             saved += 1
         else:
             print(f"    no {name} ({reason})")
-            record_no_data(symbol, name, reason)
+            record_no_data(symbol, name, reason, settled)
         pause(PAGE_PAUSE)
     return saved
 
@@ -380,7 +408,8 @@ def scrape_symbol(page, symbol, settled=None):
 FATAL_MARKERS = (
     "targetclosed", "target page, context or browser has been closed",
     "browser has been closed", "browser closed", "connection closed",
-    "page has been closed", "has crashed", "driver",
+    "page has been closed", "has crashed",
+    "driver has been disconnected", "driver process",
 )
 
 
@@ -406,15 +435,20 @@ def log_crash(exc):
 
 
 def progress_marker():
-    """Cheap 'did the last session get anywhere' measure - file count plus skip-list size."""
+    """How much is settled - statements saved, plus statements confirmed absent.
+
+    Deliberately NOT the size of _no_data.csv. Recording a failure would then count as
+    progress, which holds the restart wait at its minimum in exactly the case it exists for:
+    a session that keeps dying without ever gaining anything.
+    """
     try:
-        n = len(os.listdir(DATA_DIR))
+        saved = sum(1 for f in os.listdir(DATA_DIR)
+                    if f.endswith(".csv") and not f.startswith("_"))
     except OSError:
-        n = 0
-    try:
-        return n + os.path.getsize(NO_DATA_FILE)
-    except OSError:
-        return n
+        saved = 0
+    confirmed = sum(1 for reasons in load_settled().values()
+                    for r in reasons.values() if r == "no_financials_page")
+    return saved + confirmed
 
 
 def run_session():
