@@ -1,0 +1,752 @@
+{
+ "psx": {
+  "region": "psx",
+  "top_n": 20,
+  "lag_months": 2,
+  "periods": 19,
+  "from": "2021-08-30",
+  "to": "2026-05-31",
+  "portfolio_total_pct": 184.83,
+  "equal_weight_total_pct": 213.2,
+  "index_total_pct": null,
+  "periods_beating_equal_weight": "14/19",
+  "detail": [
+   {
+    "results_for": "2021-06-30",
+    "formed": "2021-08-30",
+    "exited": "2021-11-30",
+    "universe": 234,
+    "held": 19,
+    "portfolio_pct": -2.7,
+    "equal_weight_pct": -8.22,
+    "index_pct": null
+   },
+   {
+    "results_for": "2021-09-30",
+    "formed": "2021-11-30",
+    "exited": "2022-02-28",
+    "universe": 415,
+    "held": 19,
+    "portfolio_pct": 3.03,
+    "equal_weight_pct": -2.87,
+    "index_pct": null
+   },
+   {
+    "results_for": "2021-12-31",
+    "formed": "2022-02-28",
+    "exited": "2022-05-31",
+    "universe": 422,
+    "held": 19,
+    "portfolio_pct": -6.15,
+    "equal_weight_pct": -6.18,
+    "index_pct": null
+   },
+   {
+    "results_for": "2022-03-31",
+    "formed": "2022-05-31",
+    "exited": "2022-08-30",
+    "universe": 421,
+    "held": 20,
+    "portfolio_pct": 0.88,
+    "equal_weight_pct": 0.32,
+    "index_pct": null
+   },
+   {
+    "results_for": "2022-06-30",
+    "formed": "2022-08-30",
+    "exited": "2022-11-30",
+    "universe": 433,
+    "held": 19,
+    "portfolio_pct": 4.58,
+    "equal_weight_pct": -1.98,
+    "index_pct": null
+   },
+   {
+    "results_for": "2022-09-30",
+    "formed": "2022-11-30",
+    "exited": "2023-02-28",
+    "universe": 424,
+    "held": 20,
+    "portfolio_pct": -1.58,
+    "equal_weight_pct": -7.28,
+    "index_pct": null
+   },
+   {
+    "results_for": "2022-12-31",
+    "formed": "2023-02-28",
+    "exited": "2023-05-31",
+    "universe": 426,
+    "held": 19,
+    "portfolio_pct": 3.59,
+    "equal_weight_pct": 2.29,
+    "index_pct": null
+   },
+   {
+    "results_for": "2023-03-31",
+    "formed": "2023-05-31",
+    "exited": "2023-08-30",
+    "universe": 428,
+    "held": 20,
+    "portfolio_pct": 8.13,
+    "equal_weight_pct": 3.95,
+    "index_pct": null
+   },
+   {
+    "results_for": "2023-06-30",
+    "formed": "2023-08-30",
+    "exited": "2023-11-30",
+    "universe": 441,
+    "held": 19,
+    "portfolio_pct": 13.28,
+    "equal_weight_pct": 26.96,
+    "index_pct": null
+   },
+   {
+    "results_for": "2023-09-30",
+    "formed": "2023-11-30",
+    "exited": "2024-02-29",
+    "universe": 435,
+    "held": 20,
+    "portfolio_pct": 7.74,
+    "equal_weight_pct": 1.0,
+    "index_pct": null
+   },
+   {
+    "results_for": "2023-12-31",
+    "formed": "2024-02-29",
+    "exited": "2024-05-31",
+    "universe": 436,
+    "held": 20,
+    "portfolio_pct": 13.45,
+    "equal_weight_pct": 12.69,
+    "index_pct": null
+   },
+   {
+    "results_for": "2024-03-31",
+    "formed": "2024-05-31",
+    "exited": "2024-08-30",
+    "universe": 436,
+    "held": 20,
+    "portfolio_pct": 1.57,
+    "equal_weight_pct": 30.21,
+    "index_pct": null
+   },
+   {
+    "results_for": "2024-06-30",
+    "formed": "2024-08-30",
+    "exited": "2024-11-30",
+    "universe": 443,
+    "held": 20,
+    "portfolio_pct": 15.24,
+    "equal_weight_pct": 15.69,
+    "index_pct": null
+   },
+   {
+    "results_for": "2024-09-30",
+    "formed": "2024-11-30",
+    "exited": "2025-02-28",
+    "universe": 437,
+    "held": 19,
+    "portfolio_pct": 9.24,
+    "equal_weight_pct": 4.18,
+    "index_pct": null
+   },
+   {
+    "results_for": "2024-12-31",
+    "formed": "2025-02-28",
+    "exited": "2025-05-31",
+    "universe": 439,
+    "held": 18,
+    "portfolio_pct": 10.24,
+    "equal_weight_pct": 8.61,
+    "index_pct": null
+   },
+   {
+    "results_for": "2025-03-31",
+    "formed": "2025-05-31",
+    "exited": "2025-08-30",
+    "universe": 438,
+    "held": 18,
+    "portfolio_pct": 23.09,
+    "equal_weight_pct": 35.9,
+    "index_pct": null
+   },
+   {
+    "results_for": "2025-06-30",
+    "formed": "2025-08-30",
+    "exited": "2025-11-30",
+    "universe": 439,
+    "held": 19,
+    "portfolio_pct": 13.02,
+    "equal_weight_pct": 9.68,
+    "index_pct": null
+   },
+   {
+    "results_for": "2025-09-30",
+    "formed": "2025-11-30",
+    "exited": "2026-02-28",
+    "universe": 436,
+    "held": 18,
+    "portfolio_pct": -12.99,
+    "equal_weight_pct": -13.44,
+    "index_pct": null
+   },
+   {
+    "results_for": "2025-12-31",
+    "formed": "2026-02-28",
+    "exited": "2026-05-31",
+    "universe": 433,
+    "held": 19,
+    "portfolio_pct": 10.18,
+    "equal_weight_pct": 21.55,
+    "index_pct": null
+   }
+  ]
+ },
+ "india": {
+  "region": "india",
+  "top_n": 20,
+  "lag_months": 2,
+  "periods": 18,
+  "from": "2021-11-30",
+  "to": "2026-05-31",
+  "portfolio_total_pct": 245.34,
+  "equal_weight_total_pct": 185.16,
+  "index_total_pct": 39.12,
+  "periods_beating_equal_weight": "10/18",
+  "detail": [
+   {
+    "results_for": "2021-09-30",
+    "formed": "2021-11-30",
+    "exited": "2022-02-28",
+    "universe": 33,
+    "held": 19,
+    "portfolio_pct": -2.22,
+    "equal_weight_pct": 0.35,
+    "index_pct": -1.11
+   },
+   {
+    "results_for": "2021-12-31",
+    "formed": "2022-02-28",
+    "exited": "2022-05-31",
+    "universe": 61,
+    "held": 20,
+    "portfolio_pct": -4.27,
+    "equal_weight_pct": 1.99,
+    "index_pct": -1.25
+   },
+   {
+    "results_for": "2022-03-31",
+    "formed": "2022-05-31",
+    "exited": "2022-08-30",
+    "universe": 88,
+    "held": 15,
+    "portfolio_pct": 4.69,
+    "equal_weight_pct": 8.1,
+    "index_pct": 7.08
+   },
+   {
+    "results_for": "2022-06-30",
+    "formed": "2022-08-30",
+    "exited": "2022-11-30",
+    "universe": 67,
+    "held": 19,
+    "portfolio_pct": 4.47,
+    "equal_weight_pct": 5.93,
+    "index_pct": 5.63
+   },
+   {
+    "results_for": "2022-09-30",
+    "formed": "2022-11-30",
+    "exited": "2023-02-28",
+    "universe": 66,
+    "held": 19,
+    "portfolio_pct": 18.65,
+    "equal_weight_pct": 0.68,
+    "index_pct": -7.75
+   },
+   {
+    "results_for": "2022-12-31",
+    "formed": "2023-02-28",
+    "exited": "2023-05-31",
+    "universe": 66,
+    "held": 19,
+    "portfolio_pct": 18.52,
+    "equal_weight_pct": 16.3,
+    "index_pct": 7.11
+   },
+   {
+    "results_for": "2023-03-31",
+    "formed": "2023-05-31",
+    "exited": "2023-08-30",
+    "universe": 145,
+    "held": 17,
+    "portfolio_pct": 15.6,
+    "equal_weight_pct": 16.19,
+    "index_pct": 4.39
+   },
+   {
+    "results_for": "2023-06-30",
+    "formed": "2023-08-30",
+    "exited": "2023-11-30",
+    "universe": 77,
+    "held": 16,
+    "portfolio_pct": 17.46,
+    "equal_weight_pct": 15.39,
+    "index_pct": 4.06
+   },
+   {
+    "results_for": "2023-09-30",
+    "formed": "2023-11-30",
+    "exited": "2024-02-29",
+    "universe": 78,
+    "held": 20,
+    "portfolio_pct": 11.86,
+    "equal_weight_pct": 13.29,
+    "index_pct": 9.19
+   },
+   {
+    "results_for": "2023-12-31",
+    "formed": "2024-02-29",
+    "exited": "2024-05-31",
+    "universe": 110,
+    "held": 19,
+    "portfolio_pct": 8.6,
+    "equal_weight_pct": 3.82,
+    "index_pct": 2.49
+   },
+   {
+    "results_for": "2024-03-31",
+    "formed": "2024-05-31",
+    "exited": "2024-08-30",
+    "universe": 212,
+    "held": 16,
+    "portfolio_pct": 18.8,
+    "equal_weight_pct": 18.07,
+    "index_pct": 12.01
+   },
+   {
+    "results_for": "2024-06-30",
+    "formed": "2024-08-30",
+    "exited": "2024-11-30",
+    "universe": 137,
+    "held": 16,
+    "portfolio_pct": 8.33,
+    "equal_weight_pct": 2.23,
+    "index_pct": -3.8
+   },
+   {
+    "results_for": "2024-09-30",
+    "formed": "2024-11-30",
+    "exited": "2025-02-28",
+    "universe": 137,
+    "held": 19,
+    "portfolio_pct": -15.89,
+    "equal_weight_pct": -17.95,
+    "index_pct": -8.86
+   },
+   {
+    "results_for": "2024-12-31",
+    "formed": "2025-02-28",
+    "exited": "2025-05-31",
+    "universe": 139,
+    "held": 19,
+    "portfolio_pct": 18.31,
+    "equal_weight_pct": 17.77,
+    "index_pct": 11.71
+   },
+   {
+    "results_for": "2025-03-31",
+    "formed": "2025-05-31",
+    "exited": "2025-08-18",
+    "universe": 218,
+    "held": 18,
+    "portfolio_pct": -0.99,
+    "equal_weight_pct": 2.94,
+    "index_pct": 0.65
+   },
+   {
+    "results_for": "2025-06-30",
+    "formed": "2025-08-30",
+    "exited": "2025-11-30",
+    "universe": 143,
+    "held": 18,
+    "portfolio_pct": 7.59,
+    "equal_weight_pct": 2.5,
+    "index_pct": 6.3
+   },
+   {
+    "results_for": "2025-09-30",
+    "formed": "2025-11-30",
+    "exited": "2026-02-28",
+    "universe": 142,
+    "held": 20,
+    "portfolio_pct": -13.1,
+    "equal_weight_pct": -5.71,
+    "index_pct": -5.0
+   },
+   {
+    "results_for": "2025-12-31",
+    "formed": "2026-02-28",
+    "exited": "2026-05-31",
+    "universe": 162,
+    "held": 20,
+    "portfolio_pct": 22.67,
+    "equal_weight_pct": 13.56,
+    "index_pct": -5.96
+   }
+  ]
+ },
+ "australia": {
+  "region": "australia",
+  "top_n": 20,
+  "lag_months": 2,
+  "periods": 8,
+  "from": "2023-08-30",
+  "to": "2026-06-30",
+  "portfolio_total_pct": -9.38,
+  "equal_weight_total_pct": 2.08,
+  "index_total_pct": -8.52,
+  "periods_beating_equal_weight": "2/8",
+  "detail": [
+   {
+    "results_for": "2023-06-30",
+    "formed": "2023-08-30",
+    "exited": "2023-09-30",
+    "universe": 817,
+    "held": 20,
+    "portfolio_pct": 3.86,
+    "equal_weight_pct": -1.73,
+    "index_pct": -3.62
+   },
+   {
+    "results_for": "2023-12-31",
+    "formed": "2024-02-29",
+    "exited": "2024-03-31",
+    "universe": 146,
+    "held": 19,
+    "portfolio_pct": -2.78,
+    "equal_weight_pct": 1.82,
+    "index_pct": 1.84
+   },
+   {
+    "results_for": "2024-03-31",
+    "formed": "2024-05-31",
+    "exited": "2024-06-30",
+    "universe": 30,
+    "held": 19,
+    "portfolio_pct": -2.71,
+    "equal_weight_pct": -4.3,
+    "index_pct": 0.64
+   },
+   {
+    "results_for": "2024-06-30",
+    "formed": "2024-08-30",
+    "exited": "2024-09-30",
+    "universe": 926,
+    "held": 20,
+    "portfolio_pct": 3.87,
+    "equal_weight_pct": 3.96,
+    "index_pct": 2.2
+   },
+   {
+    "results_for": "2024-12-31",
+    "formed": "2025-02-28",
+    "exited": "2025-03-31",
+    "universe": 147,
+    "held": 19,
+    "portfolio_pct": -6.0,
+    "equal_weight_pct": 2.69,
+    "index_pct": -3.89
+   },
+   {
+    "results_for": "2025-06-30",
+    "formed": "2025-08-30",
+    "exited": "2025-09-30",
+    "universe": 762,
+    "held": 20,
+    "portfolio_pct": 6.36,
+    "equal_weight_pct": 8.7,
+    "index_pct": -0.88
+   },
+   {
+    "results_for": "2025-12-31",
+    "formed": "2026-02-28",
+    "exited": "2026-03-31",
+    "universe": 157,
+    "held": 20,
+    "portfolio_pct": -8.4,
+    "equal_weight_pct": -6.07,
+    "index_pct": -5.41
+   },
+   {
+    "results_for": "2026-03-31",
+    "formed": "2026-05-31",
+    "exited": "2026-06-30",
+    "universe": 46,
+    "held": 20,
+    "portfolio_pct": -3.03,
+    "equal_weight_pct": -2.2,
+    "index_pct": 0.56
+   }
+  ]
+ },
+ "us": {
+  "region": "us",
+  "top_n": 20,
+  "lag_months": 2,
+  "periods": 24,
+  "from": "2021-11-30",
+  "to": "2026-07-02",
+  "portfolio_total_pct": 10.9,
+  "equal_weight_total_pct": 1.75,
+  "index_total_pct": 10.24,
+  "periods_beating_equal_weight": "13/24",
+  "detail": [
+   {
+    "results_for": "2021-09-30",
+    "formed": "2021-11-30",
+    "exited": "2021-12-02",
+    "universe": 35,
+    "held": 19,
+    "portfolio_pct": 1.4,
+    "equal_weight_pct": 0.02,
+    "index_pct": 0.22
+   },
+   {
+    "results_for": "2021-12-31",
+    "formed": "2022-02-28",
+    "exited": "2022-03-01",
+    "universe": 63,
+    "held": 18,
+    "portfolio_pct": -1.49,
+    "equal_weight_pct": -1.48,
+    "index_pct": -1.55
+   },
+   {
+    "results_for": "2022-03-31",
+    "formed": "2022-05-31",
+    "exited": "2022-06-03",
+    "universe": 63,
+    "held": 18,
+    "portfolio_pct": 1.36,
+    "equal_weight_pct": 1.47,
+    "index_pct": -0.57
+   },
+   {
+    "results_for": "2022-06-30",
+    "formed": "2022-08-30",
+    "exited": "2022-09-02",
+    "universe": 91,
+    "held": 18,
+    "portfolio_pct": -1.31,
+    "equal_weight_pct": -1.73,
+    "index_pct": -1.55
+   },
+   {
+    "results_for": "2022-09-30",
+    "formed": "2022-11-30",
+    "exited": "2022-12-01",
+    "universe": 95,
+    "held": 18,
+    "portfolio_pct": 0.25,
+    "equal_weight_pct": -0.38,
+    "index_pct": -0.09
+   },
+   {
+    "results_for": "2022-12-31",
+    "formed": "2023-02-28",
+    "exited": "2023-03-01",
+    "universe": 439,
+    "held": 20,
+    "portfolio_pct": 0.62,
+    "equal_weight_pct": -0.1,
+    "index_pct": -0.47
+   },
+   {
+    "results_for": "2023-03-31",
+    "formed": "2023-05-31",
+    "exited": "2023-06-01",
+    "universe": 113,
+    "held": 17,
+    "portfolio_pct": 1.15,
+    "equal_weight_pct": 1.37,
+    "index_pct": 0.99
+   },
+   {
+    "results_for": "2023-06-30",
+    "formed": "2023-08-30",
+    "exited": "2023-09-01",
+    "universe": 147,
+    "held": 20,
+    "portfolio_pct": 0.32,
+    "equal_weight_pct": 0.22,
+    "index_pct": 0.02
+   },
+   {
+    "results_for": "2023-09-30",
+    "formed": "2023-11-30",
+    "exited": "2023-12-01",
+    "universe": 118,
+    "held": 19,
+    "portfolio_pct": 0.39,
+    "equal_weight_pct": 1.63,
+    "index_pct": 0.59
+   },
+   {
+    "results_for": "2023-10-31",
+    "formed": "2023-12-31",
+    "exited": "2024-01-30",
+    "universe": 65,
+    "held": 18,
+    "portfolio_pct": 2.24,
+    "equal_weight_pct": 1.78,
+    "index_pct": 3.84
+   },
+   {
+    "results_for": "2023-12-31",
+    "formed": "2024-02-29",
+    "exited": "2024-03-31",
+    "universe": 678,
+    "held": 16,
+    "portfolio_pct": 2.69,
+    "equal_weight_pct": 2.83,
+    "index_pct": 2.89
+   },
+   {
+    "results_for": "2024-03-31",
+    "formed": "2024-05-31",
+    "exited": "2024-06-30",
+    "universe": 138,
+    "held": 14,
+    "portfolio_pct": 1.29,
+    "equal_weight_pct": -2.05,
+    "index_pct": 3.74
+   },
+   {
+    "results_for": "2024-06-30",
+    "formed": "2024-08-30",
+    "exited": "2024-09-30",
+    "universe": 157,
+    "held": 18,
+    "portfolio_pct": 4.95,
+    "equal_weight_pct": 1.33,
+    "index_pct": 2.02
+   },
+   {
+    "results_for": "2024-09-30",
+    "formed": "2024-11-30",
+    "exited": "2024-12-31",
+    "universe": 120,
+    "held": 17,
+    "portfolio_pct": -2.94,
+    "equal_weight_pct": -2.79,
+    "index_pct": -2.74
+   },
+   {
+    "results_for": "2024-10-31",
+    "formed": "2024-12-31",
+    "exited": "2025-01-02",
+    "universe": 67,
+    "held": 20,
+    "portfolio_pct": -1.06,
+    "equal_weight_pct": -0.05,
+    "index_pct": -0.22
+   },
+   {
+    "results_for": "2024-12-31",
+    "formed": "2025-02-28",
+    "exited": "2025-03-31",
+    "universe": 695,
+    "held": 17,
+    "portfolio_pct": -7.06,
+    "equal_weight_pct": -3.17,
+    "index_pct": -5.75
+   },
+   {
+    "results_for": "2025-09-30",
+    "formed": "2025-11-30",
+    "exited": "2025-12-31",
+    "universe": 142,
+    "held": 20,
+    "portfolio_pct": 1.9,
+    "equal_weight_pct": -3.55,
+    "index_pct": 0.48
+   },
+   {
+    "results_for": "2025-10-31",
+    "formed": "2025-12-31",
+    "exited": "2026-01-01",
+    "universe": 71,
+    "held": 20,
+    "portfolio_pct": -0.28,
+    "equal_weight_pct": 0.87,
+    "index_pct": 0.19
+   },
+   {
+    "results_for": "2025-11-30",
+    "formed": "2026-01-30",
+    "exited": "2026-02-27",
+    "universe": 34,
+    "held": 20,
+    "portfolio_pct": 2.12,
+    "equal_weight_pct": -0.48,
+    "index_pct": -0.87
+   },
+   {
+    "results_for": "2025-12-31",
+    "formed": "2026-02-28",
+    "exited": "2026-03-31",
+    "universe": 3756,
+    "held": 20,
+    "portfolio_pct": -6.5,
+    "equal_weight_pct": -4.98,
+    "index_pct": -5.13
+   },
+   {
+    "results_for": "2026-01-31",
+    "formed": "2026-03-31",
+    "exited": "2026-04-28",
+    "universe": 198,
+    "held": 20,
+    "portfolio_pct": 11.34,
+    "equal_weight_pct": 7.31,
+    "index_pct": 9.35
+   },
+   {
+    "results_for": "2026-02-28",
+    "formed": "2026-04-28",
+    "exited": "2026-05-28",
+    "universe": 91,
+    "held": 20,
+    "portfolio_pct": -0.15,
+    "equal_weight_pct": 4.34,
+    "index_pct": 5.95
+   },
+   {
+    "results_for": "2026-03-31",
+    "formed": "2026-05-31",
+    "exited": "2026-06-04",
+    "universe": 4080,
+    "held": 20,
+    "portfolio_pct": -0.2,
+    "equal_weight_pct": -0.38,
+    "index_pct": -0.21
+   },
+   {
+    "results_for": "2026-04-30",
+    "formed": "2026-06-30",
+    "exited": "2026-07-02",
+    "universe": 181,
+    "held": 20,
+    "portfolio_pct": 0.73,
+    "equal_weight_pct": 0.49,
+    "index_pct": -0.21
+   }
+  ]
+ },
+ "gcc": {
+  "region": "gcc",
+  "error": "no periods with enough data"
+ }
+}

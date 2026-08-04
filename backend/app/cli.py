@@ -90,6 +90,24 @@ def cmd_export_missing_sectors(args: argparse.Namespace) -> None:
     log.info("export-missing-sectors: %d rows -> %s", n, MANUAL_SECTORS)
 
 
+def cmd_quarterly_score_backtest(args: argparse.Namespace) -> None:
+    """Top-N by fundamental score each quarter, formed two months after period end."""
+    import json as _json
+    from pathlib import Path
+
+    from app.ingestion.quarterly_score_backtest import run
+
+    data_dir = args.data_dir or "../frontend/public/data"
+    regions = ([r.strip() for r in args.regions.split(",")]
+               if args.regions else ["psx", "india", "australia", "us", "gcc"])
+    out = {r: run(data_dir, r, top_n=args.top_n, lag_months=args.lag_months)
+           for r in regions}
+    path = Path(data_dir) / "quarterly_score_backtest.json"
+    path.write_text(_json.dumps(out, indent=1), encoding="utf-8")
+    for region, res in out.items():
+        log.info("%s: %s", region, {k: v for k, v in res.items() if k != "detail"})
+
+
 def cmd_build_symbols(args: argparse.Namespace) -> None:
     """Write data/symbols/<region>.csv - one canonical spelling per company, plus each
     provider's. Prices come from Yahoo and fundamentals from stockanalysis, so the two must
@@ -873,6 +891,12 @@ def build_parser() -> argparse.ArgumentParser:
     cons.add_argument("--regions", default=None, help="comma list, default all")
     ems = add("export-missing-sectors", cmd_export_missing_sectors)
     ems.add_argument("--data-dir", default=None)
+    qbt = add("quarterly-score-backtest", cmd_quarterly_score_backtest)
+    qbt.add_argument("--data-dir", default=None)
+    qbt.add_argument("--regions", default=None, help="comma list, default all")
+    qbt.add_argument("--top-n", type=int, default=20)
+    qbt.add_argument("--lag-months", type=int, default=2,
+                     help="months after period end before rebalancing")
     bsym = add("build-symbols", cmd_build_symbols)
     bsym.add_argument("--data-dir", default=None)
     ohlc = add("refresh-ohlc", cmd_refresh_ohlc, limit=True)
