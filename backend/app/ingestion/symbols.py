@@ -43,6 +43,7 @@ YAHOO_SUFFIX = {
     "australia": ".AX",
     "psx": ".KA",
     "gcc": ".SR",
+    "dfm": ".AE",      # Dubai. EMAAR.AE resolves; .DU and .DFM 404.
 }
 
 # URL prefix stockanalysis uses per market.
@@ -51,6 +52,7 @@ SA_PREFIX = {
     "india": "quote/nse",
     "australia": "quote/asx",
     "gcc": "quote/tadawul",
+    "dfm": "quote/dfm",
     "psx": "quote/psx",
 }
 

@@ -57,6 +57,9 @@ REGION_META: dict[str, tuple[str, str]] = {
     "india": (".NS", "INR"),
     "australia": (".AX", "AUD"),
     "gcc": (".SR", "SAR"),
+    # Dubai. Verified against Yahoo rather than guessed: EMAAR.AE resolves and reports AED,
+    # while .DU and .DFM both 404 - and a wrong suffix fails silently as "no price data".
+    "dfm": (".AE", "AED"),
     "psx": (".KA", "PKR"),
 }
 
@@ -131,6 +134,28 @@ def build_company(texts: dict[str, str | None]) -> dict[str, Any] | None:
     }
 
 
+# The per-market scrapers write "<market>_data/" beside themselves, and Saudi output lands in
+# "tadawul_data" rather than "gcc". Accepting both layouts means a folder handed over from a
+# scraping machine ingests as-is, with no renaming step to get wrong.
+_DIR_ALIASES = {
+    "us": ("us", "us_data"),
+    "india": ("india", "india_data"),
+    "australia": ("australia", "australia_data"),
+    "psx": ("psx", "psx_data"),
+    "gcc": ("gcc", "gcc_data", "tadawul_data", "tadawul"),
+    "dfm": ("dfm", "dfm_data"),
+}
+
+
+def _region_dir(csv_dir: Path, region: str) -> Path | None:
+    """The folder holding this market's CSVs, under either naming scheme."""
+    for name in _DIR_ALIASES.get(region, (region,)):
+        candidate = csv_dir / name
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def consolidate(csv_dir: Path, out_dir: Path, regions: list[str] | None = None,
                 replace: bool = False) -> dict[str, int]:
     """Distil raw scraped CSVs into one gzipped JSON per market.
@@ -146,8 +171,8 @@ def consolidate(csv_dir: Path, out_dir: Path, regions: list[str] | None = None,
     result: dict[str, int] = {}
 
     for region in regions or list(REGION_META):
-        rdir = csv_dir / region
-        if not rdir.exists():
+        rdir = _region_dir(csv_dir, region)
+        if rdir is None:
             continue
         suffix, currency = REGION_META[region]
         income_sfx = _KINDS["income"][0]
