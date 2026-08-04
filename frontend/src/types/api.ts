@@ -121,6 +121,8 @@ export interface ScreenerRow {
   quality_change?: number | null;
   /** Fundamental score at each trailing-twelve-month point, oldest to newest (up to 20). */
   score_history?: number[] | null;
+  /** Period-end date for each score, aligned with score_history. */
+  score_history_dates?: string[] | null;
   results_through?: string | null;
   entry_score?: number | null;
   signal: SignalType | null;

@@ -97,13 +97,12 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
       // The arc matters more than today's number: a 70 on the way up and a 70 on the way down
       // are different businesses, and a single score cannot tell them apart.
       field: "score_history",
-      headerName: "Fund Score - 20 Quarters",
+      headerName: "Score by Quarter (TTM)",
       headerTooltip:
-        "The fundamental score recomputed at each of the last 20 quarterly TTM points, " +
-        "oldest to newest. Every point is a full trailing year, so seasonality cannot " +
-        "masquerade as a trend, and each is valued at the price that quarter traded at. " +
-        "Markets still building TTM history show fewer points.",
-      width: 210,
+        "The fundamental score at each quarter-end, newest first, with the move against the " +
+        "prior quarter. Every point is a full trailing twelve months, so seasonality cannot " +
+        "masquerade as a trend. Hover for all 20 quarters.",
+      width: 290,
       sortable: false,
       cellRenderer: ScoreHistoryCell,
     },

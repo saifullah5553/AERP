@@ -107,47 +107,79 @@ export function PatternCell(p: ICellRendererParams) {
   return <span className="text-accent">{titleize(v)}</span>;
 }
 
-// The fundamental score across its trailing-twelve-month history, drawn inline.
+// "30 Jun 26" - short enough for a grid header, unambiguous about which quarter it is.
+function shortQuarter(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const month = d.toLocaleString("en-GB", { month: "short" });
+  return `${d.getDate()} ${month} ${String(d.getFullYear()).slice(2)}`;
+}
+
+function arrow(delta: number): { glyph: string; color: string } {
+  // A flat band, because a 0.4-point move quarter to quarter is noise and an arrow claiming
+  // direction for it would be worse than saying nothing.
+  if (delta > 1) return { glyph: "▲", color: "#22c55e" };
+  if (delta < -1) return { glyph: "▼", color: "#ef4444" };
+  return { glyph: "▬", color: "#64748b" };
+}
+
+// The fundamental score for each trailing-twelve-month quarter, newest first.
 //
-// A sparkline rather than a number because the arc is the point: a 70 climbing out of 40 and a
-// 70 sliding down from 95 are different businesses, and no single figure separates them. Drawn
-// as an SVG polyline - no chart library for a 200px cell.
+// Shows the most recent few inline with their period-end dates and the move against the prior
+// quarter; the full run (up to 20) is in the tooltip. An anonymous line tells you the shape but
+// not which quarter turned - and "when did this start deteriorating" is the actual question.
 export function ScoreHistoryCell(p: ICellRendererParams) {
-  const raw = p.value as number[] | null | undefined;
-  const pts = (raw ?? []).filter((n): n is number => typeof n === "number");
-  if (pts.length < 2) return <span className="text-slate-600">—</span>;
+  const row = p.data as
+    | { score_history?: number[] | null; score_history_dates?: string[] | null }
+    | undefined;
+  const scores = (row?.score_history ?? []).filter((n): n is number => typeof n === "number");
+  const dates = row?.score_history_dates ?? [];
+  if (scores.length === 0) return <span className="text-slate-600">—</span>;
 
-  const W = 150;
-  const H = 22;
-  // Fixed 0-100 scale, never auto-fitted: autoscaling would make every company's history look
-  // equally dramatic and hide that one sits at 30 while another sits at 90.
-  const x = (i: number) => (i / (pts.length - 1)) * (W - 2) + 1;
-  const y = (v: number) => H - 2 - (Math.max(0, Math.min(100, v)) / 100) * (H - 4);
-  const path = pts.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  // Stored oldest -> newest; read newest first, the way you would ask the question.
+  const points = scores
+    .map((score, i) => ({
+      score,
+      date: dates[i] ?? "",
+      delta: i > 0 ? score - scores[i - 1] : 0,
+    }))
+    .reverse();
 
-  const first = pts[0];
-  const last = pts[pts.length - 1];
-  const delta = last - first;
-  const stroke = delta > 5 ? "#22c55e" : delta < -5 ? "#ef4444" : "#94a3b8";
+  const shown = points.slice(0, 4);
+  const tooltip = points
+    .map((q) => {
+      const a = arrow(q.delta);
+      return `${q.date ? shortQuarter(q.date) : "?"}   ${q.score.toFixed(0)}  ${a.glyph}`;
+    })
+    .join("
+");
 
   return (
-    <span
-      className="flex items-center gap-2"
-      title={`${pts.length} quarterly TTM points, oldest to newest: ${first.toFixed(0)} → ${last.toFixed(0)}`}
-    >
-      <svg width={W} height={H} className="shrink-0" aria-hidden>
-        <line x1={1} y1={y(50)} x2={W - 1} y2={y(50)} stroke="#334155" strokeWidth={0.5} />
-        <polyline
-          points={path}
-          fill="none"
-          stroke={stroke}
-          strokeWidth={1.5}
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-        <circle cx={x(pts.length - 1)} cy={y(last)} r={2} fill={stroke} />
-      </svg>
-      <span className="num text-[11px] text-slate-400">{pts.length}q</span>
+    <span className="flex items-center gap-2" title={`${points.length} quarters (TTM)
+
+${tooltip}`}>
+      {shown.map((q, i) => {
+        const a = arrow(q.delta);
+        return (
+          <span key={i} className="flex flex-col items-center leading-tight">
+            <span className="num text-[11px] font-semibold" style={{ color: scoreColor(q.score) }}>
+              {q.score.toFixed(0)}
+              <span style={{ color: a.color }} className="ml-0.5">{a.glyph}</span>
+            </span>
+            <span className="text-[9px] text-slate-500">
+              {q.date ? shortQuarter(q.date) : "—"}
+            </span>
+          </span>
+        );
+      })}
+      {points.length > shown.length && (
+        <span className="text-[10px] text-slate-500">+{points.length - shown.length}</span>
+      )}
     </span>
   );
+}
+
+function scoreColor(v: number): string {
+  const hue = Math.max(0, Math.min(120, (v / 100) * 120));
+  return `hsl(${hue}, 70%, 60%)`;
 }

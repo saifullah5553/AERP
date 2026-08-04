@@ -221,6 +221,10 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
         # The series itself, oldest -> newest, so the screener can draw the arc rather than
         # just name its direction. Scores only: dates live in the company file.
         r["score_history"] = [p["score"] for p in series]
+        # Dates alongside, so the dashboard can label each quarter rather than showing an
+        # anonymous line. Parallel arrays keep screener.json small - pairing them as objects
+        # would repeat two keys 20 times for every one of 12,000 rows.
+        r["score_history_dates"] = [p["date"] for p in series]
         # Which set of results this name's numbers are through - shown on the portfolio.
         r["results_through"] = series[-1]["date"]
         built += 1
