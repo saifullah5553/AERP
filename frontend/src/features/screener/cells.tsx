@@ -107,74 +107,57 @@ export function PatternCell(p: ICellRendererParams) {
   return <span className="text-accent">{titleize(v)}</span>;
 }
 
-// "30 Jun 26" - short enough for a grid header, unambiguous about which quarter it is.
-function shortQuarter(iso: string): string {
+/** Calendar quarter key for a period-end date: "2026-Q2". */
+function quarterKeyOf(iso: string): string {
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  const month = d.toLocaleString("en-GB", { month: "short" });
-  return `${d.getDate()} ${month} ${String(d.getFullYear()).slice(2)}`;
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-Q${Math.floor(d.getMonth() / 3) + 1}`;
 }
 
-function arrow(delta: number): { glyph: string; color: string } {
-  // A flat band, because a 0.4-point move quarter to quarter is noise and an arrow claiming
-  // direction for it would be worse than saying nothing.
-  if (delta > 1) return { glyph: "▲", color: "#22c55e" };
-  if (delta < -1) return { glyph: "▼", color: "#ef4444" };
-  return { glyph: "▬", color: "#64748b" };
-}
-
-// The fundamental score for each trailing-twelve-month quarter, newest first.
-//
-// Shows the most recent few inline with their period-end dates and the move against the prior
-// quarter; the full run (up to 20) is in the tooltip. An anonymous line tells you the shape but
-// not which quarter turned - and "when did this start deteriorating" is the actual question.
-export function ScoreHistoryCell(p: ICellRendererParams) {
+/**
+ * One quarter's fundamental score, with its move against the previous quarter.
+ *
+ * Each column owns a quarter and looks its own value up, so a company reporting on an
+ * off-calendar year still lands in the right column - matching by position would silently
+ * shift a whole history sideways.
+ */
+export function QuarterScoreCell(p: ICellRendererParams & { quarterKey?: string }) {
   const row = p.data as
     | { score_history?: number[] | null; score_history_dates?: string[] | null }
     | undefined;
-  const scores = (row?.score_history ?? []).filter((n): n is number => typeof n === "number");
+  const scores = row?.score_history ?? [];
   const dates = row?.score_history_dates ?? [];
-  if (scores.length === 0) return <span className="text-slate-600">—</span>;
+  const want = p.quarterKey;
+  if (!want || scores.length === 0) return <span className="text-slate-700">·</span>;
 
-  // Stored oldest -> newest; read newest first, the way you would ask the question.
-  const points = scores
-    .map((score, i) => ({
-      score,
-      date: dates[i] ?? "",
-      delta: i > 0 ? score - scores[i - 1] : 0,
-    }))
-    .reverse();
+  const idx = dates.findIndex((d) => quarterKeyOf(d) === want);
+  if (idx < 0 || typeof scores[idx] !== "number") {
+    return <span className="text-slate-700">·</span>;
+  }
 
-  const shown = points.slice(0, 4);
-  const tooltip = points
-    .map((q) => {
-      const a = arrow(q.delta);
-      return `${q.date ? shortQuarter(q.date) : "?"}   ${q.score.toFixed(0)}  ${a.glyph}`;
-    })
-    .join("
-");
+  const score = scores[idx];
+  // Stored oldest -> newest, so the prior quarter is the entry before it.
+  const prior = idx > 0 ? scores[idx - 1] : null;
+  const delta = prior == null ? null : score - prior;
+
+  // Under a point is noise; an arrow asserting direction for it would be worse than none.
+  const mark =
+    delta == null ? null
+      : delta > 1 ? { glyph: "▲", color: "#22c55e" }
+      : delta < -1 ? { glyph: "▼", color: "#ef4444" }
+      : { glyph: "▬", color: "#64748b" };
 
   return (
-    <span className="flex items-center gap-2" title={`${points.length} quarters (TTM)
-
-${tooltip}`}>
-      {shown.map((q, i) => {
-        const a = arrow(q.delta);
-        return (
-          <span key={i} className="flex flex-col items-center leading-tight">
-            <span className="num text-[11px] font-semibold" style={{ color: scoreColor(q.score) }}>
-              {q.score.toFixed(0)}
-              <span style={{ color: a.color }} className="ml-0.5">{a.glyph}</span>
-            </span>
-            <span className="text-[9px] text-slate-500">
-              {q.date ? shortQuarter(q.date) : "—"}
-            </span>
-          </span>
-        );
-      })}
-      {points.length > shown.length && (
-        <span className="text-[10px] text-slate-500">+{points.length - shown.length}</span>
-      )}
+    <span
+      className="num text-xs font-semibold"
+      style={{ color: scoreColor(score) }}
+      title={
+        `${dates[idx]}: ${score.toFixed(1)}` +
+        (delta == null ? "" : ` (${delta > 0 ? "+" : ""}${delta.toFixed(1)} vs prior quarter)`)
+      }
+    >
+      {score.toFixed(0)}
+      {mark && <span style={{ color: mark.color }} className="ml-0.5">{mark.glyph}</span>}
     </span>
   );
 }

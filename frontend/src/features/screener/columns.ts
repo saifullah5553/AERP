@@ -6,8 +6,8 @@ import {
   ActionCell,
   ChangeCell,
   PatternCell,
+  QuarterScoreCell,
   ScoreCell,
-  ScoreHistoryCell,
   TrendCell,
 } from "./cells";
 
@@ -32,6 +32,62 @@ function num(field: keyof ScreenerRow, header: string, opts: Partial<ColDef> = {
     cellClass: "num",
     ...opts,
   };
+}
+
+/** Calendar quarter key for a period-end date: "2026-Q2". */
+export function quarterKey(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-Q${Math.floor(d.getMonth() / 3) + 1}`;
+}
+
+/** "Jun 26" - the quarter END, which is what the statement is dated. */
+function quarterLabel(key: string): string {
+  const [year, q] = key.split("-Q");
+  const month = ["Mar", "Jun", "Sep", "Dec"][Number(q) - 1] ?? "";
+  return `${month} ${year.slice(2)}`;
+}
+
+/**
+ * The last `count` calendar quarters, newest first.
+ *
+ * Derived from the calendar rather than from the loaded rows because the grid pages its data in
+ * - there is no complete row set to inspect when the columns are built. Companies whose fiscal
+ * year ends off-calendar still land in the quarter their period end falls in.
+ */
+function recentQuarters(count: number): string[] {
+  const now = new Date();
+  let year = now.getFullYear();
+  // Start at the last COMPLETED quarter. The current one has not ended, so nobody has reported
+  // it - leading with it would put an empty column in front of every company.
+  let q = Math.floor(now.getMonth() / 3);
+  if (q === 0) {
+    q = 4;
+    year -= 1;
+  }
+  const out: string[] = [];
+  for (let i = 0; i < count; i++) {
+    out.push(`${year}-Q${q}`);
+    q -= 1;
+    if (q === 0) {
+      q = 4;
+      year -= 1;
+    }
+  }
+  return out;
+}
+
+/** One column per quarter: that quarter's fundamental score, and the move against the prior one. */
+function quarterColumns(): ColDef<ScreenerRow>[] {
+  return recentQuarters(20).map((key) => ({
+    colId: `q_${key}`,
+    headerName: quarterLabel(key),
+    headerTooltip: `Fundamental score for the trailing twelve months ended ${quarterLabel(key)}`,
+    width: 78,
+    sortable: false,
+    cellRenderer: QuarterScoreCell,
+    cellRendererParams: { quarterKey: key },
+  }));
 }
 
 export function buildColumnDefs(): ColDef<ScreenerRow>[] {
@@ -94,19 +150,6 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
       cellStyle: heat,
     },
     {
-      // The arc matters more than today's number: a 70 on the way up and a 70 on the way down
-      // are different businesses, and a single score cannot tell them apart.
-      field: "score_history",
-      headerName: "Score by Quarter (TTM)",
-      headerTooltip:
-        "The fundamental score at each quarter-end, newest first, with the move against the " +
-        "prior quarter. Every point is a full trailing twelve months, so seasonality cannot " +
-        "masquerade as a trend. Hover for all 20 quarters.",
-      width: 290,
-      sortable: false,
-      cellRenderer: ScoreHistoryCell,
-    },
-    {
       field: "quality_trend",
       headerName: "Trend",
       headerTooltip:
@@ -115,6 +158,7 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
       sortable: true,
       cellRenderer: TrendCell,
     },
+    ...quarterColumns(),
     {
       field: "technical_score",
       headerName: "Tech",
