@@ -111,7 +111,11 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
             doc = json.loads(cf.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
-        statements = doc.get("statements") or {}
+        # The quarterly TTM series is the better view and the one the per-quarter columns are
+        # built from. Reading the annual sampling here instead made the headline score disagree
+        # with its own newest quarter by up to 38 points, on the same date - two numbers for the
+        # same question, with nothing to say which was right.
+        statements = doc.get("statements_ttm") or doc.get("statements") or {}
         if not (statements.get("income") or []):
             no_data += 1
             continue

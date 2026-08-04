@@ -30,6 +30,7 @@ from app.core.snapshot_lock import snapshot_lock
 from app.engines.strategy.quality import assess_quality
 from app.ingestion.fundamentals_web import _cache_to_dtos, _roll_ttm
 from app.ingestion.ohlc_store import load_bars
+from app.ingestion.quality_refresh import _peer_margins, _peers_for
 
 log = get_logger(__name__)
 
@@ -57,7 +58,7 @@ def _statements_at(inc: list, bal: list, cf: list, upto: int) -> dict[str, list[
     }
 
 
-def _series_from_cache(sym: str) -> list[dict] | None:
+def _series_from_cache(sym: str, peers: dict | None = None) -> list[dict] | None:
     """Quarterly-spaced TTM quality points from the cached raw quarters."""
     cf = CACHE / f"{sym}.json"
     if not cf.exists():
@@ -75,7 +76,7 @@ def _series_from_cache(sym: str) -> list[dict] | None:
 
     out: list[dict] = []
     for i in range(len(inc)):
-        res = assess_quality(_statements_at(inc, bal, cfl, i))
+        res = assess_quality(_statements_at(inc, bal, cfl, i), peers=peers)
         if res.score is not None:
             out.append({
                 "date": inc[i].fiscal_date.isoformat(),
@@ -110,7 +111,7 @@ def _price_lookup(region: str, symbol: str):
 
 
 def _series_from_statements(doc: dict, key: str = "statements",
-                            price_on=None) -> list[dict] | None:
+                            price_on=None, peers: dict | None = None) -> list[dict] | None:
     """Score at successive past points by progressively hiding newer periods."""
     st = doc.get(key) or {}
     inc = st.get("income") or []
@@ -137,7 +138,7 @@ def _series_from_statements(doc: dict, key: str = "statements",
                         break
                 market = {"price": px,
                           "market_cap": (px * float(shares)) if shares else None}
-        res = assess_quality(view, market=market)
+        res = assess_quality(view, market=market, peers=peers)
         if res.score is not None:
             out.append({
                 "date": str(inc[i].get("fiscal_date") or "")[:10],
@@ -174,6 +175,10 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
     if limit is not None:
         targets = targets[:limit]
 
+    # Same peer medians the headline score uses - margins graded against a different peer group
+    # would reintroduce exactly the disagreement this is fixing.
+    medians = _peer_margins(targets, cdir)
+
     built = from_store = from_cache = improving = deteriorating = 0
     for i, r in enumerate(targets, 1):
         # This is a read-modify-write over every company file, so a full pass takes tens of
@@ -195,15 +200,16 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
         # columns for every market; the yfinance cache carries at most 12 raw quarters and only
         # for names it managed to fetch; the annual statements give one point a year.
         price_on = _price_lookup(str(r.get("region") or ""), str(r.get("symbol") or ""))
-        series = _series_from_statements(doc, "statements_ttm", price_on)
+        peers = _peers_for(r, medians)
+        series = _series_from_statements(doc, "statements_ttm", price_on, peers)
         if series:
             from_store += 1
         else:
-            series = _series_from_cache(r["provider_symbol"])
+            series = _series_from_cache(r["provider_symbol"], peers)
             if series:
                 from_cache += 1
             else:
-                series = _series_from_statements(doc, "statements", price_on)
+                series = _series_from_statements(doc, "statements", price_on, peers)
         if not series:
             continue
 
@@ -216,6 +222,12 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
         except OSError:
             continue
 
+        # The headline score IS the newest quarter, set here rather than left to agree by
+        # coincidence. The three history sources build their statements differently - the
+        # scraped TTM store, the yfinance cache, the annual sampling - so a headline computed
+        # separately drifted from its own newest column by up to 38 points on the same date.
+        # Two numbers answering one question, with nothing to say which was right.
+        r["quality_score"] = series[-1]["score"]
         r["quality_trend"] = direction
         r["quality_change"] = change
         # The series itself, oldest -> newest, so the screener can draw the arc rather than
