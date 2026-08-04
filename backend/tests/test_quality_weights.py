@@ -24,15 +24,16 @@ def _company(debt=400.0, ebitda=250.0, interest=-20.0, cur_assets=600.0, cur_lia
 
 
 def test_the_pillars_carry_their_stated_weights() -> None:
-    """Growth 35 / margins 15 / cash 25 / solvency and liquidity 25.
+    """Growth 35 / profitability 15 / cash 25 / solvency and liquidity 25.
 
     Pinned because this is the stated investment thesis, not an implementation detail: if these
     drift, the score quietly stops measuring what it claims to.
     """
     growth = sum(CHECK_WEIGHTS[k] for k in
                  ("revenue_rising", "operating_profit_rising", "eps_rising"))
-    margins = sum(CHECK_WEIGHTS[k] for k in
-                  ("gross_margin_healthy", "operating_margin_healthy", "net_margin_healthy"))
+    profitability = sum(CHECK_WEIGHTS[k] for k in
+                        ("gross_margin_healthy", "operating_margin_healthy",
+                         "net_margin_healthy", "roic_strong"))
     cash = sum(CHECK_WEIGHTS[k] for k in
                ("cash_flow_positive", "free_cash_flow_positive",
                 "earnings_backed_by_cash", "cash_building"))
@@ -42,7 +43,7 @@ def test_the_pillars_carry_their_stated_weights() -> None:
                     "quick_ratio_healthy"))
 
     assert round(growth, 2) == 0.35
-    assert round(margins, 2) == 0.15
+    assert round(profitability, 2) == 0.15
     assert round(cash, 2) == 0.25
     assert round(solvency, 2) == 0.25
     assert round(sum(CHECK_WEIGHTS.values()), 4) == 1.0
@@ -176,3 +177,34 @@ def test_a_loss_making_peer_group_falls_back_to_absolute_anchors() -> None:
     q = assess_quality(st, peers={"gross_margin": -0.10})
     # Absolute anchors put 30% gross margin at 60.
     assert q.grades["gross_margin_healthy"] == 60.0
+
+
+def test_operating_and_free_cash_flow_are_scored_by_magnitude() -> None:
+    """These sit in the CASH pillar; measuring them against revenue is only how their size is
+    judged, so a large company and a small one compare on the same terms.
+
+    Both anchors previously named metrics that were never computed, so 16% of the score
+    silently fell back to pass/fail - strong cash generation and barely-positive cash generation
+    scored identically.
+    """
+    strong = assess_quality(_company(ocf=250.0, fcf=200.0))    # 25% / 20% of revenue
+    thin = assess_quality(_company(ocf=10.0, fcf=5.0))         # 1% / 0.5%
+
+    assert strong.metrics["ocf_margin"] == 0.25
+    assert thin.metrics["fcf_margin"] == 0.005
+    assert strong.grades["cash_flow_positive"] > thin.grades["cash_flow_positive"]
+    assert strong.grades["free_cash_flow_positive"] > thin.grades["free_cash_flow_positive"]
+    assert strong.score > thin.score
+
+
+def test_roic_is_earned_on_capital_actually_employed() -> None:
+    """NOPAT over invested capital (equity + debt - cash). A better moat test than ROE, which
+    leverage flatters: borrow enough and ROE rises while the business gets worse."""
+    q = assess_quality(_company())
+    # op 200, ~25% tax -> NOPAT 150; invested 500 + 400 - 100 = 800 -> 18.75%
+    assert abs(q.metrics["roic"] - 0.1875) < 0.001
+    assert q.checks["roic_strong"] is True
+
+    poor = assess_quality(_company(op_income=20.0))
+    assert poor.checks["roic_strong"] is False
+    assert poor.grades["roic_strong"] < q.grades["roic_strong"]

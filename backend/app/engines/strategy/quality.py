@@ -55,10 +55,13 @@ CHECK_WEIGHTS: dict[str, float] = {
     "revenue_rising": 0.1167,
     "operating_profit_rising": 0.1167,
     "eps_rising": 0.1166,
-    # MARGINS - 15%. Growth in revenue is worth little if it is bought by giving margin away.
-    "gross_margin_healthy": 0.05,
-    "operating_margin_healthy": 0.05,
-    "net_margin_healthy": 0.05,
+    # PROFITABILITY - 15%. Growth in revenue is worth little if it is bought by giving margin
+    # away, and margin is worth little if the capital behind it earns nothing. Margins are
+    # judged against industry peers; ROIC against a fixed hurdle.
+    "gross_margin_healthy": 0.0375,
+    "operating_margin_healthy": 0.0375,
+    "net_margin_healthy": 0.0375,
+    "roic_strong": 0.0375,
     # CASH - 25%. Generating it, keeping it after capex, and earnings actually backed by it.
     # OCF vs net income carries real weight here: it is the closest thing to a lie detector on
     # reported profit, and at 2.5% it was decorative.
@@ -94,6 +97,9 @@ FCF_YIELD_GOOD = 0.04           # 4% of market cap in free cash flow
 PRICE_TO_BOOK_GOOD = 3.0
 MARGIN_OF_SAFETY_YIELD = 0.10   # P/E <= 10 - the classic value cushion
 
+ROIC_GOOD = 0.12                # a hurdle we choose, NOT a computed cost of capital: WACC
+                                # needs a beta and an equity risk premium, and for small caps
+                                # those are noise dressed up as rigour.
 ROE_GOOD = 0.15                 # 15% on equity
 ROA_GOOD = 0.05                 # 5% on total assets
 GROSS_MARGIN_GOOD = 0.25
@@ -166,6 +172,7 @@ GRADE_ANCHORS: dict[str, tuple[str, float, float]] = {
     "operating_profit_rising": ("operating_profit_growth", -0.30, 0.30),
     "eps_rising": ("eps_growth", -0.30, 0.30),
     # Margins.
+    "roic_strong": ("roic", 0.0, 0.24),
     "gross_margin_healthy": ("gross_margin", 0.0, 0.50),
     "operating_margin_healthy": ("operating_margin", -0.05, 0.25),
     "net_margin_healthy": ("net_margin", -0.05, 0.15),
@@ -276,7 +283,8 @@ class QualityResult:
         return self.passed or self.improving
 
 
-def _add_return_checks(checks: dict, metrics: dict, inc: list[dict], bal: list[dict]) -> None:
+def _add_return_checks(checks: dict, metrics: dict, inc: list[dict], bal: list[dict],
+                       cf: list[dict] | None = None) -> None:
     """Returns on capital and margins - how good the business is, not how big or how cheap.
 
     Statement-only, so unlike the valuation tests these are answerable for every company we
@@ -285,6 +293,7 @@ def _add_return_checks(checks: dict, metrics: dict, inc: list[dict], bal: list[d
     for key in _RETURN_CHECKS:
         checks.setdefault(key, None)
 
+    cf = cf or []
     latest_inc = inc[0] if inc else {}
     latest_bal = bal[0] if bal else {}
     net_income = _f(latest_inc.get("net_income"))
@@ -297,6 +306,36 @@ def _add_return_checks(checks: dict, metrics: dict, inc: list[dict], bal: list[d
     roa = net_income / assets if (net_income is not None and assets and assets > 0) else None
     op_margin = op_income / revenue if (op_income is not None and revenue and revenue > 0) else None
     net_margin = net_income / revenue if (net_income is not None and revenue and revenue > 0) else None
+
+    # Cash measured against revenue, so a large company and a small one compare on the same
+    # terms. These anchor the two heaviest cash checks and were referenced before they existed,
+    # which quietly left 16% of the score scored as pass/fail.
+    latest_cf_row = cf[0] if cf else {}
+    ocf_latest = _f(latest_cf_row.get("operating_cash_flow"))
+    fcf_latest = _f(latest_cf_row.get("free_cash_flow"))
+    metrics["ocf_margin"] = (ocf_latest / revenue
+                             if (ocf_latest is not None and revenue and revenue > 0) else None)
+    metrics["fcf_margin"] = (fcf_latest / revenue
+                             if (fcf_latest is not None and revenue and revenue > 0) else None)
+
+    # Return on invested capital: what the business earns on the capital it actually employs.
+    # A better moat test than ROE, which leverage flatters - borrow enough and ROE rises while
+    # the business gets worse.
+    pretax = _f(latest_inc.get("income_before_tax"))
+    tax = _f(latest_inc.get("income_tax_expense"))
+    tax_rate = 0.25
+    if pretax and pretax > 0 and tax is not None:
+        tax_rate = max(0.0, min(0.5, abs(tax) / pretax))
+    debt_now = _f(latest_bal.get("total_debt")) or 0.0
+    cash_now = _f(latest_bal.get("cash_and_equivalents")) or 0.0
+    invested = (equity or 0.0) + debt_now - cash_now
+    roic = None
+    if op_income is not None and invested > 0:
+        roic = (op_income * (1 - tax_rate)) / invested
+    metrics["roic"] = roic
+    checks.setdefault("roic_strong", None)
+    if roic is not None:
+        checks["roic_strong"] = roic >= ROIC_GOOD
 
     gross_profit = _f(latest_inc.get("gross_profit"))
     gross_margin = (gross_profit / revenue
@@ -551,7 +590,7 @@ def assess_quality(statements: dict[str, list[dict]], min_checks: int = 5,
     )
 
     _add_valuation_checks(checks, metrics, inc, bal, cf, market)
-    _add_return_checks(checks, metrics, inc, bal)
+    _add_return_checks(checks, metrics, inc, bal, cf)
     _add_solvency_checks(checks, metrics, inc, bal)
 
     reasons = [k for k, v in checks.items() if v is False]

@@ -83,7 +83,7 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
       field: "quality_score",
       headerName: "Fund Score",
       headerTooltip:
-        "Fundamental score: growth 35% + margins 15% (gross/operating/net) + cash 25% " +
+        "Fundamental score: growth 35% + profitability 15% (gross/operating/net margin, ROIC) + cash 25% " +
         "(operating CF, free CF, earnings backed by cash) + solvency & liquidity 25% " +
         "(net debt/EBITDA, interest cover, D/E, current and quick ratios). " +
         "Business quality only - price is a separate question.",
