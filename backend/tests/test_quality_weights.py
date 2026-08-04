@@ -24,7 +24,7 @@ def _company(debt=400.0, ebitda=250.0, interest=-20.0, cur_assets=600.0, cur_lia
 
 
 def test_the_pillars_carry_their_stated_weights() -> None:
-    """Growth 35 / profitability 15 / cash 25 / solvency and liquidity 25.
+    """Growth 30 / profitability 10 / cash 30 / solvency and liquidity 30.
 
     Pinned because this is the stated investment thesis, not an implementation detail: if these
     drift, the score quietly stops measuring what it claims to.
@@ -42,10 +42,10 @@ def test_the_pillars_carry_their_stated_weights() -> None:
                     "debt_to_equity_reasonable", "current_ratio_healthy",
                     "quick_ratio_healthy"))
 
-    assert round(growth, 2) == 0.35
-    assert round(profitability, 2) == 0.15
-    assert round(cash, 2) == 0.25
-    assert round(solvency, 2) == 0.25
+    assert round(growth, 2) == 0.30
+    assert round(profitability, 2) == 0.10
+    assert round(cash, 2) == 0.30
+    assert round(solvency, 2) == 0.30
     assert round(sum(CHECK_WEIGHTS.values()), 4) == 1.0
 
     # OCF vs net income is the closest thing to a lie detector on reported profit. At the 2.5%

@@ -51,32 +51,30 @@ _DEBT_CHECKS = ("debt_low_or_falling",)
 # Weights are renormalised over whatever could be evaluated, so a missing line item never reads
 # as a failed test.
 CHECK_WEIGHTS: dict[str, float] = {
-    # GROWTH - 35%. Still the thesis: buy businesses that are getting bigger.
-    "revenue_rising": 0.1167,
-    "operating_profit_rising": 0.1167,
-    "eps_rising": 0.1166,
-    # PROFITABILITY - 15%. Growth in revenue is worth little if it is bought by giving margin
-    # away, and margin is worth little if the capital behind it earns nothing. Margins are
-    # judged against industry peers; ROIC against a fixed hurdle.
-    "gross_margin_healthy": 0.0375,
-    "operating_margin_healthy": 0.0375,
-    "net_margin_healthy": 0.0375,
-    "roic_strong": 0.0375,
-    # CASH - 25%. Generating it, keeping it after capex, and earnings actually backed by it.
-    # OCF vs net income carries real weight here: it is the closest thing to a lie detector on
-    # reported profit, and at 2.5% it was decorative.
-    "cash_flow_positive": 0.08,
-    "free_cash_flow_positive": 0.08,
-    "earnings_backed_by_cash": 0.06,
-    "cash_building": 0.03,
-    # SOLVENCY AND LIQUIDITY - 25%. Previously 20% resting on ONE binary test, which a company
-    # at 2.5x debt-to-equity could pass by repaying a token amount. Leverage is what turns a bad
-    # quarter fatal, so it now gets the metrics that actually predict distress.
-    "net_debt_to_ebitda_safe": 0.06,
-    "interest_coverage_safe": 0.06,
-    "debt_to_equity_reasonable": 0.05,
-    "current_ratio_healthy": 0.04,
-    "quick_ratio_healthy": 0.04,
+    # GROWTH - 30%. Still the largest single pillar, but no longer a third of the score on its
+    # own: a company can grow revenue while burning cash and levering up, and the two pillars
+    # below are what catch that.
+    "revenue_rising": 0.10,
+    "operating_profit_rising": 0.10,
+    "eps_rising": 0.10,
+    # PROFITABILITY - 10%. Margins against industry peers, plus ROIC against a fixed hurdle.
+    "gross_margin_healthy": 0.025,
+    "operating_margin_healthy": 0.025,
+    "net_margin_healthy": 0.025,
+    "roic_strong": 0.025,
+    # CASH - 30%. Generating it, keeping it after capex, and earnings actually backed by it.
+    # OCF vs net income is the closest thing to a lie detector on reported profit.
+    "cash_flow_positive": 0.096,
+    "free_cash_flow_positive": 0.096,
+    "earnings_backed_by_cash": 0.072,
+    "cash_building": 0.036,
+    # SOLVENCY AND LIQUIDITY - 30%. Leverage is what turns a bad quarter fatal, so it now
+    # carries as much as growth does.
+    "net_debt_to_ebitda_safe": 0.072,
+    "interest_coverage_safe": 0.072,
+    "debt_to_equity_reasonable": 0.06,
+    "current_ratio_healthy": 0.048,
+    "quick_ratio_healthy": 0.048,
 }
 
 # Still computed and shown, but no longer scored: this is a business-quality score, and price
