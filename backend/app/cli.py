@@ -28,6 +28,28 @@ def _region(value: str | None) -> MarketRegion | None:
     return MarketRegion(value) if value else None
 
 
+def refresh_derived_views(out) -> None:
+    """Rebuild everything that reads the screener, in the order it must be read.
+
+    The model portfolio, the rebalance ledger and the pulse are all VIEWS of screener.json.
+    Rebuilding them at different moments is what let the portfolio quote a score from the
+    retired engine while the screener showed the current one - the pages were not disagreeing,
+    they were describing different instants. Anything that rewrites the screener calls this.
+    """
+    from pathlib import Path as _Path
+    out = _Path(out)
+    try:
+        from app.ingestion.model_portfolio import mark as mark_portfolio
+        mark_portfolio(out)
+    except Exception as exc:  # noqa: BLE001 - a view must not fail the run that fed it
+        log.warning("model-portfolio mark failed: %s", exc)
+    try:
+        from app.ingestion.rebalance_ledger import build as build_ledger
+        build_ledger(out)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("rebalance ledger failed: %s", exc)
+
+
 def cmd_init_db(args: argparse.Namespace) -> None:
     """Create all tables (local/dev convenience; production uses Alembic)."""
     from app.db.session import engine
@@ -390,6 +412,9 @@ def cmd_quality_history(args: argparse.Namespace) -> None:
 
     out = args.out or "../frontend/public/data"
     log.info("refresh-quality-history: %s", refresh_quality_history(out, limit=args.limit))
+    # The screener has just been rewritten, so every view of it is now stale. Rebuild them here
+    # rather than leaving the pages to disagree until the next export.
+    refresh_derived_views(out)
 
 
 def cmd_model_portfolio(args: argparse.Namespace) -> None:
@@ -863,14 +888,13 @@ def cmd_export_static(args: argparse.Namespace) -> None:
         # Company files for securities only in the old snapshot are left in place.
         company_files = len(list((out / "company").glob("*.json")))
 
-        # Quarterly rebalance ledger: what the top-N rule bought and sold each quarter, and
-        # what the round trips returned. Built from the stored score history and our own
-        # closes, so it needs the screener written above - hence its place here.
-        try:
-            from app.ingestion.rebalance_ledger import build as build_ledger
-            build_ledger(out)
-        except Exception as exc:  # noqa: BLE001 - a derived view must not fail the export
-            log.warning("rebalance ledger failed: %s", exc)
+        # ── derived views, all rebuilt HERE and in this order ──────────────────────────
+        # Everything below reads the screener written a few lines up, so every page ends up
+        # describing the same instant. Run separately they drift: the model portfolio was
+        # marked at 14:29 and the universe rescored at 14:52, which left GRMN showing 100.0 on
+        # the portfolio - a score from the RETIRED engine - beside 80.69 on the screener. The
+        # pages were not disagreeing about a number, they were quoting different snapshots.
+        refresh_derived_views(out)
 
         # Cross-market insider transactions feed (aggregated from the company files above,
         # so it spans US / India / Australia / PSX — not just the CI DB's PSX rows).
