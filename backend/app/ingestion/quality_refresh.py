@@ -122,7 +122,10 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
 
         # Valuation needs a quote. Passing the row's own price keeps the two in step - a score
         # computed against a different company's price would be worse than no score.
-        q = assess_quality(statements, market={
+        q = assess_quality(statements,
+                           region=str(r.get("region") or "us"),
+                           sector=r.get("sector"),
+                           market={
             "price": r.get("price"),
             "market_cap": r.get("market_cap"),
         }, peers=_peers_for(r, medians))

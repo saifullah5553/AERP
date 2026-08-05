@@ -31,6 +31,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.engines.strategy.fundamental_quality import score_fundamentals
+
 # The two pillars of the thesis. Growth and cash decide whether a business is worth owning;
 # debt is a guardrail, not a reason to buy.
 _GROWTH_CHECKS = ("revenue_rising", "operating_profit_rising", "eps_rising")
@@ -269,6 +271,11 @@ class QualityResult:
     metrics: dict[str, float | None] = field(default_factory=dict)
     reasons: list[str] = field(default_factory=list)
     improving: bool = False        # not yet fully strong, but the trend is the right way
+    # From the six-category engine (fundamental_quality.py), which now sets `score`.
+    confidence: float | None = None            # 0-100: how much real data is behind it
+    grade_label: str = "Unrated"               # Exceptional / Excellent / Good / ...
+    categories: dict = field(default_factory=dict)   # per-category earned/points/parts
+    flags: list[str] = field(default_factory=list)   # earnings-quality red flags
 
     @property
     def eligible(self) -> bool:
@@ -473,7 +480,8 @@ def _add_valuation_checks(checks: dict, metrics: dict, inc: list[dict], bal: lis
 
 def assess_quality(statements: dict[str, list[dict]], min_checks: int = 5,
                    market: dict | None = None,
-                   peers: dict[str, float] | None = None) -> QualityResult:
+                   peers: dict[str, float] | None = None,
+                   region: str = "us", sector: str | None = None) -> QualityResult:
     """Run the quality tests. `passed` requires the non-negotiables (positive operating cash
     flow, rising EPS) plus a majority of BOTH the growth and cash pillars - growth and cash are
     the thesis, so neither can be waved through by the other.
@@ -621,5 +629,16 @@ def assess_quality(statements: dict[str, list[dict]], min_checks: int = 5,
             # line item is not scored as if it had failed that test.
             score = round(sum(v * w for v, w in avail) / sum(w for _v, w in avail), 2)
 
+    # The 0-100 number is now the six-category Fundamental Quality Score - growth,
+    # profitability, capital efficiency, cash flow, balance sheet, working capital - scored on
+    # interpolated curves over all twenty TTM periods. `passed` still comes from the checks
+    # above, because it gates the strategy action and means something different: not "how
+    # good" but "does this clear the bar at all".
+    fq = score_fundamentals(statements, region=region, sector=sector, peers=peers)
+    if fq.score is not None:
+        score = fq.score
+
     return QualityResult(passed=passed, score=score, checks=checks, grades=grades,
+                         confidence=fq.confidence, grade_label=fq.grade,
+                         categories=fq.categories, flags=fq.flags,
                          metrics=metrics, reasons=reasons, improving=improving)
