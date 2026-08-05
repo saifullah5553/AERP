@@ -242,10 +242,13 @@ def mark(data_dir: str | Path) -> dict[str, Any]:
     if not holdings:
         return {"marked": 0}
 
-    prices = {
-        r.get("provider_symbol"): r.get("price")
-        for r in json.loads((out / "screener.json").read_text(encoding="utf-8"))
-    }
+    screener = json.loads((out / "screener.json").read_text(encoding="utf-8"))
+    prices = {r.get("provider_symbol"): r.get("price") for r in screener}
+    # The quarter a holding's figures are through, and how its quality now reads. These change
+    # between rebalances as results land and scores move, so marking has to refresh them - the
+    # portfolio page shows both, and without this they were blank for every row: the fields
+    # were only ever written at a rebalance, and the columns were added after the last one.
+    latest = {r.get("provider_symbol"): r for r in screener}
     marked = 0
     for region, hs in holdings.items():
         for h in hs:
@@ -253,6 +256,11 @@ def mark(data_dir: str | Path) -> dict[str, Any]:
             if px is None or not h.get("entry_price"):
                 continue
             entry = _adjusted_entry(str(region), h)
+            fresh = latest.get(h.get("provider_symbol")) or {}
+            for field in ("results_through", "quality_grade", "quality_confidence",
+                          "quality_score"):
+                if fresh.get(field) is not None:
+                    h[field] = fresh[field]
             h["price"] = px
             h["return_pct"] = round((float(px) - entry) / entry * 100, 2)
             marked += 1
