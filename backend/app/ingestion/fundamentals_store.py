@@ -158,6 +158,48 @@ def _region_dir(csv_dir: Path, region: str) -> Path | None:
     return None
 
 
+def merge_records(old: dict | None, new: dict | None) -> dict | None:
+    """Union two columnar records by PERIOD, newest first, so history only ever grows.
+
+    The source publishes a rolling twenty quarters. When Jun-26 appears the oldest quarter
+    falls off the end, so replacing a company's record with each fresh scrape quietly discards
+    a quarter every three months - and the loss is invisible, because the file still holds a
+    tidy twenty periods. After five years of refreshes we would still have five years of
+    history and never notice the first five had gone.
+
+    Newer values win where the two overlap: a restated figure is the better number.
+    """
+    if not old:
+        return new
+    if not new:
+        return old
+
+    sections = ("income", "balance", "cashflow")
+    old_periods = list(old.get("periods") or [])
+    new_periods = list(new.get("periods") or [])
+
+    # metric -> {period: value}, new applied over old.
+    merged: dict[str, dict[str, dict]] = {}
+    for section in sections:
+        cells: dict[str, dict] = {}
+        for rec, periods in ((old, old_periods), (new, new_periods)):
+            for metric, values in (rec.get(section) or {}).items():
+                slot = cells.setdefault(metric, {})
+                for period, value in zip(periods, values, strict=False):
+                    if period and value is not None:
+                        slot[period] = value
+        merged[section] = cells
+
+    periods = sorted({p for p in old_periods + new_periods if p}, reverse=True)
+    out: dict = {"periods": periods}
+    for section in sections:
+        out[section] = {
+            metric: [cells.get(p) for p in periods]
+            for metric, cells in merged[section].items()
+        }
+    return out
+
+
 def consolidate(csv_dir: Path, out_dir: Path, regions: list[str] | None = None,
                 replace: bool = False) -> dict[str, int]:
     """Distil raw scraped CSVs into one gzipped JSON per market.
@@ -189,7 +231,8 @@ def consolidate(csv_dir: Path, out_dir: Path, regions: list[str] | None = None,
             }
             rec = build_company(texts)
             if rec:
-                companies[sym] = rec
+                # Union with what we already hold rather than overwrite it - see merge_records.
+                companies[sym] = rec if replace else merge_records(companies.get(sym), rec)
 
         payload = {
             "version": STORE_VERSION,

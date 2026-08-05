@@ -59,13 +59,25 @@ jobs:
           AERP_PSX_FORCE: "1"
         run: python scripts/scrape_psx.py || true
 
+      - name: Feed the scrape into the store the SCORE reads
+        if: ${{ env.SYMS != '' }}
+        working-directory: backend
+        run: |
+          # The CSVs alone only reach the database, via ingest-psx. The fundamental score is
+          # computed from statements_ttm in the company files, which come from the consolidated
+          # store - so without these two commands a freshly announced quarter is scraped,
+          # committed, ingested, and still never scored.
+          pip install -r requirements.txt >/dev/null 2>&1 || true
+          python -m app.cli consolidate-fundamentals --csv-dir ../data --regions psx || true
+          python -m app.cli apply-fundamentals --regions psx --data-dir ../frontend/public/data || true
+
       - name: Re-pack and commit if changed
         if: ${{ env.SYMS != '' }}
         run: |
           tar czf data/psx_csv.tar.gz -C data psx_csv
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/psx_csv.tar.gz
+          git add data/psx_csv.tar.gz data/fundamentals_ttm frontend/public/data/company
           if git diff --cached --quiet; then
             echo "No fundamentals changed."
           else

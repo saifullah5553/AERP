@@ -94,16 +94,23 @@ jobs:
             --symbols "${{ steps.pick.outputs.symbols }}" \
             --workers 3 --page-pause 0.5 --work 300 --rest 0
 
-      - name: Merge into the store
+      - name: Merge into the store, then push it into the snapshot
         if: steps.pick.outputs.symbols != ''
         working-directory: backend
-        run: python -m app.cli consolidate-fundamentals
+        run: |
+          set -e
+          python -m app.cli consolidate-fundamentals
+          # Consolidating alone changes NOTHING a user can see. The score reads statements_ttm
+          # inside the company files, so freshly scraped results sat in the store while the
+          # dashboard kept showing last quarter. That is exactly what happened: FFC has carried
+          # Q2 2026 at the source for days and every PSX company still scored to Mar-26.
+          python -m app.cli apply-fundamentals --data-dir ../frontend/public/data
 
       - name: Commit if anything changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/fundamentals_ttm
+          git add data/fundamentals_ttm frontend/public/data/company
           if git diff --cached --quiet; then
             echo "Store unchanged - nothing to commit."
           else
