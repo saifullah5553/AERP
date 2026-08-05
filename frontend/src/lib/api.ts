@@ -117,6 +117,8 @@ export interface PortfolioHolding {
   sector: string | null;
   entry_date: string;
   entry_price: number | null;
+  /** What was actually paid, when entry_price has been restated for a split. */
+  entry_price_nominal?: number | null;
   entry_quality: number | null;
   quality_score: number | null;
   quality_grade?: string | null;

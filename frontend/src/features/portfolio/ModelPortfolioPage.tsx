@@ -65,11 +65,12 @@ function Holdings({
               <th className="px-3 py-2 text-left">Company</th>
               <th className="px-3 py-2 text-left">Sector</th>
               <th className="px-3 py-2 text-right">Quality</th>
-              <th className="px-3 py-2 text-right">Results To</th>
-              <th className="px-3 py-2 text-right">Entry</th>
+              <th className="px-3 py-2 text-right"
+                  title="The quarter's results this pick was made on">Bought On Results</th>
+              <th className="px-3 py-2 text-right">Buy Date</th>
+              <th className="px-3 py-2 text-right">Buy Price</th>
               <th className="px-3 py-2 text-right">Price</th>
-              <th className="px-3 py-2 text-right">Return</th>
-              <th className="px-3 py-2 text-right">Held Since</th>
+              <th className="px-3 py-2 text-right">Return %</th>
             </tr>
           </thead>
           <tbody>
@@ -96,12 +97,23 @@ function Holdings({
                     </span>
                   )}
                 </td>
-                <td className="num px-3 py-1.5 text-right text-[11px] text-slate-400">
-                  {/* The quarter the figures are through, not the filing date. */}
+                <td className="num px-3 py-1.5 text-right text-[11px] text-slate-400"
+                    title={h.results_through ?? ""}>
+                  {/* The quarter whose reported results put this name in the top scorers -
+                      the basis for the purchase, not the day it was bought. */}
                   {fmtQuarterEnd(h.results_through)}
                 </td>
-                <td className="num px-3 py-1.5 text-right text-slate-400">
+                <td className="num px-3 py-1.5 text-right text-[11px] text-slate-400">
+                  {h.entry_date}
+                </td>
+                <td className="num px-3 py-1.5 text-right text-slate-400"
+                    title={h.entry_price_nominal
+                      ? `restated for a split; ${h.entry_price_nominal} was paid`
+                      : ""}>
                   {fmtNumber(h.entry_price)}
+                  {h.entry_price_nominal != null && (
+                    <span className="ml-1 text-[10px] text-amber-400">adj</span>
+                  )}
                 </td>
                 <td className="num px-3 py-1.5 text-right text-slate-300">
                   {fmtNumber(h.price ?? null)}
@@ -111,13 +123,7 @@ function Holdings({
                   {h.return_pct == null ? "—"
                     : `${h.return_pct > 0 ? "+" : ""}${h.return_pct}%`}
                 </td>
-                <td className="num px-3 py-1.5 text-right text-[11px] text-slate-500"
-                    title={h.entry_date}>
-                  {/* The rebalance quarter it joined in, since the portfolio moves quarterly -
-                      an exact day reads like a trade date and invites reading a 2-day holding
-                      as meaningful. The day is still there on hover. */}
-                  {fmtQuarterEnd(h.entry_date)}
-                </td>
+
               </tr>
             ))}
           </tbody>
