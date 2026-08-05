@@ -38,6 +38,12 @@ QUARTERS = 0        # 0 = every quarter we have scores for, back to 2021
 # Below this the "market" is too thin for a top-20 to mean anything - picking 20 of 25 names is
 # not a selection, it is the market with a haircut.
 MIN_UNIVERSE = 30
+# The same gate the model portfolio applies, and for the same reason: a quarter only becomes a
+# rebalance once most of the market has reported it. Ranking is a comparison, so a handful of
+# early filers judged on June against everyone else on March rewards whoever reported first
+# rather than whoever is better. Both pages must agree about when a rebalance happened or the
+# history will not describe the portfolio it claims to.
+MIN_COVERAGE = 0.70
 
 REGION_LABELS = {
     "psx": "Pakistan", "us": "US", "india": "India",
@@ -105,6 +111,16 @@ def build_region(rows: list[dict], region: str, prices: Prices,
     scored = [r for r in rows if r.get("region") == region and r.get("score_history")]
     by_quarter = _scores_by_quarter(scored)
     usable = sorted(q for q, names in by_quarter.items() if len(names) >= MIN_UNIVERSE)
+
+    # Trim the NEWEST quarters until one is properly reported. The coverage question only
+    # applies at the front: an old quarter is thin because we hold less history that far back,
+    # not because companies had not filed, and gating on that deleted India's entire record.
+    # At the front it is the live question the portfolio also asks - on 5 August only 11% of
+    # PSX had filed Jun-26, and a rebalance there would rank those against everyone else's
+    # March figures.
+    fullest = max((len(names) for names in by_quarter.values()), default=0)
+    while usable and fullest and len(by_quarter[usable[-1]]) < MIN_COVERAGE * fullest:
+        usable.pop()
     if len(usable) < 2:
         # Same shape as a full result. A market with no history should render as empty, not
         # crash whatever is reading the file.

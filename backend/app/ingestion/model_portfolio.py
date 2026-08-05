@@ -46,7 +46,55 @@ def _load(path: Path) -> dict[str, Any]:
         return {"holdings": {}, "changes": [], "created_at": datetime.now(UTC).isoformat()}
 
 
-def _rank(rows: list[dict], region: str, company: Path) -> list[dict]:
+# A quarter becomes the basis for ranking only when most of the market has reported it.
+# Below this, the few early filers would be ranked on newer figures than everyone else - and
+# ranking is a COMPARISON, so a company is not better because its results are fresher. On
+# 5 August only 11% of PSX had filed Jun-26; by the end of the month it is most of them.
+MIN_COVERAGE = 0.70
+
+
+def _quarter_key(period_end: str) -> str:
+    """'2026-03-31' -> 'q_2026Q1', the flat field holding that quarter's score."""
+    year, month = int(period_end[:4]), int(period_end[5:7])
+    return f"q_{year}Q{(month - 1) // 3 + 1}"
+
+
+def basis_quarter(rows: list[dict], region: str, today: str,
+                  min_coverage: float = MIN_COVERAGE) -> str | None:
+    """The newest quarter the whole market can be ranked on.
+
+    Two conditions, and both are about fairness rather than freshness. Most of the market must
+    have reported it, and its rebalance date - two months on, the same lag the ledger uses -
+    must have passed. Jun-26 results therefore become the basis at the end of August, not on
+    the day the first company files.
+    """
+    scored = [r for r in rows
+              if r.get("region") == region and r.get("quality_score") is not None]
+    if not scored:
+        return None
+    reported: dict[str, int] = {}
+    for r in scored:
+        through = str(r.get("results_through") or "")[:10]
+        if through:
+            reported[through] = reported.get(through, 0) + 1
+
+    for quarter in sorted(reported, reverse=True):
+        covered = sum(n for q, n in reported.items() if q >= quarter)
+        if covered / len(scored) < min_coverage:
+            continue
+        try:
+            end = date.fromisoformat(quarter)
+        except ValueError:
+            continue
+        month = end.month - 1 + LAG_MONTHS
+        trade = date(end.year + month // 12, month % 12 + 1, min(end.day, 28))
+        if trade.isoformat() <= today:
+            return quarter
+    return None
+
+
+def _rank(rows: list[dict], region: str, company: Path,
+          basis: str | None = None) -> list[dict]:
     """Eligible names for a region, best quality first - ranked on the PUBLISHED score.
 
     This used to recompute its own score: assess_quality over doc["statements"], which are the
@@ -65,16 +113,24 @@ def _rank(rows: list[dict], region: str, company: Path) -> list[dict]:
             continue
         if r.get("price") is None or r.get("quality_score") is None:
             continue
+        # Rank everyone on the SAME quarter. Using each company's own latest score would
+        # compare a business judged on June against one judged on March, and reward whoever
+        # reported first rather than whoever is better.
+        score = r.get("quality_score")
+        if basis:
+            score = r.get(_quarter_key(basis))
+            if score is None:
+                continue
         # The same gate the screener applies, read from the same row rather than recomputed.
         if not (r.get("quality_passed") or r.get("quality_improving")):
             continue
-        scored.append((float(r["quality_score"]), {
+        scored.append((float(score), {
             "provider_symbol": r["provider_symbol"], "symbol": r.get("symbol"),
             "name": r.get("name"), "sector": r.get("sector"),
-            "quality_score": r["quality_score"], "price": r.get("price"),
+            "quality_score": score, "price": r.get("price"),
             "quality_grade": r.get("quality_grade"),
             "quality_confidence": r.get("quality_confidence"),
-            "results_through": r.get("results_through"),
+            "results_through": basis or r.get("results_through"),
         }))
     scored.sort(key=lambda t: -t[0])
     return [d for _, d in scored]
@@ -136,21 +192,30 @@ def _rebalance(data_dir: str | Path, force: bool = False) -> dict[str, Any]:
     doc = _load(path)
     today = datetime.now(UTC).date().isoformat()
     qtr = _quarter(today)
-
-    if not force and doc.get("last_rebalance_quarter") == qtr:
-        log.info("model-portfolio: %s already rebalanced", qtr)
-        return {"rebalanced": False, "quarter": qtr}
-
     rows: list[dict] = json.loads((out / "screener.json").read_text(encoding="utf-8"))
     company = out / "company"
     holdings: dict[str, list[dict]] = doc.get("holdings", {}) or {}
     changes: list[dict] = doc.get("changes", []) or []
     added = dropped = 0
+    rebalanced_regions: dict[str, str] = {}
 
     for region, size in SIZE_BY_REGION.items():
-        ranked = _rank(rows, region, company)
+        # Which quarter can this market be ranked on at all? Not the newest one that exists -
+        # the newest one MOST of the market has reported, whose trade date has arrived.
+        basis = basis_quarter(rows, region, today)
+        if not basis:
+            log.info("model-portfolio[%s]: no quarter has %.0f%% coverage yet - holding",
+                     region, MIN_COVERAGE * 100)
+            continue
+        # Already acted on this quarter's results: nothing to do until the next one lands.
+        if not force and (doc.get("basis_by_region") or {}).get(region) == basis:
+            log.info("model-portfolio[%s]: already rebalanced on %s results", region, basis)
+            continue
+        log.info("model-portfolio[%s]: rebalancing on %s results", region, basis)
+        ranked = _rank(rows, region, company, basis)
         if not ranked:
             continue
+        rebalanced_regions[region] = basis
         target = {r["provider_symbol"]: r for r in ranked[:size]}
         current = {h["provider_symbol"]: h for h in holdings.get(region, [])}
         # The score of the last name that made the cut. "Dropped" on its own says nothing -
@@ -227,6 +292,7 @@ def _rebalance(data_dir: str | Path, force: bool = False) -> dict[str, Any]:
     doc.update({
         "holdings": holdings,
         "changes": changes[-500:],  # keep the recent audit trail bounded
+        "basis_by_region": {**(doc.get("basis_by_region") or {}), **rebalanced_regions},
         "last_rebalance": today,
         "last_rebalance_quarter": qtr,
         "updated_at": datetime.now(UTC).isoformat(),
@@ -306,8 +372,12 @@ def mark(data_dir: str | Path) -> dict[str, Any]:
                 continue
             entry = _adjusted_entry(str(region), h)
             fresh = latest.get(h.get("provider_symbol")) or {}
-            for field in ("results_through", "quality_grade", "quality_confidence",
-                          "quality_score"):
+            # NOT results_through. That records the quarter this holding was PICKED on, which
+            # is a fact about the purchase and cannot change afterwards. Refreshing it from the
+            # company's latest filing made 14 holdings claim they were bought on Jun-26 results
+            # while the rebalance had ranked the whole market on Mar-26 - the page would have
+            # asserted a basis that did not exist on the day.
+            for field in ("quality_grade", "quality_confidence", "quality_score"):
                 if fresh.get(field) is not None:
                     h[field] = fresh[field]
             h["price"] = px
