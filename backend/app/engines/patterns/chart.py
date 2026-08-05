@@ -112,6 +112,13 @@ def _double(
     return hits
 
 
+# How far the head must stand beyond the shoulders, and how level the neckline must be, both
+# as a fraction of price. Loose enough for real charts, tight enough that a sideways range
+# stops qualifying.
+HEAD_CLEARANCE = 0.04
+NECKLINE_SLOPE = 0.06
+
+
 def _head_and_shoulders(pivots: list[Pivot]) -> list[PatternHit]:
     if len(pivots) < 5:
         return []
@@ -121,10 +128,22 @@ def _head_and_shoulders(pivots: list[Pivot]) -> list[PatternHit]:
     neckline = (b.price + d.price) / 2
     conf = clamp01(0.75 - _pct(a.price, e.price) * 8)
 
+    # The head has to CLEAR the shoulders, not merely edge past them. Asking only that the
+    # middle pivot be beyond the other two matched any three-touch range whose middle touch
+    # was a fraction of a percent further out - which is how 4001.SR reported an inverse head
+    # and shoulders it did not have.
+    prominent_top = _pct(max(a.price, e.price), c.price) >= HEAD_CLEARANCE
+    prominent_bottom = _pct(min(a.price, e.price), c.price) >= HEAD_CLEARANCE
+    # The two inner pivots are the neckline. A neckline is a line, not a ramp: if the peaks
+    # either side of the head are miles apart there is no level for a breakout to mean
+    # anything against.
+    level_neckline = _pct(b.price, d.price) <= NECKLINE_SLOPE
+
     # H, L, H, L, H with middle highest and similar shoulders.
     if (
         kinds == ["H", "L", "H", "L", "H"]
         and c.price > a.price and c.price > e.price and _pct(a.price, e.price) < 0.03
+        and prominent_top and level_neckline
     ):
         hits.append(PatternHit(
             "head_and_shoulders", CH, BEAR, conf, a.index,
@@ -135,6 +154,7 @@ def _head_and_shoulders(pivots: list[Pivot]) -> list[PatternHit]:
     if (
         kinds == ["L", "H", "L", "H", "L"]
         and c.price < a.price and c.price < e.price and _pct(a.price, e.price) < 0.03
+        and prominent_bottom and level_neckline
     ):
         hits.append(PatternHit(
             "inverse_head_and_shoulders", CH, BULL, conf, a.index,
