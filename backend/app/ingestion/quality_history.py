@@ -58,7 +58,7 @@ def _statements_at(inc: list, bal: list, cf: list, upto: int) -> dict[str, list[
     }
 
 
-def _series_from_cache(sym: str, peers: dict | None = None, region: str = "us",
+def _series_from_cache(sym: str, peers: dict | None = None,
                        sector: str | None = None) -> list[dict] | None:
     """Quarterly-spaced TTM quality points from the cached raw quarters."""
     cf = CACHE / f"{sym}.json"
@@ -78,7 +78,7 @@ def _series_from_cache(sym: str, peers: dict | None = None, region: str = "us",
     out: list[dict] = []
     for i in range(len(inc)):
         res = assess_quality(_statements_at(inc, bal, cfl, i), peers=peers,
-                             region=region, sector=sector)
+                             sector=sector)
         if res.score is not None:
             out.append({
                 "date": inc[i].fiscal_date.isoformat(),
@@ -114,7 +114,6 @@ def _price_lookup(region: str, symbol: str):
 
 def _series_from_statements(doc: dict, key: str = "statements",
                             price_on=None, peers: dict | None = None,
-                            region: str = "us",
                             sector: str | None = None) -> list[dict] | None:
     """Score at successive past points by progressively hiding newer periods."""
     st = doc.get(key) or {}
@@ -143,7 +142,7 @@ def _series_from_statements(doc: dict, key: str = "statements",
                 market = {"price": px,
                           "market_cap": (px * float(shares)) if shares else None}
         res = assess_quality(view, market=market, peers=peers,
-                             region=region, sector=sector)
+                             sector=sector)
         if res.score is not None:
             out.append({
                 "date": str(inc[i].get("fiscal_date") or "")[:10],
@@ -206,19 +205,16 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
         # for names it managed to fetch; the annual statements give one point a year.
         price_on = _price_lookup(str(r.get("region") or ""), str(r.get("symbol") or ""))
         peers = _peers_for(r, medians)
-        region = str(r.get("region") or "us")
         sector = r.get("sector")
-        series = _series_from_statements(doc, "statements_ttm", price_on, peers,
-                                         region, sector)
+        series = _series_from_statements(doc, "statements_ttm", price_on, peers, sector)
         if series:
             from_store += 1
         else:
-            series = _series_from_cache(r["provider_symbol"], peers, region, sector)
+            series = _series_from_cache(r["provider_symbol"], peers, sector)
             if series:
                 from_cache += 1
             else:
-                series = _series_from_statements(doc, "statements", price_on, peers,
-                                                 region, sector)
+                series = _series_from_statements(doc, "statements", price_on, peers, sector)
         if not series:
             continue
 

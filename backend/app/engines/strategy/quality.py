@@ -481,7 +481,7 @@ def _add_valuation_checks(checks: dict, metrics: dict, inc: list[dict], bal: lis
 def assess_quality(statements: dict[str, list[dict]], min_checks: int = 5,
                    market: dict | None = None,
                    peers: dict[str, float] | None = None,
-                   region: str = "us", sector: str | None = None) -> QualityResult:
+                   sector: str | None = None) -> QualityResult:
     """Run the quality tests. `passed` requires the non-negotiables (positive operating cash
     flow, rising EPS) plus a majority of BOTH the growth and cash pillars - growth and cash are
     the thesis, so neither can be waved through by the other.
@@ -639,7 +639,7 @@ def assess_quality(statements: dict[str, list[dict]], min_checks: int = 5,
     # engine could not score them, so the retired engine's figure stayed on the dashboard
     # beside numbers from the new one. Two methodologies answering one question, with nothing
     # on screen to say which you were reading. No score is honest; a stale score is not.
-    fq = score_fundamentals(statements, region=region, sector=sector, peers=peers)
+    fq = score_fundamentals(statements, sector=sector, peers=peers)
     score = fq.score
 
     return QualityResult(passed=passed, score=score, checks=checks, grades=grades,

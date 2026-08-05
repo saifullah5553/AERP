@@ -23,6 +23,10 @@ OUTLIERS ARE CAPPED, NOT EXTRAPOLATED. 100x interest cover is excellent; it is n
 times as excellent as 5x. Every curve flattens at its top knot, so one freak ratio cannot
 carry a company that is otherwise mediocre.
 
+PURELY QUANTITATIVE. Only the statements decide the score. No country, inflation or interest
+-rate assumption enters it, so the same numbers earn the same marks in every market and no
+score moves because a macro constant was revised.
+
 WHAT CANNOT BE COMPUTED IS NOT GUESSED. A missing input drops out and its category renormalises
 over what remains; the loss is reported as data confidence rather than filled with a default
 that would read as a real measurement.
@@ -55,23 +59,16 @@ FINANCIAL_SECTORS = {
     "inv. banks / inv. cos. / securities cos.", "investment banks", "real estate",
 }
 
-# Nominal growth is not economic growth. A 12% top line where inflation runs 11% is flat in
-# real terms, and scoring it as though it happened in a 2%-inflation economy would hand every
-# high-inflation market a free grade. Deflating by these puts the five markets on one axis.
-# Deliberately conservative: they damp the inflation illusion without inverting it.
-COUNTRY_INFLATION: dict[str, float] = {
-    "psx": 0.10,        # Pakistan
-    "india": 0.05,
-    "us": 0.03,
-    "gcc": 0.02,        # Saudi
-    "australia": 0.03,
-    "global": 0.03,
-}
-# Cost of debt differs by market, so the same interest cover means different things. Coverage
-# is scored against a country-adjusted expectation rather than one universal 3x.
-COUNTRY_COVERAGE_FLOOR: dict[str, float] = {
-    "psx": 2.0, "india": 2.5, "us": 3.0, "gcc": 3.0, "australia": 3.0, "global": 3.0,
-}
+# No country adjustment, by decision. The score is a QUANTITATIVE read of the statements and
+# nothing else: the same revenue growth, the same ROIC and the same interest cover earn the
+# same marks in Karachi as in New York. An earlier build deflated growth by a per-market
+# inflation figure and scored coverage against a per-market floor - defensible in theory, but
+# it meant a single assumed constant silently moved every score in a market, and the number
+# stopped being a reading of the accounts.
+#
+# The consequence is stated rather than hidden: where inflation is high, some of the reported
+# growth is inflation, and this score does not separate the two.
+COVERAGE_FLOOR = 3.0
 
 
 def _f(v: Any) -> float | None:
@@ -250,25 +247,20 @@ _GROWTH_KNOTS = [(-0.10, 0.0), (0.0, 0.22), (0.05, 0.42), (0.10, 0.60),
                  (0.15, 0.74), (0.20, 0.88), (0.25, 1.0)]
 
 
-def _score_growth(m: dict, region: str, per_year: int = 4) -> Category:
-    infl = COUNTRY_INFLATION.get(region, 0.03)
-
-    def real(g: float | None) -> float | None:
-        return None if g is None else (1 + g) / (1 + infl) - 1
-
+def _score_growth(m: dict, per_year: int = 4) -> Category:
     rev, ebit = m["revenue"], m["operating_income"]
     parts: dict[str, tuple[float | None, float]] = {
-        "revenue_growth": (_blend(curve(real(_yoy(rev, per_year)), _GROWTH_KNOTS),
+        "revenue_growth": (_blend(curve(_yoy(rev, per_year), _GROWTH_KNOTS),
                                   trend(rev)), 0.24),
-        "revenue_cagr_3y": (curve(real(_cagr(rev, 3, per_year)), _GROWTH_KNOTS), 0.12),
+        "revenue_cagr_3y": (curve(_cagr(rev, 3, per_year), _GROWTH_KNOTS), 0.12),
         "operating_profit_growth": (
-            _blend(curve(real(_yoy(ebit, per_year)), _GROWTH_KNOTS), trend(ebit)), 0.20),
-        "net_income_growth": (curve(real(_yoy(m["net_income"], per_year)), _GROWTH_KNOTS), 0.14),
+            _blend(curve(_yoy(ebit, per_year), _GROWTH_KNOTS), trend(ebit)), 0.20),
+        "net_income_growth": (curve(_yoy(m["net_income"], per_year), _GROWTH_KNOTS), 0.14),
         # Per-share, not headline. Twenty percent more profit on fifteen percent more shares is
         # not twenty percent more for the holder, and only EPS notices the difference.
-        "eps_growth": (_blend(curve(real(_yoy(m["eps"], per_year)), _GROWTH_KNOTS),
+        "eps_growth": (_blend(curve(_yoy(m["eps"], per_year), _GROWTH_KNOTS),
                               trend(m["eps"])), 0.20),
-        "fcf_growth": (curve(real(_yoy(m["free_cash_flow"], per_year)), _GROWTH_KNOTS), 0.10),
+        "fcf_growth": (curve(_yoy(m["free_cash_flow"], per_year), _GROWTH_KNOTS), 0.10),
     }
     return _weigh(parts, CATEGORY_POINTS["growth"])
 
@@ -469,7 +461,7 @@ def _negated(direction: float | None) -> float | None:
     return None if direction is None else -direction
 
 
-def _score_balance_sheet(m: dict, region: str, financial: bool) -> Category:
+def _score_balance_sheet(m: dict, financial: bool) -> Category:
     net_debt = []
     for debt, cash, sti in zip(m["total_debt"], m["cash"], m["short_term_investments"],
                                strict=False):
@@ -483,10 +475,9 @@ def _score_balance_sheet(m: dict, region: str, financial: bool) -> Category:
          for ca, inv in zip(m["current_assets"], m["inventory"], strict=False)],
         m["current_liabilities"])
 
-    # Interest cover, against the LOCAL cost of debt. Eleven percent borrowing means something
-    # different in Karachi than in New York, so the curve is anchored to a country floor rather
-    # than to one universal 3x.
-    floor = COUNTRY_COVERAGE_FLOOR.get(region, 3.0)
+    # One coverage curve for every market: can this company pay its interest out of operating
+    # profit, and by how wide a margin.
+    floor = COVERAGE_FLOOR
     cover = _ratio_series(m["operating_income"],
                           [abs(v) if v else None for v in m["interest_expense"]])
     cover_knots = [(0.0, 0.0), (1.0, 0.10), (floor, 0.40), (floor * 2, 0.65),
@@ -614,15 +605,16 @@ class FundamentalScore:
     periods: int
 
 
-def score_fundamentals(statements: dict[str, list[dict]], region: str = "us",
+def score_fundamentals(statements: dict[str, list[dict]],
                        sector: str | None = None,
                        peers: dict[str, float] | None = None) -> FundamentalScore:
     """The 0-100 Fundamental Quality Score for one company.
 
     `statements` are the stored TTM rows, newest first - already trailing twelve months, so
-    nothing here re-rolls them. `region` selects the inflation and cost-of-debt context;
-    `sector` decides whether industrial metrics apply at all; `peers` carries industry median
-    margins so a thin-margin business is judged against its own industry.
+    nothing here re-rolls them. `sector` decides whether industrial metrics apply at all (a
+    bank has no cash-conversion cycle); `peers` carries industry median margins so a
+    structurally thin-margin business is judged against its own industry. There is no country
+    input - the same figures score the same everywhere.
     """
     m = _extract(statements)
     per_year = periods_per_year(statements.get("income") or [])
@@ -637,12 +629,12 @@ def score_fundamentals(statements: dict[str, list[dict]], region: str = "us",
                                 periods=periods)
 
     cats: dict[str, Category] = {
-        "growth": _score_growth(m, region, per_year),
+        "growth": _score_growth(m, per_year),
         "profitability": _score_profitability(m, peers),
         "capital_efficiency": _score_capital_efficiency(m, financial),
     }
     cats["cash_flow"], flags = _score_cash_flow(m, per_year)
-    cats["balance_sheet"] = _score_balance_sheet(m, region, financial)
+    cats["balance_sheet"] = _score_balance_sheet(m, financial)
     cats["working_capital"] = _score_working_capital(m, financial)
 
     # Renormalise over the categories that applied. A bank skips working capital, so its score

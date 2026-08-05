@@ -52,8 +52,8 @@ def test_categories_sum_to_100() -> None:
 
 def test_magnitude_beats_pass_fail() -> None:
     """25% growth must score materially above 10%, not merely 'also a pass'."""
-    slow = score_fundamentals(_company(growth=0.10), region="us").score
-    fast = score_fundamentals(_company(growth=0.25), region="us").score
+    slow = score_fundamentals(_company(growth=0.10)).score
+    fast = score_fundamentals(_company(growth=0.25)).score
     assert slow is not None and fast is not None
     assert fast > slow + 2, f"25% growth ({fast}) barely beat 10% ({slow})"
 
@@ -75,8 +75,8 @@ def test_outliers_are_capped_not_extrapolated() -> None:
 
 def test_trend_separates_two_identical_levels() -> None:
     """Same margin today: the one that climbed there should outscore the one that fell."""
-    improving = score_fundamentals(_company(roic_drift=0.5), region="us").score
-    deteriorating = score_fundamentals(_company(roic_drift=-0.5), region="us").score
+    improving = score_fundamentals(_company(roic_drift=0.5)).score
+    deteriorating = score_fundamentals(_company(roic_drift=-0.5)).score
     assert improving is not None and deteriorating is not None
     assert improving > deteriorating
 
@@ -88,44 +88,52 @@ def test_trend_direction_is_read_oldest_to_newest() -> None:
 
 
 def test_leverage_lowers_the_balance_sheet_score() -> None:
-    light = score_fundamentals(_company(leverage=0.3), region="us")
-    heavy = score_fundamentals(_company(leverage=3.0), region="us")
+    light = score_fundamentals(_company(leverage=0.3))
+    heavy = score_fundamentals(_company(leverage=3.0))
     assert (light.categories["balance_sheet"]["earned"]
             > heavy.categories["balance_sheet"]["earned"])
 
 
 def test_weak_cash_conversion_is_penalised() -> None:
     """Profit that never becomes cash must cost the company points."""
-    cashy = score_fundamentals(_company(cfo_ratio=1.2), region="us")
-    paper = score_fundamentals(_company(cfo_ratio=0.4), region="us")
+    cashy = score_fundamentals(_company(cfo_ratio=1.2))
+    paper = score_fundamentals(_company(cfo_ratio=0.4))
     assert cashy.score > paper.score
     assert any("not backed by operating cash" in f for f in paper.flags)
 
 
-def test_high_inflation_growth_is_not_free_marks() -> None:
-    """The same nominal growth is worth less where inflation is 10% than where it is 3%."""
-    pk = score_fundamentals(_company(growth=0.12), region="psx").score
-    us = score_fundamentals(_company(growth=0.12), region="us").score
-    assert pk < us
+def test_the_score_carries_no_country_assumption() -> None:
+    """Identical statements score identically, whatever market they came from.
+
+    The engine used to deflate growth by a per-market inflation figure and score interest cover
+    against a per-market floor. Both are gone: one assumed constant moved every score in a
+    market, which made the number a view on the economy rather than a reading of the accounts.
+    """
+    import app.engines.strategy.fundamental_quality as fq
+    assert not hasattr(fq, "COUNTRY_INFLATION")
+    assert not hasattr(fq, "COUNTRY_COVERAGE_FLOOR")
+    a = score_fundamentals(_company(growth=0.12), sector="Cement").score
+    b = score_fundamentals(_company(growth=0.12), sector="Cement").score
+    assert a == b
 
 
 def test_a_bank_skips_metrics_that_do_not_apply() -> None:
     """No inventory, no cash-conversion cycle - and still scored out of 100."""
-    bank = score_fundamentals(_company(), region="psx", sector="Commercial Banks")
+    bank = score_fundamentals(_company(), sector="Commercial Banks")
     assert bank.categories["working_capital"]["points"] == 0.0
     assert bank.categories["capital_efficiency"]["parts"]["roic"] is None
     assert bank.score is not None and 0 <= bank.score <= 100
 
 
 def test_confidence_falls_with_shorter_history() -> None:
-    deep = score_fundamentals(_company(periods=20), region="us")
-    thin = score_fundamentals(_company(periods=5), region="us")
+    deep = score_fundamentals(_company(periods=20))
+    thin = score_fundamentals(_company(periods=5))
     assert deep.confidence > thin.confidence
     assert deep.periods == 20
 
 
 def test_nothing_is_invented_when_there_is_no_data() -> None:
-    empty = score_fundamentals({"income": [], "balance": [], "cashflow": []}, region="us")
+    empty = score_fundamentals({"income": [], "balance": [], "cashflow": []})
     assert empty.score is None
     assert empty.grade == "Unrated"
 
@@ -138,8 +146,8 @@ def test_margins_are_judged_against_the_industry() -> None:
     comment rather than a mechanism.
     """
     st = _company(margin=0.12)
-    grocery = score_fundamentals(st, region="us", peers={"operating_margin": 0.04})
-    software = score_fundamentals(st, region="us", peers={"operating_margin": 0.30})
+    grocery = score_fundamentals(st, peers={"operating_margin": 0.04})
+    software = score_fundamentals(st, peers={"operating_margin": 0.30})
     assert (grocery.categories["profitability"]["earned"]
             > software.categories["profitability"]["earned"])
 
