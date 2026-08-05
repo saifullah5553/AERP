@@ -58,6 +58,21 @@ def refresh_derived_views(out) -> None:
         log.warning("rebalance ledger failed: %s", exc)
 
 
+def cmd_pending_results(args: argparse.Namespace) -> None:
+    """Write data/pending/<region>.txt - the companies with results we do not hold yet."""
+    import json as _json
+    from pathlib import Path
+
+    from app.ingestion.pending_results import build
+
+    data_dir = Path(args.data_dir or "../frontend/public/data")
+    rows = _json.loads((data_dir / "screener.json").read_text(encoding="utf-8"))
+    symbols = sorted({str(r["symbol"]) for r in rows
+                      if r.get("region") == args.region and r.get("symbol")})
+    log.info("pending-results: %s", build(data_dir, Path(args.store_dir), args.region,
+                                          symbols, days=args.days, probe=not args.no_probe))
+
+
 def cmd_init_db(args: argparse.Namespace) -> None:
     """Create all tables (local/dev convenience; production uses Alembic)."""
     from app.db.session import engine
@@ -1080,6 +1095,15 @@ def build_parser() -> argparse.ArgumentParser:
     rq = add("refresh-quality", cmd_refresh_quality, limit=True)
     rq.add_argument("--out", default=None)
     qh = add("refresh-quality-history", cmd_quality_history, limit=True)
+
+    pend = sub.add_parser("pending-results")
+    pend.add_argument("--region", default="psx")
+    pend.add_argument("--days", type=int, default=5)
+    pend.add_argument("--data-dir", default=None)
+    pend.add_argument("--store-dir", default="../data/fundamentals_ttm")
+    pend.add_argument("--no-probe", action="store_true",
+                      help="announcements only - faster, and misses filers the feed never saw")
+    pend.set_defaults(func=cmd_pending_results)
     qh.add_argument("--out", default=None)
     mp = add("model-portfolio", cmd_model_portfolio)
     mp.add_argument("--force", action="store_true", help="rebalance even within the same quarter")
