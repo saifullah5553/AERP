@@ -116,6 +116,17 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
         # with its own newest quarter by up to 38 points, on the same date - two numbers for the
         # same question, with nothing to say which was right.
         statements = doc.get("statements_ttm") or doc.get("statements") or {}
+
+        # The period we HOLD data for, set whether or not it could be scored. It used to be
+        # written only by the history pass, which runs only when a score is produced - so a
+        # company we cannot score kept the last period we could, and HWQS advertised results to
+        # Mar-26 while its Jun-26 statements sat in the same file. What we hold and what we can
+        # measure are different facts and the row should not conflate them.
+        _inc = (statements.get("income") or [])
+        if _inc:
+            _newest = str(_inc[0].get("fiscal_date") or "")[:10]
+            if _newest:
+                r["results_through"] = _newest
         if not (statements.get("income") or []):
             no_data += 1
             continue
