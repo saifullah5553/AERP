@@ -145,11 +145,11 @@ export default function ScreenerPage() {
       </header>
 
       <MarketOverview
-        onSelect={(region, sentiment) =>
+        onSelect={(region, move) =>
           setFilters((f) =>
-            f.region === region && f.sentiment === sentiment
-              ? { ...f, sentiment: undefined }
-              : { ...f, region, sentiment },
+            f.region === region && f.move === move
+              ? { ...f, move: undefined }
+              : { ...f, region, move },
           )
         }
       />

@@ -37,18 +37,37 @@ def _label(avg: float) -> str:
     return "neutral"
 
 
-def pulse_from_pairs(pairs: list[tuple[str, float]]) -> list[dict]:
-    """Aggregate (region, composite) pairs into one pulse row per region."""
-    groups: dict[str, list[float]] = defaultdict(list)
-    for region, comp in pairs:
-        if comp is not None:
-            groups[region].append(float(comp))
+def pulse_from_pairs(pairs: list[tuple]) -> list[dict]:
+    """Aggregate (region, composite, change_pct) rows into one pulse row per region.
+
+    Two different readings of a market, kept apart on purpose. Sentiment (bullish/bearish) is
+    the composite score - our opinion of the names. Breadth (advancers/decliners) is what
+    prices actually did today. They disagree constantly, and conflating them is how a stock
+    down 0.97% ended up filed under the up arrow because its composite was 85.
+    """
+    groups: dict[str, list[tuple[float | None, float | None]]] = defaultdict(list)
+    for row in pairs:
+        # (region, composite) is still accepted: breadth is an addition, and a caller that
+        # only knows about sentiment should keep working rather than raise.
+        region, comp = row[0], row[1]
+        change = row[2] if len(row) > 2 else None
+        groups[region].append((
+            float(comp) if comp is not None else None,
+            float(change) if change is not None else None,
+        ))
 
     out: list[dict] = []
     for region in _ORDER:
-        comps = groups.get(region)
+        items = groups.get(region)
+        if not items:
+            continue
+        comps = [c for c, _ in items if c is not None]
         if not comps:
             continue
+        # Counted over every row in the market, including names with no composite: whether a
+        # price rose has nothing to do with whether we managed to score it.
+        advancers = sum(1 for _, ch in items if ch is not None and ch > 0)
+        decliners = sum(1 for _, ch in items if ch is not None and ch < 0)
         n = len(comps)
         avg = sum(comps) / n
         bullish = sum(1 for c in comps if c >= BULL_CUTOFF)
@@ -62,6 +81,8 @@ def pulse_from_pairs(pairs: list[tuple[str, float]]) -> list[dict]:
             "bullish": bullish,
             "bearish": bearish,
             "neutral": n - bullish - bearish,
+            "advancers": advancers,
+            "decliners": decliners,
         })
     return out
 
@@ -71,7 +92,9 @@ def compute_pulse(db: Session) -> list[dict]:
     rows, _ = query_screener(
         db, ScreenerFilters(min_composite=0, sort_by="composite_score"), 0, 20000
     )
-    return pulse_from_pairs([(r.region.value, r.composite_score) for r in rows])
+    return pulse_from_pairs(
+        [(r.region.value, r.composite_score, getattr(r, "change_pct", None)) for r in rows]
+    )
 
 
 def pulse_from_screener_dicts(rows: list[dict]) -> list[dict]:
@@ -79,4 +102,6 @@ def pulse_from_screener_dicts(rows: list[dict]) -> list[dict]:
     def region_of(r: dict) -> str:
         reg = r.get("region")
         return reg.value if hasattr(reg, "value") else str(reg)
-    return pulse_from_pairs([(region_of(r), r.get("composite_score")) for r in rows])
+    return pulse_from_pairs(
+        [(region_of(r), r.get("composite_score"), r.get("change_pct")) for r in rows]
+    )

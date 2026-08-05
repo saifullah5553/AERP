@@ -3,14 +3,12 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { MarketPulse, MarketRegion } from "@/types/api";
 
-type Sentiment = "bullish" | "bearish";
-
 // KPI strip: two headline tiles + a clickable per-market breadth panel. Clicking a
-// market's bullish/bearish count filters the screener to those names.
+// market's advancer or decliner count filters the screener to those names.
 export default function MarketOverview({
   onSelect,
 }: {
-  onSelect?: (region: MarketRegion, sentiment: Sentiment) => void;
+  onSelect?: (region: MarketRegion, move: "up" | "down") => void;
 }) {
   const [pulse, setPulse] = useState<MarketPulse[]>([]);
 
@@ -54,7 +52,10 @@ export default function MarketOverview({
         {kpi("Companies Analysed", total.toLocaleString(), "#38bdf8", "▦")}
         {kpi("Average AI Score", avg.toFixed(1), avgTone, "◈")}
 
-        {/* Per-market breadth — click a count to filter the screener */}
+        {/* Per-market breadth — advancers and decliners on the day, clickable to filter.
+            These arrows used to run off the composite score, so a name we rated 85 that had
+            fallen 1% was filed under the up arrow. An up arrow beside a market means the
+            price went up; our opinion of the company is the Action and score columns. */}
         {pulse.map((p) => (
           <div
             key={p.region}
@@ -63,18 +64,18 @@ export default function MarketOverview({
             <span className="mb-1 text-[11px] font-semibold text-slate-200">{p.label}</span>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => onSelect?.(p.region, "bullish")}
-                title={`Show ${p.bullish} bullish ${p.label} names`}
+                onClick={() => onSelect?.(p.region, "up")}
+                title={`Show the ${p.advancers ?? 0} ${p.label} names trading up today`}
                 className="flex flex-1 items-center justify-center gap-1 rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-xs font-bold text-emerald-400 transition-colors hover:bg-emerald-500/25"
               >
-                ▲ {p.bullish}
+                ▲ {p.advancers ?? 0}
               </button>
               <button
-                onClick={() => onSelect?.(p.region, "bearish")}
-                title={`Show ${p.bearish} bearish ${p.label} names`}
+                onClick={() => onSelect?.(p.region, "down")}
+                title={`Show the ${p.decliners ?? 0} ${p.label} names trading down today`}
                 className="flex flex-1 items-center justify-center gap-1 rounded border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-xs font-bold text-rose-400 transition-colors hover:bg-rose-500/25"
               >
-                ▼ {p.bearish}
+                ▼ {p.decliners ?? 0}
               </button>
             </div>
           </div>

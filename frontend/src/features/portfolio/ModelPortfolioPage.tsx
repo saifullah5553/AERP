@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, type ModelPortfolio, type PortfolioHolding } from "@/lib/api";
-import { fmtNumber } from "@/lib/format";
+import { fmtNumber, fmtQuarterEnd } from "@/lib/format";
 
 const MARKETS: { key: string; label: string }[] = [
   { key: "all", label: "All Markets" },
@@ -92,7 +92,8 @@ function Holdings({
                   {h.quality_score?.toFixed(1) ?? "—"}
                 </td>
                 <td className="num px-3 py-1.5 text-right text-[11px] text-slate-400">
-                  {h.results_through ?? "—"}
+                  {/* The quarter the figures are through, not the filing date. */}
+                  {fmtQuarterEnd(h.results_through)}
                 </td>
                 <td className="num px-3 py-1.5 text-right text-slate-400">
                   {fmtNumber(h.entry_price)}
@@ -105,8 +106,12 @@ function Holdings({
                   {h.return_pct == null ? "—"
                     : `${h.return_pct > 0 ? "+" : ""}${h.return_pct}%`}
                 </td>
-                <td className="num px-3 py-1.5 text-right text-[11px] text-slate-500">
-                  {h.entry_date}
+                <td className="num px-3 py-1.5 text-right text-[11px] text-slate-500"
+                    title={h.entry_date}>
+                  {/* The rebalance quarter it joined in, since the portfolio moves quarterly -
+                      an exact day reads like a trade date and invites reading a 2-day holding
+                      as meaningful. The day is still there on hover. */}
+                  {fmtQuarterEnd(h.entry_date)}
                 </td>
               </tr>
             ))}

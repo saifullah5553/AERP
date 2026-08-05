@@ -177,6 +177,15 @@ function applyScreener(all: ScreenerRow[], q: ScreenerQuery): Page<ScreenerRow> 
   if (q.has_fundamentals) rows = rows.filter((r) => r.fundamental_score != null);
   if (q.min_composite != null)
     rows = rows.filter((r) => r.composite_score != null && r.composite_score >= q.min_composite!);
+  if (q.move) {
+    // What the price did, which is not what the composite thinks of the company. A name can
+    // be our highest-conviction pick and still be down on the day.
+    rows = rows.filter((r) => {
+      const c = r.change_pct;
+      if (c == null || c === 0) return false;
+      return q.move === "up" ? c > 0 : c < 0;
+    });
+  }
   if (q.sentiment) {
     // Matches pulse.py per-name cutoffs: bullish ≥60, bearish ≤40, neutral between.
     rows = rows.filter((r) => {

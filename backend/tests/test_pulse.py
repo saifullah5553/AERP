@@ -39,3 +39,30 @@ def test_pulse_region_ordering() -> None:
     pairs = [("global", 50.0), ("us", 50.0), ("psx", 50.0)]
     regions = [r["region"] for r in pulse_from_pairs(pairs)]
     assert regions == ["us", "psx", "global"]  # fixed display order
+
+
+def test_breadth_counts_prices_not_scores() -> None:
+    """Advancers are what ROSE, regardless of how highly we rate the name.
+
+    The arrows on the market strip ran off the composite score, so a stock we scored 85 that
+    had fallen 1% appeared under the up arrow. On any terminal an up arrow beside a market
+    means the price went up.
+    """
+    rows = [
+        ("us", 85.0, -0.97),   # loved, but down: a DECLINER
+        ("us", 20.0, 3.10),    # disliked, but up: an ADVANCER
+        ("us", 55.0, None),    # no price move known: neither
+    ]
+    out = pulse_from_pairs(rows)[0]
+    assert out["advancers"] == 1
+    assert out["decliners"] == 1
+    # ...and sentiment is untouched by any of it.
+    assert out["bullish"] == 1
+    assert out["bearish"] == 1
+
+
+def test_breadth_counts_names_we_never_scored() -> None:
+    """A price rose or it did not; whether we managed to score the company is beside it."""
+    out = pulse_from_pairs([("us", 70.0, 1.0), ("us", None, 2.0)])[0]
+    assert out["advancers"] == 2
+    assert out["count"] == 1          # only one scored name

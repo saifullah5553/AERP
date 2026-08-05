@@ -88,3 +88,20 @@ export function scoreHeatBg(v: number | null | undefined): string {
   const alpha = 0.14 + (Math.abs(v - 50) / 50) * 0.28; // stronger toward the extremes
   return `hsla(${hue}, 70%, 42%, ${alpha.toFixed(3)})`;
 }
+
+/**
+ * "Mar 26" — the END of the calendar quarter a date falls in.
+ *
+ * Parsed off the string rather than through `new Date()`: a date-only ISO string is midnight
+ * UTC, so west of Greenwich `2026-01-01` becomes 31 Dec and lands in the wrong quarter — and
+ * the wrong YEAR — which is exactly the kind of error nobody looks at twice.
+ */
+export function fmtQuarterEnd(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const m = /^(\d{4})-(\d{2})/.exec(String(iso));
+  if (!m) return "—";
+  const year = m[1];
+  const quarter = Math.floor((Number(m[2]) - 1) / 3); // 0..3
+  const endMonth = ["Mar", "Jun", "Sep", "Dec"][quarter];
+  return endMonth ? `${endMonth} ${year.slice(2)}` : "—";
+}

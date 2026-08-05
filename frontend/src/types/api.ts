@@ -75,6 +75,9 @@ export interface MarketPulse {
   bullish: number;
   bearish: number;
   neutral: number;
+  /** Names that ROSE / FELL today. Not the same as bullish/bearish, which is our score. */
+  advancers?: number;
+  decliners?: number;
 }
 
 export type SignalType =
@@ -156,6 +159,8 @@ export interface ScreenerQuery {
   sector?: string;
   min_composite?: number;
   sentiment?: "bullish" | "bearish" | "neutral";
+  /** Price direction today. Distinct from `sentiment`, which is our composite score. */
+  move?: "up" | "down";
   has_fundamentals?: boolean;
   sort_by?: string;
   sort_dir?: "asc" | "desc";
