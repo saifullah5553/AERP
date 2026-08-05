@@ -66,31 +66,36 @@ jobs:
         id: cal
         run: echo "symbols=$(python scripts/earnings_calendar.py)" >> "$GITHUB_OUTPUT"
 
-      - name: Companies that announced results (all markets) + staleness quota
+      - name: Work out who has results we do not hold - EVERY market
         id: pick
         working-directory: backend
         run: |
           MANUAL="${{ github.event.inputs.symbols }}"
           if [ -n "$MANUAL" ]; then
-            SYMS="$MANUAL"
-          else
-            DAYS="${{ github.event.inputs.days }}"
-            BACK="${{ github.event.inputs.backstop }}"
-            MAXN="${{ github.event.inputs.max_symbols }}"
-            ANNOUNCED=$(python -m app.cli list-reported-fundamentals \
-                          --days "${DAYS:-3}" --backstop "${BACK:-40}" \
-                          --limit "${MAXN:-250}" | paste -sd, -)
-            SYMS=$(printf '%s,%s' "${{ steps.cal.outputs.symbols }}" "$ANNOUNCED" \
-                   | tr ',' '\n' | grep -v '^$' | sort -u | head -n "${MAXN:-250}" | paste -sd, -)
+            echo "symbols=$MANUAL" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          DAYS="${{ github.event.inputs.days }}"
+          # One list per market, each the union of recent announcements and a direct probe of
+          # the source. The probe is what makes it complete: catalysts.json is a rolling window
+          # and named 17 PSX companies when 50 had filed. Only names whose newest held period is
+          # old enough to have been superseded are asked, which takes the five markets from
+          # 11,684 requests to about 9,700 - roughly seven minutes rather than an hour and three
+          # quarters.
+          for REGION in us india australia psx gcc; do
+            python -m app.cli pending-results --region "$REGION" --days "${DAYS:-5}"               --data-dir ../frontend/public/data || true
+          done
+          cd ..
+          cat data/pending/*.txt 2>/dev/null | grep -v '^#' | grep -v '^$' | sort -u > /tmp/pending_all.txt
+          SYMS=$(paste -sd, - < /tmp/pending_all.txt)
           echo "symbols=$SYMS" >> "$GITHUB_OUTPUT"
-          echo "Refreshing $(echo "$SYMS" | tr ',' '\n' | grep -c .) companies"
+          echo "Pending across all markets: $(wc -l < /tmp/pending_all.txt)"
 
       - name: Re-scrape them
         if: steps.pick.outputs.symbols != ''
         run: |
           python scripts/scrape_fundamentals.py \
-            --regions us,india,australia,psx \
+            --regions us,india,australia,psx,gcc \
             --symbols "${{ steps.pick.outputs.symbols }}" \
             --workers 3 --page-pause 0.5 --work 300 --rest 0
 
@@ -110,7 +115,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/fundamentals_ttm frontend/public/data/company
+          git add data/fundamentals_ttm frontend/public/data/company data/pending
           if git diff --cached --quiet; then
             echo "Store unchanged - nothing to commit."
           else

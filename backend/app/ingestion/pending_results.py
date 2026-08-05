@@ -22,8 +22,10 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
-from datetime import UTC, datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -90,29 +92,63 @@ def held_periods(region: str, store_dir: Path) -> dict[str, str]:
     return out
 
 
+# A quarter cannot appear before roughly a quarter has passed, plus the weeks companies take
+# to report. Below this, asking is guaranteed to tell us what we already know.
+MIN_AGE_DAYS = 100
+
+
+def due_for_probe(held: str | None, today: date, min_age_days: int = MIN_AGE_DAYS) -> bool:
+    """Could this company plausibly have filed something we do not have?
+
+    Across five markets the universe is 11,684 names, which serially is over an hour and most
+    of it wasted: a company whose newest period is six weeks old cannot have a newer one. Only
+    the ones old enough to have reported again are asked.
+    """
+    if not held:
+        return True
+    try:
+        end = date.fromisoformat(str(held)[:10])
+    except ValueError:
+        return True
+    return (today - end).days >= min_age_days
+
+
 def probe_for_new_quarters(region: str, symbols: list[str], store_dir: Path,
-                           pause: float = 0.55) -> tuple[set[str], dict[str, str]]:
+                           pause: float = 0.25, workers: int = 6
+                           ) -> tuple[set[str], dict[str, str]]:
     """Symbols whose newest period AT THE SOURCE is ahead of what we hold.
 
     This is the definitive test, and the reason it exists: an announcement can be missed, worded
     unusually, or fall out of a rolling feed. A period we do not have cannot be any of those.
     """
     held = held_periods(region, store_dir)
+    today = datetime.now(UTC).date()
+    due = [s for s in symbols if due_for_probe(held.get(s.upper()), today)]
+    log.info("pending[%s]: %d of %d are old enough to have reported again",
+             region, len(due), len(symbols))
+
     pending: set[str] = set()
     seen: dict[str, str] = {}
-    with httpx.Client(headers={"User-Agent": _UA}, timeout=25,
-                      follow_redirects=True) as client:
-        for i, symbol in enumerate(symbols, 1):
-            newest = newest_at_source(region, symbol, client)
-            if newest:
-                seen[symbol] = newest
-                if newest > held.get(symbol.upper(), ""):
-                    pending.add(symbol.upper())
-            if i % 100 == 0:
-                log.info("pending[%s]: probed %d/%d", region, i, len(symbols))
-            time.sleep(pause)
-    log.info("pending[%s]: %d of %d have a quarter we do not hold",
-             region, len(pending), len(symbols))
+    lock = threading.Lock()
+
+    def one(symbol: str, client: httpx.Client) -> None:
+        newest = newest_at_source(region, symbol, client)
+        time.sleep(pause)
+        if not newest:
+            return
+        with lock:
+            seen[symbol] = newest
+            if newest > held.get(symbol.upper(), ""):
+                pending.add(symbol.upper())
+
+    with (
+        httpx.Client(headers={"User-Agent": _UA}, timeout=25, follow_redirects=True) as client,
+        ThreadPoolExecutor(max_workers=workers) as pool,
+    ):
+        list(pool.map(lambda s: one(s, client), due))
+
+    log.info("pending[%s]: %d of %d probed have a quarter we do not hold",
+             region, len(pending), len(due))
     return pending, seen
 
 
