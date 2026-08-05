@@ -43,3 +43,30 @@ def test_ordinary_prices_are_not_mistaken_for_a_split(tmp_path) -> None:
     bars = load_bars("psx", "FALL", store=tmp_path)
     assert abs(float(bars["2025-08-01"][4]) - 100.0) < 0.01   # untouched
     assert abs(float(bars["2025-08-07"][4]) - 70.0) < 0.01
+
+
+def test_a_duplicated_split_resolves_to_the_later_date() -> None:
+    """Yahoo reports these twice; the ex-date is the second one.
+
+    KOHC 5:1 came through as 21 and 25 Aug 2025 (actual: 25 Aug), KTML 5:1 as 11 and 15 Sep
+    (actual: 15 Sep). Taking the earlier date divides the days in between, which were still
+    trading on the old basis.
+    """
+    from app.ingestion.split_adjust import parse_splits
+
+    events = {"splits": {
+        "a": {"date": 1757565000, "numerator": 5.0, "denominator": 1.0},   # 11 Sep 2025
+        "b": {"date": 1757910600, "numerator": 5.0, "denominator": 1.0},   # 15 Sep 2025
+    }}
+    assert parse_splits(events) == [("2025-09-15", 5.0)]
+
+
+def test_two_genuine_splits_are_not_collapsed() -> None:
+    """Far apart, or a different ratio, means two corporate actions - keep both."""
+    from app.ingestion.split_adjust import parse_splits
+
+    events = {"splits": {
+        "a": {"date": 1757565000, "numerator": 5.0, "denominator": 1.0},   # Sep 2025
+        "b": {"date": 1788928200, "numerator": 2.0, "denominator": 1.0},   # a year later
+    }}
+    assert len(parse_splits(events)) == 2

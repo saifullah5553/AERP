@@ -55,7 +55,13 @@ def parse_splits(events: dict | None) -> list[tuple[str, float]]:
             gap = (datetime.fromisoformat(when).date()
                    - datetime.fromisoformat(prev_when).date()).days
             if same_ratio and gap <= DUPLICATE_DAYS:
-                continue        # the same action, reported twice
+                # The same action reported twice: keep the LATER date, which is the ex-date.
+                # Checked against two known splits - KOHC 5:1 (Yahoo says 21 and 25 Aug 2025,
+                # actual 25 Aug) and KTML 5:1 (11 and 15 Sep 2025, actual 15 Sep). Taking the
+                # earlier one divides the days in between, which were still trading on the old
+                # basis, and leaves the repair pass to undo a mistake we need not make.
+                out[-1] = (when, ratio)
+                continue
         out.append((when, ratio))
     return out
 
@@ -110,6 +116,36 @@ def _repair_outliers(bars: dict[str, list], ratio: float, window: int = 5) -> in
     return fixed
 
 
+SEARCH_DAYS = 20
+
+
+def _boundary(bars: dict[str, list], reported: str, ratio: float) -> str:
+    """The day the series actually changes basis, found in the prices themselves.
+
+    The reported date cannot be trusted on its own. Yahoo files these splits twice, days apart,
+    and neither copy reliably matches the ex-date: KOHC came through as 21 and 25 August, KTML
+    as 11 and 15 September. Taking the earlier divides days that had already been adjusted;
+    taking the later divides days still on the old basis, which put DLL back at -88.9%.
+
+    So the reported date only says roughly WHEN to look. The step down by the split ratio says
+    exactly where, and the LAST such step is the real one - the vendor's half-adjusted days
+    produce earlier ones that are noise.
+    """
+    days = sorted(bars)
+    window = [d for d in days
+              if abs((datetime.fromisoformat(d).date()
+                      - datetime.fromisoformat(reported).date()).days) <= SEARCH_DAYS]
+    found = None
+    for prev, cur in zip(window, window[1:], strict=False):
+        try:
+            a, b = float(bars[prev][4]), float(bars[cur][4])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if a > 0 and b > 0 and abs((a / b) / ratio - 1.0) < RATIO_TOLERANCE:
+            found = cur
+    return found or reported
+
+
 def adjust(bars: dict[str, list], splits: list[tuple[str, float]]) -> tuple[dict[str, list], int]:
     """Restate `bars` (date -> [date, o, h, l, c, v]) onto the post-split basis.
 
@@ -122,7 +158,8 @@ def adjust(bars: dict[str, list], splits: list[tuple[str, float]]) -> tuple[dict
         return bars, 0
 
     changed = 0
-    for when, ratio in reversed(splits):
+    for reported, ratio in reversed(splits):
+        when = _boundary(bars, reported, ratio)
         before = sorted(d for d in bars if d < when)
         if not before:
             continue
