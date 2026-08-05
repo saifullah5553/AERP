@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.logging import get_logger
+from app.core.safe_path import safe_file
 from app.core.snapshot_lock import snapshot_lock
 from app.engines.strategy.quality import assess_quality
 from app.ingestion.ohlc_store import load_bars
@@ -53,8 +54,12 @@ def _rank(rows: list[dict], region: str, company: Path) -> list[dict]:
     for r in rows:
         if r.get("region") != region or not r.get("provider_symbol") or r.get("price") is None:
             continue
-        cf = company / f"{r['provider_symbol']}.json"
-        if not cf.exists():
+        # Never build this path by hand. CON is a real US ticker and a Windows device name, so
+        # company/CON.json IS the console: exists() says True and the read then blocks forever
+        # at 0% CPU. That is what hung `model-portfolio --force` for two hours, looking exactly
+        # like a network stall - which is what I first blamed it on.
+        cf = safe_file(company, f"{r['provider_symbol']}.json")
+        if cf is None or not cf.exists():
             continue
         try:
             st = json.loads(cf.read_text(encoding="utf-8")).get("statements") or {}

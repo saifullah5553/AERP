@@ -23,6 +23,7 @@ from typing import Any
 import httpx
 
 from app.core.logging import get_logger
+from app.core.safe_path import safe_file
 from app.engines.composite.engine import WEIGHTS
 from app.engines.composite.signals import derive_signal
 from app.engines.technical.engine import _scoring_metrics
@@ -243,7 +244,10 @@ def expand_universe(
             "signal_since": dates[-1] if dates else None,
         }
         rows.append(row)
-        (company_dir / f"{c['provider_symbol']}.json").write_text(
+        _cf = safe_file(company_dir, f"{c['provider_symbol']}.json")
+        if _cf is None:
+            continue
+        _cf.write_text(
             json.dumps(_company_json(c, price, tech, comp, sig, dates), ensure_ascii=False),
             encoding="utf-8",
         )

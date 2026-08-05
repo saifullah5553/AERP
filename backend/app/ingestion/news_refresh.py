@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.logging import get_logger
+from app.core.safe_path import safe_file
 from app.ingestion.news import GoogleNewsClient
 
 log = get_logger(__name__)
@@ -80,11 +81,12 @@ def refresh_news(
         if r.get("region") not in _NEWS_REGIONS:
             continue
         ps = r.get("provider_symbol")
-        if not ps or not (company_dir / f"{ps}.json").exists():
+        _cf = safe_file(company_dir, f"{ps}.json") if ps else None
+        if not ps or _cf is None or not _cf.exists():
             continue
         if only_missing:
             try:
-                d = json.loads((company_dir / f"{ps}.json").read_text(encoding="utf-8"))
+                d = json.loads(_cf.read_text(encoding="utf-8"))
                 if d.get("news"):
                     continue
             except (OSError, json.JSONDecodeError):
@@ -105,7 +107,9 @@ def refresh_news(
 
     patched = 0
     for ps, arts in results.items():
-        cf = company_dir / f"{ps}.json"
+        cf = safe_file(company_dir, f"{ps}.json")
+        if cf is None:
+            continue
         try:
             d = json.loads(cf.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
@@ -137,7 +141,9 @@ def _write_news_index(out: Path, rows: list[dict], cap: int = 200) -> int:
     company_dir = out / "company"
     by_region: dict[str, list[dict]] = {}
     for ps, (sym, name, region) in meta.items():
-        cf = company_dir / f"{ps}.json"
+        cf = safe_file(company_dir, f"{ps}.json")
+        if cf is None:
+            continue
         if not cf.exists():
             continue
         try:

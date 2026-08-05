@@ -17,6 +17,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from app.core.safe_path import safe_file
+
 # Tracked commodity symbol → display name. Only liquid futures we actually ingest.
 COMMODITY_NAMES: dict[str, str] = {
     "GC": "Gold", "SI": "Silver", "PL": "Platinum", "PA": "Palladium",
@@ -65,7 +67,9 @@ def classify_trend(close: float | None, sma50: float | None, sma200: float | Non
 
 def _read_commodity(company_dir: Path, symbol: str) -> dict | None:
     """Read a commodity company JSON (provider_symbol is ``SYMBOL=F``)."""
-    path = company_dir / f"{symbol}=F.json"
+    path = safe_file(company_dir, f"{symbol}=F.json")
+    if path is None:
+        return None
     if not path.exists():
         return None
     try:

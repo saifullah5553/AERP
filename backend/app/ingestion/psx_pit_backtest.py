@@ -28,6 +28,7 @@ import httpx
 import numpy as np
 
 from app.core.logging import get_logger
+from app.core.safe_path import safe_file
 from app.engines.strategy.entry import assess_entry
 from app.engines.strategy.quality import assess_quality
 
@@ -98,8 +99,8 @@ def psx_pit_backtest(
     for r in rows:
         if r.get("region") != "psx" or not r.get("provider_symbol"):
             continue
-        cf = company / f"{r['provider_symbol']}.json"
-        if not cf.exists():
+        cf = safe_file(company, f"{r['provider_symbol']}.json")
+        if cf is None or not cf.exists():
             continue
         try:
             st = json.loads(cf.read_text(encoding="utf-8")).get("statements") or {}

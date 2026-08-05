@@ -20,6 +20,7 @@ from typing import Any
 import httpx
 
 from app.core.logging import get_logger
+from app.core.safe_path import safe_file
 
 log = get_logger(__name__)
 
@@ -218,7 +219,9 @@ def refresh_prices(
     patched_files = 0
     pe_by_sym: dict[str, float | None] = {}
     for sym, q in quotes.items():
-        cf = company_dir / f"{sym}.json"
+        cf = safe_file(company_dir, f"{sym}.json")
+        if cf is None:
+            continue
         if not cf.exists():
             continue
         try:

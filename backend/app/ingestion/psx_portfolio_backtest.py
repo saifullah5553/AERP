@@ -28,6 +28,7 @@ from typing import Any
 import httpx
 
 from app.core.logging import get_logger
+from app.core.safe_path import safe_file
 from app.engines.strategy.quality import assess_quality
 from app.ingestion.psx_pit_backtest import _fetch_5y, _pit_statements
 
@@ -47,8 +48,8 @@ def psx_portfolio_backtest(
     for r in rows:
         if r.get("region") != region or not r.get("provider_symbol"):
             continue
-        cf = company / f"{r['provider_symbol']}.json"
-        if not cf.exists():
+        cf = safe_file(company, f"{r['provider_symbol']}.json")
+        if cf is None or not cf.exists():
             continue
         try:
             st = json.loads(cf.read_text(encoding="utf-8")).get("statements") or {}

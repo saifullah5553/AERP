@@ -25,6 +25,7 @@ from typing import Any
 import httpx
 
 from app.core.logging import get_logger
+from app.core.safe_path import safe_file
 from app.ingestion.tech_refresh import _f, _signal_value_at, fetch_history
 
 log = get_logger(__name__)
@@ -91,8 +92,8 @@ def backtest(
             continue
 
         sc: dict = {}
-        cf = company / f"{r['provider_symbol']}.json"
-        if cf.exists():
+        cf = safe_file(company, f"{r['provider_symbol']}.json")
+        if cf is not None and cf.exists():
             try:
                 sc = json.loads(cf.read_text(encoding="utf-8")).get("scores") or {}
             except (OSError, json.JSONDecodeError):

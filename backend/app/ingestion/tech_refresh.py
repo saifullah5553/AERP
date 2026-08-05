@@ -20,6 +20,7 @@ import httpx
 import numpy as np
 
 from app.core.logging import get_logger
+from app.core.safe_path import safe_file
 from app.engines.composite.dimensions import momentum_score
 from app.engines.composite.engine import WEIGHTS
 from app.engines.composite.regime_modifier import apply_regime_modifier
@@ -195,7 +196,9 @@ def _backtest_psx(rows, company, regime_map, today, limit):
             continue
         dates, close, vol = h
         sc: dict = {}
-        cf = company / f"{r['provider_symbol']}.json"
+        cf = safe_file(company, f"{r['provider_symbol']}.json")
+        if cf is None:
+            continue
         if cf.exists():
             try:
                 sc = json.loads(cf.read_text(encoding="utf-8")).get("scores") or {}
@@ -297,7 +300,9 @@ def refresh_technicals(
         # screener row for the scores).
         sc: dict = {}
         statements: dict = {}
-        cf = company / f"{sym}.json"
+        cf = safe_file(company, f"{sym}.json")
+        if cf is None:
+            continue
         if cf.exists():
             try:
                 _cdoc = json.loads(cf.read_text(encoding="utf-8"))

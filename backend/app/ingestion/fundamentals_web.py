@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.logging import get_logger
+from app.core.safe_path import safe_file
 from app.core.snapshot_lock import snapshot_lock
 from app.engines.composite.dimensions import quality_score, risk_score
 from app.engines.composite.regime_modifier import apply_regime_modifier
@@ -297,7 +298,9 @@ def _refresh_fundamentals_web(
             r["eps_growth"] = ratios.eps_growth
             r["pe_ttm"] = ratios.pe_ratio
 
-            cjson = cdir / f"{r['provider_symbol']}.json"
+            cjson = safe_file(cdir, f"{r['provider_symbol']}.json")
+            if cjson is None:
+                continue
             if cjson.exists():
                 try:
                     d = json.loads(cjson.read_text(encoding="utf-8"))
