@@ -240,8 +240,14 @@ def _ratio_series(num: list[float | None], den: list[float | None]) -> list[floa
 # ── A. Growth & growth quality — 20 ─────────────────────────────────────────────────────
 # Real growth, not nominal. Deflating by the market's inflation is what lets a Pakistani and
 # an American company be compared without handing one a currency-driven head start.
-_GROWTH_KNOTS = [(-0.10, 0.0), (0.0, 0.15), (0.05, 0.35), (0.10, 0.55),
-                 (0.15, 0.70), (0.20, 0.85), (0.25, 0.95), (0.35, 1.0)]
+# Calibrated to the specified table, out of 5:
+#   5% -> 2.1   10% -> 3.0   15% -> 3.7   20% -> 4.4   25% -> 5.0
+# Note the SHAPE: the steps shrink as growth rises (+0.9, +0.7, +0.7, +0.6). Growth is worth
+# most where it is scarce; the difference between 5% and 10% matters more than between 20% and
+# 25%, and a straight line would say otherwise. Full marks at 25% and flat above, so a 200%
+# one-off cannot outscore a company compounding at 25%.
+_GROWTH_KNOTS = [(-0.10, 0.0), (0.0, 0.22), (0.05, 0.42), (0.10, 0.60),
+                 (0.15, 0.74), (0.20, 0.88), (0.25, 1.0)]
 
 
 def _score_growth(m: dict, region: str, per_year: int = 4) -> Category:
@@ -314,8 +320,14 @@ def _score_profitability(m: dict, peers: dict | None) -> Category:
 
 
 # ── C. Capital efficiency — 20 ──────────────────────────────────────────────────────────
-_RETURN_KNOTS = [(0.0, 0.05), (0.05, 0.20), (0.10, 0.42), (0.15, 0.62),
-                 (0.20, 0.80), (0.25, 0.92), (0.35, 1.0)]
+# Calibrated to the specified table, out of 8:
+#   6% -> 2.0   10% -> 3.2   15% -> 4.8   20% -> 6.5   25% -> 7.5   30% -> 8.0
+# This curve ACCELERATES through the middle and then flattens: the step from 15% to 20% is the
+# largest (+1.7), because that is where a business crosses from covering its cost of capital to
+# genuinely compounding. Above 25% the gains taper - 30% is exceptional, not twice as good
+# as 15%.
+_RETURN_KNOTS = [(0.0, 0.03), (0.06, 0.25), (0.10, 0.40), (0.15, 0.60),
+                 (0.20, 0.8125), (0.25, 0.9375), (0.30, 1.0)]
 _ROA_KNOTS = [(0.0, 0.05), (0.02, 0.20), (0.05, 0.45), (0.08, 0.65),
               (0.12, 0.85), (0.18, 1.0)]
 _TURNOVER_KNOTS = [(0.15, 0.10), (0.35, 0.30), (0.60, 0.55), (0.90, 0.75),
@@ -542,6 +554,11 @@ _CASHFLOW_KEYS = ("operating_cash_flow", "capital_expenditure", "free_cash_flow"
 # Without these nothing meaningful can be said, so a company missing them is scored None rather
 # than given a number built out of the handful of fields that happened to survive.
 _ESSENTIAL = ("revenue", "net_income", "total_assets", "total_equity")
+# Insurers and banks file premiums and interest income, not "revenue", and the source labels
+# them accordingly - so every PSX insurer arrived with twenty periods of everything EXCEPT a
+# revenue line and was scored None. Their returns come off assets and equity anyway; the
+# margin sub-scores simply drop out and profitability renormalises over what remains.
+_ESSENTIAL_FINANCIAL = ("net_income", "total_assets", "total_equity")
 
 
 def _extract(statements: dict[str, list[dict]]) -> dict[str, list[float | None]]:
@@ -612,12 +629,13 @@ def score_fundamentals(statements: dict[str, list[dict]], region: str = "us",
     periods = len(_clean(m["revenue"])) or len(_clean(m["net_income"]))
     confidence = _data_confidence(m, periods)
 
-    if periods < 2 or any(not _clean(m[k]) for k in _ESSENTIAL):
+    financial = (sector or "").strip().lower() in FINANCIAL_SECTORS
+    required = _ESSENTIAL_FINANCIAL if financial else _ESSENTIAL
+    if periods < 2 or any(not _clean(m[k]) for k in required):
         return FundamentalScore(score=None, confidence=confidence, grade="Unrated",
                                 categories={}, metrics={}, flags=["insufficient statements"],
                                 periods=periods)
 
-    financial = (sector or "").strip().lower() in FINANCIAL_SECTORS
     cats: dict[str, Category] = {
         "growth": _score_growth(m, region, per_year),
         "profitability": _score_profitability(m, peers),

@@ -128,3 +128,43 @@ def test_nothing_is_invented_when_there_is_no_data() -> None:
     empty = score_fundamentals({"income": [], "balance": [], "cashflow": []}, region="us")
     assert empty.score is None
     assert empty.grade == "Unrated"
+
+
+def test_margins_are_judged_against_the_industry() -> None:
+    """A 12% margin is strong in groceries and thin in software.
+
+    Absolute level still leads - a company is not high quality merely for being the best of a
+    poor sector - but the peer median has to move the number, or sector normalisation is a
+    comment rather than a mechanism.
+    """
+    st = _company(margin=0.12)
+    grocery = score_fundamentals(st, region="us", peers={"operating_margin": 0.04})
+    software = score_fundamentals(st, region="us", peers={"operating_margin": 0.30})
+    assert (grocery.categories["profitability"]["earned"]
+            > software.categories["profitability"]["earned"])
+
+
+def test_growth_curve_matches_the_specified_table() -> None:
+    """5% -> 2.1/5, 10% -> 3.0, 15% -> 3.7, 20% -> 4.4, 25% -> 5.0."""
+    from app.engines.strategy.fundamental_quality import _GROWTH_KNOTS
+    expected = {0.05: 2.1, 0.10: 3.0, 0.15: 3.7, 0.20: 4.4, 0.25: 5.0}
+    for growth, points in expected.items():
+        assert abs(curve(growth, _GROWTH_KNOTS) * 5 - points) < 0.05, growth
+    # Full marks at 25% and flat above: a freak year cannot buy more than compounding does.
+    assert curve(2.0, _GROWTH_KNOTS) == curve(0.25, _GROWTH_KNOTS)
+
+
+def test_roic_curve_matches_the_specified_table() -> None:
+    """6% -> 2.0/8, 10% -> 3.2, 15% -> 4.8, 20% -> 6.5, 25% -> 7.5, 30% -> 8.0."""
+    from app.engines.strategy.fundamental_quality import _RETURN_KNOTS
+    expected = {0.06: 2.0, 0.10: 3.2, 0.15: 4.8, 0.20: 6.5, 0.25: 7.5, 0.30: 8.0}
+    for roic, points in expected.items():
+        assert abs(curve(roic, _RETURN_KNOTS) * 8 - points) < 0.05, roic
+
+
+def test_the_curves_interpolate_between_the_table_rows() -> None:
+    """The table gives anchors, not buckets: 12% must land between the 10% and 15% rows."""
+    from app.engines.strategy.fundamental_quality import _RETURN_KNOTS
+    at_12 = curve(0.12, _RETURN_KNOTS) * 8
+    assert 3.2 < at_12 < 4.8
+    assert curve(0.121, _RETURN_KNOTS) > curve(0.120, _RETURN_KNOTS)

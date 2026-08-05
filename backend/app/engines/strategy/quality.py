@@ -634,9 +634,13 @@ def assess_quality(statements: dict[str, list[dict]], min_checks: int = 5,
     # interpolated curves over all twenty TTM periods. `passed` still comes from the checks
     # above, because it gates the strategy action and means something different: not "how
     # good" but "does this clear the bar at all".
+    # Taken WHOLESALE, including when it is None. Keeping the old checks-based number as a
+    # fallback is how two PSX insurers kept showing 99.97 and 99.91 after the rebuild: the new
+    # engine could not score them, so the retired engine's figure stayed on the dashboard
+    # beside numbers from the new one. Two methodologies answering one question, with nothing
+    # on screen to say which you were reading. No score is honest; a stale score is not.
     fq = score_fundamentals(statements, region=region, sector=sector, peers=peers)
-    if fq.score is not None:
-        score = fq.score
+    score = fq.score
 
     return QualityResult(passed=passed, score=score, checks=checks, grades=grades,
                          confidence=fq.confidence, grade_label=fq.grade,
