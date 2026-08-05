@@ -679,6 +679,15 @@ def cmd_export_static(args: argparse.Namespace) -> None:
             merged = list(by_symbol.values())
         else:
             merged = fresh
+        # Drop symbols with no financial statements at the source. Applied HERE because this
+        # is the single point every snapshot passes through - dropping them anywhere else
+        # means the next universe refresh quietly puts them back.
+        from app.ingestion.exclusions import apply_to_rows
+        merged, _excluded = apply_to_rows(merged)
+        if _excluded:
+            log.info("export-static: dropped %d symbols with no statements at source",
+                     _excluded)
+
         merged.sort(
             key=lambda r: (r.get("composite_score") is not None, r.get("composite_score") or 0),
             reverse=True,
