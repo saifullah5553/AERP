@@ -211,7 +211,19 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
 // ── Static-mode helpers ───────────────────────────────────────
 let _rowsCache: Promise<ScreenerRow[]> | null = null;
 function staticRows(): Promise<ScreenerRow[]> {
-  if (!_rowsCache) _rowsCache = getJson<ScreenerRow[]>(`${DATA_BASE}/screener.json`);
+  if (!_rowsCache) {
+    _rowsCache = getJson<ScreenerRow[]>(`${DATA_BASE}/screener.json`)
+      // A FAILED fetch must not be cached. screener.json is 14 MB and is replaced in place
+      // every refresh, so a request that lands mid-deploy can fail once - and caching that
+      // rejection poisoned the whole session: every later page of the grid reused it, the
+      // datasource kept calling failCallback, and the screener sat on ag-grid's loading
+      // placeholder row forever. The header still read 11,768 because meta.json is small and
+      // had loaded fine, which made it look like a filter bug rather than a dead promise.
+      .catch((err) => {
+        _rowsCache = null;
+        throw err;
+      });
+  }
   return _rowsCache;
 }
 

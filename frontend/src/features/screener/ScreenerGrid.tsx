@@ -58,7 +58,24 @@ export default function ScreenerGrid({ filters, onGridReady, onTotal, onRowClick
             const lastRow = page * pageSize >= res.total ? res.total : -1;
             p.successCallback(res.items, lastRow === -1 ? undefined : lastRow);
           })
-          .catch(() => p.failCallback());
+          .catch(() => {
+            // Retry once before giving up. The usual cause is a refresh replacing the 14 MB
+            // snapshot underneath us, which the very next request succeeds at.
+            api
+              .screener({
+                page,
+                page_size: pageSize,
+                ...q,
+                sort_by: sort?.colId,
+                sort_dir: sort?.sort as "asc" | "desc" | undefined,
+              })
+              .then((res) => {
+                onTotal?.(res.total);
+                const lastRow = page * pageSize >= res.total ? res.total : -1;
+                p.successCallback(res.items, lastRow === -1 ? undefined : lastRow);
+              })
+              .catch(() => p.failCallback());
+          });
       },
     }),
     [onTotal],
