@@ -16,7 +16,7 @@ that flipped between markets and was therefore noise.
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -83,6 +83,48 @@ def rebalance(data_dir: str | Path, force: bool = False) -> dict[str, Any]:
         if not ok:
             return {"skipped": True}
         return _rebalance(data_dir, force)
+
+
+LAG_MONTHS = 2
+
+
+def _traded_on(results_through: str | None, region: str, symbol: str,
+               fallback: str) -> tuple[str, float | None]:
+    """When this pick could actually have been bought, and at what.
+
+    A quarter's results are not knowable the day the quarter ends - companies report over the
+    following weeks - so the rule acts two months later: Mar-26 results are traded at the end
+    of May, not on whatever day the job first ran. Stamping "today" made every holding look
+    bought on 2 August whatever quarter it was picked on, which is both wrong and unfalsifiable
+    as a record.
+
+    The price is the first close ON OR AFTER that date, from our own split-adjusted history -
+    the first price that actually traded, so a rebalance falling on a holiday fills on the next
+    session rather than at a number nobody could have paid.
+    """
+    if not results_through:
+        return fallback, None
+    try:
+        end = date.fromisoformat(str(results_through)[:10])
+    except ValueError:
+        return fallback, None
+    month = end.month - 1 + LAG_MONTHS
+    year = end.year + month // 12
+    trade = date(year, month % 12 + 1, min(end.day, 28))
+    if trade.isoformat() > fallback:
+        # The results are not actionable yet; nothing could have been bought on them.
+        return fallback, None
+    try:
+        bars = load_bars(region, symbol)
+    except Exception:  # noqa: BLE001 - a missing history must not block the rebalance
+        return trade.isoformat(), None
+    days = sorted(d for d in bars if d >= trade.isoformat())
+    if not days:
+        return trade.isoformat(), None
+    try:
+        return days[0], float(bars[days[0]][4])
+    except (TypeError, ValueError, IndexError):
+        return days[0], None
 
 
 def _rebalance(data_dir: str | Path, force: bool = False) -> dict[str, Any]:
@@ -153,9 +195,12 @@ def _rebalance(data_dir: str | Path, force: bool = False) -> dict[str, Any]:
         for sym, t in target.items():
             if sym in current:
                 continue
+            bought_on, bought_at = _traded_on(t.get("results_through"), region,
+                                              str(t.get("symbol") or ""), today)
             keep.append({
                 "provider_symbol": sym, "symbol": t["symbol"], "name": t["name"],
-                "sector": t["sector"], "entry_date": today, "entry_price": t["price"],
+                "sector": t["sector"], "entry_date": bought_on,
+                "entry_price": bought_at if bought_at is not None else t["price"],
                 "entry_quality": t["quality_score"], "quality_score": t["quality_score"],
                 "quality_grade": t.get("quality_grade"),
                 "quality_confidence": t.get("quality_confidence"),
@@ -165,9 +210,10 @@ def _rebalance(data_dir: str | Path, force: bool = False) -> dict[str, Any]:
             reason = (f"quality {gained:.1f}"
                       + (f", clearing the {cutoff:.1f} cut" if cutoff is not None else ""))
             changes.append({
-                "date": today, "quarter": qtr, "region": region, "action": "add",
+                "date": bought_on, "quarter": qtr, "region": region, "action": "add",
                 "symbol": t["symbol"], "provider_symbol": sym,
-                "entry_price": t["price"], "quality_score": gained,
+                "entry_price": bought_at if bought_at is not None else t["price"],
+                "quality_score": gained,
                 "score_after": gained,
                 "reason": reason,
             })

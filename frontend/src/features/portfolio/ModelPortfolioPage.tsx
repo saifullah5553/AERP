@@ -188,10 +188,15 @@ export default function ModelPortfolioPage() {
 
       <div className="mx-auto w-full max-w-6xl px-4 pt-3">
         <div className="rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-[11px] text-slate-300">
-          Holds the highest <b>fundamental quality</b> names that pass the gate — growth (45%) +
-          cash (40%) + a debt guardrail. <b>Rebalances once a quarter</b> as results land: new
-          top scorers are added, names that fall out are dropped. Pakistan holds 20, other
-          markets 15, equal weight. Research output, not investment advice.
+          Holds the highest <b>fundamental quality</b> names, rebalanced once a quarter as
+          results land: new top scorers are added, names that fall out are dropped. Pakistan
+          holds 20, other markets 15, equal weight.
+          {" "}
+          <b>Each holding is dated to the rebalance its results imply</b>, not to the day the
+          portfolio was built — Mar-26 results are acted on at the end of May, two months later,
+          because nobody knew them in April. Returns therefore measure <i>the rule</i> from that
+          date, not a position anyone held: this portfolio was first built on 2 Aug 2026.
+          Research output, not investment advice.
         </div>
       </div>
 
