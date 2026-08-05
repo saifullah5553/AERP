@@ -90,6 +90,11 @@ function Holdings({
                 <td className="px-3 py-1.5 text-xs text-slate-400">{h.sector ?? "—"}</td>
                 <td className="num px-3 py-1.5 text-right font-semibold text-slate-200">
                   {h.quality_score?.toFixed(1) ?? "—"}
+                  {h.quality_grade && (
+                    <span className="ml-1.5 text-[10px] font-normal text-slate-500">
+                      {h.quality_grade}
+                    </span>
+                  )}
                 </td>
                 <td className="num px-3 py-1.5 text-right text-[11px] text-slate-400">
                   {/* The quarter the figures are through, not the filing date. */}
@@ -140,8 +145,13 @@ export default function ModelPortfolioPage() {
 
   const holdings = pf?.holdings ?? {};
   const regions = market === "all" ? Object.keys(holdings) : [market];
-  const recent = (pf?.changes ?? []).slice(-12).reverse()
-    .filter((c) => market === "all" || c.region === market);
+  // The WHOLE history, newest first. It was capped at the last twelve, which quietly hid
+  // every earlier rebalance - and the point of keeping a record is being able to look back at
+  // it. Grouped by rebalance date so each quarter's moves read together.
+  const recent = (pf?.changes ?? [])
+    .filter((c) => market === "all" || c.region === market)
+    .slice()
+    .reverse();
 
   return (
     <div className="flex h-full flex-col bg-base-900 text-slate-200">
@@ -196,9 +206,12 @@ export default function ModelPortfolioPage() {
             {recent.length > 0 && (
               <div className="mt-2">
                 <h2 className="mb-2 px-1 text-sm font-bold uppercase tracking-wide text-slate-200">
-                  Recent Rebalance Activity
+                  Additions &amp; Deletions
+                  <span className="ml-2 font-normal normal-case text-slate-500">
+                    {recent.length} recorded
+                  </span>
                 </h2>
-                <div className="divide-y divide-base-700/50 rounded-lg border border-base-600">
+                <div className="max-h-[28rem] divide-y divide-base-700/50 overflow-y-auto rounded-lg border border-base-600">
                   {recent.map((c, i) => (
                     <div key={i} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
                       <div className="flex items-center gap-2">
@@ -220,7 +233,7 @@ export default function ModelPortfolioPage() {
                             {c.return_pct > 0 ? "+" : ""}{c.return_pct}%
                           </span>
                         )}
-                        <span className="num">{c.date}</span>
+                        <span className="num" title={c.date}>{fmtQuarterEnd(c.date)}</span>
                       </div>
                     </div>
                   ))}

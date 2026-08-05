@@ -104,12 +104,19 @@ def _rebalance(data_dir: str | Path, force: bool = False) -> dict[str, Any]:
             continue
         target = {r["provider_symbol"]: r for r in ranked[:size]}
         current = {h["provider_symbol"]: h for h in holdings.get(region, [])}
+        # The score of the last name that made the cut. "Dropped" on its own says nothing -
+        # a holding can leave because its own quality fell, or because it stood still while
+        # better names arrived. Those are different events and only the numbers separate them.
+        cutoff = min((r.get("quality_score") or 0) for r in ranked[:size]) if target else None
+        score_now = {r["provider_symbol"]: r.get("quality_score") for r in rows}
 
         # Drop: no longer among the top scorers for this market.
         keep: list[dict] = []
         for sym, h in current.items():
             if sym in target:
                 h["quality_score"] = target[sym]["quality_score"]
+                h["quality_grade"] = target[sym].get("quality_grade")
+                h["quality_confidence"] = target[sym].get("quality_confidence")
                 h["results_through"] = target[sym].get("results_through")
                 keep.append(h)
             else:
@@ -119,11 +126,22 @@ def _rebalance(data_dir: str | Path, force: bool = False) -> dict[str, Any]:
                 if px and h.get("entry_price"):
                     ret = round((float(px) - float(h["entry_price"]))
                                 / float(h["entry_price"]) * 100, 2)
+                was, now = h.get("quality_score"), score_now.get(sym)
+                if was is not None and now is not None and now < was - 1:
+                    reason = (f"quality fell {was - now:.1f} points, {was:.1f} to {now:.1f}"
+                              + (f" (cut was {cutoff:.1f})" if cutoff is not None else ""))
+                elif now is not None and cutoff is not None:
+                    reason = (f"outranked at {now:.1f} - the cut rose to {cutoff:.1f}")
+                elif now is None:
+                    reason = "no longer scoreable from the available statements"
+                else:
+                    reason = "fell out of the top scorers"
                 changes.append({
                     "date": today, "quarter": qtr, "region": region, "action": "drop",
                     "symbol": h.get("symbol"), "provider_symbol": sym,
                     "exit_price": px, "return_pct": ret,
-                    "reason": "fell out of the top scorers",
+                    "score_before": was, "score_after": now,
+                    "reason": reason,
                 })
                 dropped += 1
 
@@ -135,13 +153,19 @@ def _rebalance(data_dir: str | Path, force: bool = False) -> dict[str, Any]:
                 "provider_symbol": sym, "symbol": t["symbol"], "name": t["name"],
                 "sector": t["sector"], "entry_date": today, "entry_price": t["price"],
                 "entry_quality": t["quality_score"], "quality_score": t["quality_score"],
+                "quality_grade": t.get("quality_grade"),
+                "quality_confidence": t.get("quality_confidence"),
                 "results_through": t.get("results_through"),
             })
+            gained = t["quality_score"]
+            reason = (f"quality {gained:.1f}"
+                      + (f", clearing the {cutoff:.1f} cut" if cutoff is not None else ""))
             changes.append({
                 "date": today, "quarter": qtr, "region": region, "action": "add",
                 "symbol": t["symbol"], "provider_symbol": sym,
-                "entry_price": t["price"], "quality_score": t["quality_score"],
-                "reason": "entered the top scorers",
+                "entry_price": t["price"], "quality_score": gained,
+                "score_after": gained,
+                "reason": reason,
             })
             added += 1
 

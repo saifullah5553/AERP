@@ -854,6 +854,15 @@ def cmd_export_static(args: argparse.Namespace) -> None:
         # Company files for securities only in the old snapshot are left in place.
         company_files = len(list((out / "company").glob("*.json")))
 
+        # Quarterly rebalance ledger: what the top-N rule bought and sold each quarter, and
+        # what the round trips returned. Built from the stored score history and our own
+        # closes, so it needs the screener written above - hence its place here.
+        try:
+            from app.ingestion.rebalance_ledger import build as build_ledger
+            build_ledger(out)
+        except Exception as exc:  # noqa: BLE001 - a derived view must not fail the export
+            log.warning("rebalance ledger failed: %s", exc)
+
         # Cross-market insider transactions feed (aggregated from the company files above,
         # so it spans US / India / Australia / PSX — not just the CI DB's PSX rows).
         try:

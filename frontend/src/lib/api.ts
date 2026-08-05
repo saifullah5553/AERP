@@ -52,6 +52,9 @@ export interface SignalMove {
   to: string;
   label: string | null;
   composite: number | null;
+  /** Fundamental Quality Score, 0-100 — the business, separate from the chart. */
+  quality?: number | null;
+  quality_grade?: string | null;
   price: number | null;
   date: string;
 }
@@ -59,6 +62,52 @@ export interface SignalMovesData {
   generated_at: string | null;
   buy: SignalMove[];
   sell: SignalMove[];
+}
+
+export interface LedgerPosition {
+  symbol: string;
+  name: string | null;
+  sector: string | null;
+  score?: number | null;
+  entry_quarter?: string;
+  entry_date: string;
+  entry_price: number | null;
+  exit_date?: string;
+  exit_price?: number | null;
+  last_price?: number | null;
+  return_pct?: number | null;
+  held_quarters?: number;
+  open?: boolean;
+}
+export interface LedgerQuarter {
+  results_for: string;
+  quarter: string;
+  traded_on: string;
+  universe: number;
+  entries: LedgerPosition[];
+  exits: LedgerPosition[];
+  closed_avg_return_pct: number | null;
+  closed_winners: number;
+  closed_count: number;
+}
+export interface LedgerMarket {
+  region: string;
+  label: string;
+  top_n: number;
+  lag_months: number;
+  quarters: LedgerQuarter[];
+  open_positions: LedgerPosition[];
+  realised_trades: number;
+  realised_avg_return_pct: number | null;
+  realised_winners: number;
+  note?: string;
+}
+export interface RebalanceLedger {
+  markets: Record<string, LedgerMarket>;
+  top_n: number;
+  lag_months: number;
+  /** These are trades the rule WOULD have made, not trades that were made. */
+  reconstructed: boolean;
 }
 
 export interface PortfolioHolding {
@@ -70,6 +119,8 @@ export interface PortfolioHolding {
   entry_price: number | null;
   entry_quality: number | null;
   quality_score: number | null;
+  quality_grade?: string | null;
+  quality_confidence?: number | null;
   price?: number | null;
   return_pct?: number | null;
   results_through?: string | null;
@@ -84,6 +135,9 @@ export interface PortfolioChange {
   exit_price?: number | null;
   return_pct?: number | null;
   reason: string;
+  /** Score before and after the rebalance, so a drop names its own cause. */
+  score_before?: number | null;
+  score_after?: number | null;
 }
 export interface ModelPortfolio {
   holdings: Record<string, PortfolioHolding[]>;
@@ -252,6 +306,9 @@ export const api = {
   },
   insiderFeed(signal?: AbortSignal): Promise<InsiderTx[]> {
     return getJson<InsiderTx[]>(`${DATA_BASE}/insider.json`, signal).catch(() => []);
+  },
+  rebalanceLedger(signal?: AbortSignal): Promise<RebalanceLedger> {
+    return getJson<RebalanceLedger>(`${DATA_BASE}/rebalance_ledger.json`, signal);
   },
   movers(signal?: AbortSignal): Promise<MoversData> {
     return getJson<MoversData>(`${DATA_BASE}/movers.json`, signal).catch(() => ({

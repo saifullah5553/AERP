@@ -1,180 +1,256 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { api, type SignalMove } from "@/lib/api";
+import { api, type LedgerMarket, type LedgerQuarter, type RebalanceLedger } from "@/lib/api";
+import { fmtNumber } from "@/lib/format";
 
-type Dir = "all" | "buy" | "sell";
-type Range = "all" | "today" | "7d" | "30d";
+const MARKETS = ["psx", "us", "india", "australia", "gcc"];
 
-const SIG_LABEL: Record<string, string> = {
-  strong_buy: "Strong Buy", buy: "Buy", hold: "Hold", sell: "Sell", strong_sell: "Strong Sell",
-};
-
-// Buy zone = Strong Buy only. Entering it = BUY; leaving it = EXIT. Colour hints severity
-// (amber for a drop to Buy/Hold, red for an outright Sell) but the label stays "EXIT" so it
-// never contradicts the company page's model signal.
-function moveBadge(m: SignalMove): { text: string; fg: string; bg: string } {
-  if (m.direction === "buy")
-    return { text: "▲ TIME TO BUY", fg: "#22c55e", bg: "rgba(34,197,94,0.14)" };
-  const hard = m.to === "sell" || m.to === "strong_sell";
-  return {
-    text: "▼ EXIT STRONG BUY",
-    fg: hard ? "#ef4444" : "#f59e0b",
-    bg: hard ? "rgba(239,68,68,0.14)" : "rgba(245,158,11,0.14)",
-  };
+function pctColor(v: number | null | undefined): string {
+  if (v == null) return "#94a3b8";
+  return v > 0 ? "#22c55e" : v < 0 ? "#ef4444" : "#94a3b8";
 }
 
-const RANGES: [Range, string][] = [
-  ["all", "All dates"], ["today", "Today"], ["7d", "Last 7 days"], ["30d", "Last 30 days"],
-];
-
-function daysAgoISO(n: number): string {
-  return new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+function Pct({ v }: { v: number | null | undefined }) {
+  if (v == null) return <span className="text-slate-600">—</span>;
+  return (
+    <span className="font-semibold" style={{ color: pctColor(v) }}>
+      {v > 0 ? "+" : ""}{v.toFixed(2)}%
+    </span>
+  );
 }
 
-// Stocks that crossed a decision line: entered Strong Buy (time to buy) or left the buy zone
-// entirely — Strong Buy/Buy → Hold/Sell (time to sell / trim). A one-notch Strong Buy→Buy
-// dip is NOT a sell (still buy-rated), so it's excluded upstream.
+function Quarter({ q }: { q: LedgerQuarter }) {
+  // Sells first: what the previous quarter's picks actually returned is the result, and the
+  // new buys are only a claim until the next rebalance prices them.
+  const sold = q.exits ?? [];
+  const bought = q.entries ?? [];
+  if (!sold.length && !bought.length) return null;
+
+  return (
+    <div className="mb-5">
+      <div className="mb-1.5 flex flex-wrap items-baseline gap-3 px-1">
+        <h3 className="text-sm font-bold text-slate-100">{q.quarter} results</h3>
+        <span className="text-[11px] text-slate-500">
+          traded {q.traded_on} · {q.universe.toLocaleString()} scored
+        </span>
+        {q.closed_count > 0 && (
+          <span className="text-xs">
+            <span className="text-slate-500">{q.closed_count} sold · </span>
+            <Pct v={q.closed_avg_return_pct} />
+            <span className="text-slate-500"> avg · {q.closed_winners}/{q.closed_count} up</span>
+          </span>
+        )}
+      </div>
+      <div className="overflow-x-auto rounded-lg border border-base-600">
+        <table className="w-full text-sm">
+          <thead className="bg-base-800 text-[10px] uppercase tracking-wide text-slate-400">
+            <tr>
+              <th className="px-3 py-2 text-left">Action</th>
+              <th className="px-3 py-2 text-left">Ticker</th>
+              <th className="px-3 py-2 text-left">Company</th>
+              <th className="px-3 py-2 text-right">Entered</th>
+              <th className="px-3 py-2 text-right">Buy Price</th>
+              <th className="px-3 py-2 text-right">Exit Price</th>
+              <th className="px-3 py-2 text-right">Return</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sold.map((r) => (
+              <tr key={`sold-${r.symbol}`}
+                  className="border-t border-base-700/40 hover:bg-base-700/40">
+                <td className="px-3 py-1.5">
+                  <span className="rounded px-2 py-0.5 text-[10px] font-bold"
+                        style={{ background: "rgba(239,68,68,0.16)", color: "#ef4444" }}>
+                    SOLD
+                  </span>
+                </td>
+                <td className="px-3 py-1.5 font-semibold text-accent">{r.symbol}</td>
+                <td className="max-w-[220px] truncate px-3 py-1.5 text-xs text-slate-400"
+                    title={r.name ?? ""}>{r.name ?? "—"}</td>
+                <td className="num px-3 py-1.5 text-right text-[11px] text-slate-500">
+                  {r.entry_quarter}
+                </td>
+                <td className="num px-3 py-1.5 text-right text-slate-300">
+                  {fmtNumber(r.entry_price)}
+                </td>
+                <td className="num px-3 py-1.5 text-right text-slate-300">
+                  {fmtNumber(r.exit_price)}
+                </td>
+                <td className="num px-3 py-1.5 text-right"><Pct v={r.return_pct} /></td>
+              </tr>
+            ))}
+            {bought.map((r) => (
+              <tr key={`bought-${r.symbol}`}
+                  className="border-t border-base-700/40 hover:bg-base-700/40">
+                <td className="px-3 py-1.5">
+                  <span className="rounded px-2 py-0.5 text-[10px] font-bold"
+                        style={{ background: "rgba(34,197,94,0.16)", color: "#22c55e" }}>
+                    BOUGHT
+                  </span>
+                </td>
+                <td className="px-3 py-1.5 font-semibold text-accent">{r.symbol}</td>
+                <td className="max-w-[220px] truncate px-3 py-1.5 text-xs text-slate-400"
+                    title={r.name ?? ""}>{r.name ?? "—"}</td>
+                <td className="num px-3 py-1.5 text-right text-[11px] text-slate-500">
+                  {q.quarter}
+                </td>
+                <td className="num px-3 py-1.5 text-right text-slate-300">
+                  {fmtNumber(r.entry_price)}
+                </td>
+                <td className="num px-3 py-1.5 text-right text-slate-600">held</td>
+                <td className="num px-3 py-1.5 text-right text-slate-600">—</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function Market({ m }: { m: LedgerMarket }) {
+  if (!m.quarters?.length) {
+    return (
+      <div className="p-8 text-center text-sm text-slate-500">
+        {m.note ?? "No rebalance history for this market yet."}
+      </div>
+    );
+  }
+  return (
+    <>
+      <div className="mb-4 flex flex-wrap items-center gap-4 rounded-lg border border-base-600 bg-base-800 px-4 py-2.5">
+        <span className="text-sm font-bold text-slate-100">{m.label}</span>
+        <span className="text-xs text-slate-500">top {m.top_n}, rebalanced quarterly</span>
+        {m.realised_trades > 0 && (
+          <span className="text-xs">
+            <span className="text-slate-500">{m.realised_trades} closed · </span>
+            <Pct v={m.realised_avg_return_pct} />
+            <span className="text-slate-500">
+              {" "}avg · {m.realised_winners}/{m.realised_trades} up
+            </span>
+          </span>
+        )}
+        {m.open_positions?.length > 0 && (
+          <span className="ml-auto text-xs text-slate-500">
+            {m.open_positions.length} still held
+          </span>
+        )}
+      </div>
+
+      {/* Newest quarter first. */}
+      {m.quarters.slice().reverse().map((q) => <Quarter key={q.results_for} q={q} />)}
+
+      {m.open_positions?.length > 0 && (
+        <div className="mb-6">
+          <h3 className="mb-1.5 px-1 text-sm font-bold text-slate-100">
+            Still held
+            <span className="ml-2 text-[11px] font-normal text-slate-500">
+              marked to the last close — an unrealised gain is not a result
+            </span>
+          </h3>
+          <div className="overflow-x-auto rounded-lg border border-base-600">
+            <table className="w-full text-sm">
+              <thead className="bg-base-800 text-[10px] uppercase tracking-wide text-slate-400">
+                <tr>
+                  <th className="px-3 py-2 text-left">Ticker</th>
+                  <th className="px-3 py-2 text-left">Company</th>
+                  <th className="px-3 py-2 text-right">Entered</th>
+                  <th className="px-3 py-2 text-right">Buy Price</th>
+                  <th className="px-3 py-2 text-right">Last</th>
+                  <th className="px-3 py-2 text-right">Unrealised</th>
+                </tr>
+              </thead>
+              <tbody>
+                {m.open_positions.map((r) => (
+                  <tr key={r.symbol} className="border-t border-base-700/40 hover:bg-base-700/40">
+                    <td className="px-3 py-1.5 font-semibold text-accent">{r.symbol}</td>
+                    <td className="max-w-[220px] truncate px-3 py-1.5 text-xs text-slate-400"
+                        title={r.name ?? ""}>{r.name ?? "—"}</td>
+                    <td className="num px-3 py-1.5 text-right text-[11px] text-slate-500">
+                      {r.entry_quarter}
+                    </td>
+                    <td className="num px-3 py-1.5 text-right text-slate-300">
+                      {fmtNumber(r.entry_price)}
+                    </td>
+                    <td className="num px-3 py-1.5 text-right text-slate-300">
+                      {fmtNumber(r.last_price)}
+                    </td>
+                    <td className="num px-3 py-1.5 text-right"><Pct v={r.return_pct} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// Quarterly rebalance ledger: what the top-N-by-fundamental-score rule bought each quarter, what
+// it sold when a name dropped out, and what the round trip returned — per market, last four
+// rebalances.
 export default function BuySellPage() {
-  const [moves, setMoves] = useState<SignalMove[]>([]);
-  const [dir, setDir] = useState<Dir>("all");
-  const [region, setRegion] = useState("all");
-  const [range, setRange] = useState<Range>("all");
+  const [led, setLed] = useState<RebalanceLedger | null>(null);
+  const [market, setMarket] = useState("psx");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const ctrl = new AbortController();
-    api
-      .signalMoves(ctrl.signal)
-      .then((d) => setMoves([...d.buy, ...d.sell].sort((a, b) => (a.date < b.date ? 1 : -1))))
-      .catch(() => setMoves([]));
+    api.rebalanceLedger(ctrl.signal).then(setLed).catch(() => setLed(null))
+      .finally(() => setLoading(false));
     return () => ctrl.abort();
   }, []);
 
-  const regions = useMemo(
-    () => ["all", ...[...new Set(moves.map((m) => m.region))].sort()],
-    [moves],
-  );
-
-  const rows = useMemo(() => {
-    const floor = range === "today" ? daysAgoISO(0) : range === "7d" ? daysAgoISO(7) : range === "30d" ? daysAgoISO(30) : null;
-    return moves.filter(
-      (m) =>
-        (dir === "all" || m.direction === dir) &&
-        (region === "all" || m.region === region) &&
-        (floor === null || (m.date || "") >= floor),
-    );
-  }, [moves, dir, region, range]);
-
-  const nBuy = rows.filter((m) => m.direction === "buy").length;
-  const nExit = rows.filter((m) => m.direction === "sell").length;
-
-  const chip = (active: boolean, tone: "buy" | "sell" | "accent") =>
-    `rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors ${
-      active
-        ? tone === "buy"
-          ? "border-up bg-up/15 text-up"
-          : tone === "sell"
-            ? "border-down bg-down/15 text-down"
-            : "border-accent bg-accent/20 text-accent"
-        : "border-base-500 bg-base-700 text-slate-300 hover:bg-base-600"
-    }`;
+  const markets = MARKETS.filter((m) => led?.markets?.[m]);
+  const current = led?.markets?.[market] ?? (markets[0] ? led?.markets?.[markets[0]] : null);
 
   return (
     <div className="flex h-full flex-col bg-base-900 text-slate-200">
       <header className="flex flex-wrap items-center gap-3 border-b border-base-600 bg-base-900 px-5 py-3">
         <Link to="/" className="text-sm text-slate-400 hover:text-accent">← Dashboard</Link>
-        <span className="text-lg font-bold text-slate-100">Buy / Exit Signals</span>
-        <span className="rounded-full bg-up/15 px-2 py-0.5 text-xs font-semibold text-up">{nBuy} buy</span>
-        <span className="rounded-full bg-down/15 px-2 py-0.5 text-xs font-semibold text-down">{nExit} exit</span>
-
-        <div className="ml-auto flex flex-wrap items-center gap-1.5">
-          <button onClick={() => setDir("all")} className={chip(dir === "all", "accent")}>All</button>
-          <button onClick={() => setDir("buy")} className={chip(dir === "buy", "buy")}>▲ Buy</button>
-          <button onClick={() => setDir("sell")} className={chip(dir === "sell", "sell")}>▼ Exit</button>
-          <span className="mx-1 h-4 w-px bg-base-600" />
-          {regions.map((r) => (
+        <span className="text-lg font-bold text-slate-100">Quarterly Rebalance</span>
+        <div className="ml-auto flex flex-wrap gap-1.5">
+          {markets.map((m) => (
             <button
-              key={r}
-              onClick={() => setRegion(r)}
-              className={`rounded-full border px-2.5 py-0.5 text-xs font-medium uppercase ${
-                region === r ? "border-accent bg-accent/20 text-accent" : "border-base-500 bg-base-700 text-slate-300 hover:bg-base-600"
+              key={m}
+              onClick={() => setMarket(m)}
+              className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+                market === m
+                  ? "border-accent bg-accent/20 text-accent"
+                  : "border-base-500 bg-base-700 text-slate-300 hover:bg-base-600"
               }`}
             >
-              {r}
+              {led?.markets?.[m]?.label ?? m.toUpperCase()}
             </button>
           ))}
-          <span className="mx-1 h-4 w-px bg-base-600" />
-          <select
-            value={range}
-            onChange={(e) => setRange(e.target.value as Range)}
-            className="rounded border border-base-500 bg-base-900 px-2 py-1 text-xs text-slate-200"
-          >
-            {RANGES.map(([v, label]) => (
-              <option key={v} value={v}>{label}</option>
-            ))}
-          </select>
         </div>
       </header>
 
-      <div className="mx-auto mt-3 max-w-4xl px-2">
-        <div className="rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-[11px] text-slate-300">
-          <b>Strong Buy is the buy zone.</b> <span className="font-semibold text-up">▲ Buy</span> = the
-          stock entered Strong Buy. <span className="ml-1 font-semibold text-down">▼ Exit</span> = it
-          dropped out of Strong Buy (to Buy, Hold or lower). Rolling 30-day window. Research context
-          only — not investment advice.
+      <div className="mx-auto w-full max-w-6xl px-4 pt-3">
+        {/* Stated plainly, because these numbers look like a track record and are not one. The
+            live portfolio has rebalanced once; these four quarters are rebuilt from the score
+            each company carried at each past quarter-end and our own stored closes. */}
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-slate-300">
+          <b>Reconstructed, not traded.</b> Each quarter buys the top {current?.top_n ?? 20} by
+          fundamental score and sells a name when it drops out. Prices are real closes from our
+          own daily history, bought {current?.lag_months ?? 2} months after the quarter end,
+          since results are not knowable the day a quarter closes. These are trades the rule
+          <i> would</i> have made. The universe is today's listings, so companies that delisted
+          are missing and their absence flatters the record. No costs, spread or slippage.
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {rows.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500">No matching signals.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-base-800 text-[10px] uppercase tracking-wide text-slate-400">
-                <tr className="border-b border-base-600">
-                  <th className="px-3 py-2 text-left">Signal</th>
-                  <th className="px-3 py-2 text-left">Ticker</th>
-                  <th className="px-3 py-2 text-left">Name</th>
-                  <th className="px-3 py-2 text-left">Transition</th>
-                  <th className="px-3 py-2 text-right">Score</th>
-                  <th className="px-3 py-2 text-left">Market</th>
-                  <th className="px-3 py-2 text-right">Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((m, i) => {
-                  const b = moveBadge(m);
-                  return (
-                    <tr key={i} className="border-b border-base-700/40 hover:bg-base-700/40">
-                      <td className="px-3 py-1.5">
-                        <span
-                          className="rounded px-2 py-0.5 text-[11px] font-bold"
-                          style={{ color: b.fg, background: b.bg }}
-                        >
-                          {b.text}
-                        </span>
-                      </td>
-                      <td className="px-3 py-1.5">
-                        <Link to={`/company/${encodeURIComponent(m.provider_symbol)}`} className="font-semibold text-accent">
-                          {m.symbol}
-                        </Link>
-                      </td>
-                      <td className="px-3 py-1.5 text-slate-300">
-                        <span className="block max-w-[220px] truncate" title={m.name ?? ""}>{m.name ?? "—"}</span>
-                      </td>
-                      <td className="px-3 py-1.5 text-xs text-slate-400">
-                        {SIG_LABEL[m.from] ?? m.from} → <span className="font-semibold text-slate-200">{SIG_LABEL[m.to] ?? m.to}</span>
-                      </td>
-                      <td className="num px-3 py-1.5 text-right text-slate-300">{m.composite == null ? "—" : m.composite.toFixed(1)}</td>
-                      <td className="px-3 py-1.5 text-[11px] uppercase text-slate-500">{m.region}</td>
-                      <td className="num px-3 py-1.5 text-right text-[11px] text-slate-500">{m.date}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        {loading ? (
+          <div className="p-8 text-center text-sm text-slate-500">Loading…</div>
+        ) : !current ? (
+          <div className="p-8 text-center text-sm text-slate-500">
+            The ledger builds on the next refresh.
           </div>
+        ) : (
+          <Market m={current} />
         )}
       </div>
     </div>

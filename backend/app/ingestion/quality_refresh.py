@@ -131,6 +131,12 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
         r["quality_score"] = q.score
         r["quality_passed"] = q.passed
         r["quality_improving"] = q.improving
+        # The six-category engine computes far more than the headline number, and all of it
+        # was being discarded. The grade names what the score means, and confidence says how
+        # much of it rests on real data - a 62 built on four periods and half the inputs is
+        # not the same claim as a 62 built on twenty and all of them.
+        r["quality_confidence"] = q.confidence
+        r["quality_grade"] = q.grade_label
         # A failed gate is a verdict on its own - no price data needed to say "avoid".
         if not q.eligible:
             r["strategy_action"] = "avoid"
@@ -157,6 +163,13 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
                 "rationale": [f"fails quality: {', '.join(q.reasons)}"] if not q.eligible
                 else ["passes the quality gate - awaiting price-action timing"],
             }
+
+        # The full scorecard, for the company page: category-by-category, the current TTM
+        # figures behind it, and any earnings-quality red flags.
+        doc["fundamental_scorecard"] = {
+            "score": q.score, "confidence": q.confidence, "grade": q.grade_label,
+            "categories": q.categories, "metrics": q.metrics, "flags": q.flags,
+        }
         try:
             cf.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
         except OSError:

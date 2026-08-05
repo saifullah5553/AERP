@@ -121,6 +121,10 @@ export interface ScreenerRow {
   strategy_action?: "buy" | "hold" | "watch" | "avoid" | null;
   strategy_conviction?: number | null;
   quality_score?: number | null;
+  /** 0-100: how much real data is behind quality_score. */
+  quality_confidence?: number | null;
+  /** Exceptional / Excellent / Good / Acceptable / Weak / Poor / Very Poor. */
+  quality_grade?: string | null;
   quality_passed?: boolean | null;
   quality_trend?: "improving" | "stable" | "deteriorating" | "unknown" | null;
   quality_change?: number | null;

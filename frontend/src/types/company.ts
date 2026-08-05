@@ -39,4 +39,22 @@ export interface CompanyDetail {
   insider: Row[];
   insider_summary: Row | null;
   ai_summary: string;
+  fundamental_scorecard?: FundamentalScorecard | null;
+}
+
+/** The six-category Fundamental Quality Score, as computed for this company. */
+export interface ScoreCategory {
+  earned: number;
+  points: number;
+  parts: Record<string, number | null>;
+}
+export interface FundamentalScorecard {
+  score: number | null;
+  /** 0-100: how much of the score rests on real data rather than what survived. */
+  confidence: number | null;
+  grade: string;
+  categories: Record<string, ScoreCategory>;
+  metrics: Record<string, number | null>;
+  /** Earnings-quality red flags, e.g. profit not backed by operating cash. */
+  flags: string[];
 }

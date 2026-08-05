@@ -472,6 +472,10 @@ def _record_signal_move(
         "name": r.get("name"), "region": r.get("region"),
         "direction": direction, "from": old_sig, "to": new_sig, "label": label,
         "composite": composite, "price": price, "date": today,
+        # The fundamental quality score alongside the composite. A buy/sell page that shows
+        # only the composite cannot say whether a crossing came from a good business or a
+        # chart, and that is the distinction the whole gate exists to draw.
+        "quality": r.get("quality_score"), "quality_grade": r.get("quality_grade"),
     }
 
 

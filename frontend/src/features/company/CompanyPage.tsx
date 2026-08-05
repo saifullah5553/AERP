@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { api, type CotData, type SignalMove } from "@/lib/api";
+import FundamentalScorecard from "./FundamentalScorecard";
 import {
   fmtChangePct,
   fmtCompact,
@@ -368,6 +369,12 @@ export default function CompanyPage() {
           <RiskSection risks={derived.risks} />
 
           {/* Detailed financials (existing tabs, unchanged data source) */}
+          {data.fundamental_scorecard && (
+            <Card title="Fundamental Quality Score">
+              <FundamentalScorecard card={data.fundamental_scorecard} />
+            </Card>
+          )}
+
           <Card title="Financial Statements & Indicators">
             <div className="flex flex-wrap border-b border-base-600">
               {TABS.map((t) => (
