@@ -38,6 +38,14 @@ def refresh_derived_views(out) -> None:
     """
     from pathlib import Path as _Path
     out = _Path(out)
+    # Price first: an unpriced row is invisible to every portfolio, because a name that cannot
+    # be bought is filtered out of the ranking. Filling those before the views are built is the
+    # difference between UBL being ranked and UBL not existing.
+    try:
+        from app.ingestion.price_refresh import fill_missing_prices
+        fill_missing_prices(out)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("fill-missing-prices failed: %s", exc)
     try:
         from app.ingestion.model_portfolio import mark as mark_portfolio
         mark_portfolio(out)

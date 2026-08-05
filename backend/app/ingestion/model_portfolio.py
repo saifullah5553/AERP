@@ -21,9 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.logging import get_logger
-from app.core.safe_path import safe_file
 from app.core.snapshot_lock import snapshot_lock
-from app.engines.strategy.quality import assess_quality
 from app.ingestion.ohlc_store import load_bars
 
 log = get_logger(__name__)
@@ -49,37 +47,37 @@ def _load(path: Path) -> dict[str, Any]:
 
 
 def _rank(rows: list[dict], region: str, company: Path) -> list[dict]:
-    """Eligible names for a region, best quality first."""
+    """Eligible names for a region, best quality first - ranked on the PUBLISHED score.
+
+    This used to recompute its own score: assess_quality over doc["statements"], which are the
+    ANNUAL filings, with no sector and no peer medians. The screener's quality_score comes from
+    the twenty-quarter TTM store WITH both. Two different numbers, and the portfolio was
+    selecting on the one nobody could see - which is how FATIMA sat in a "top 20" at rank 101
+    of 432, and SURC at rank 150.
+
+    Ranking on the published figure is the only arrangement where the page can be checked. If
+    the score is wrong, it is wrong everywhere at once and visibly so, rather than wrong in one
+    place and invisible.
+    """
     scored: list[tuple[float, dict]] = []
     for r in rows:
-        if r.get("region") != region or not r.get("provider_symbol") or r.get("price") is None:
+        if r.get("region") != region or not r.get("provider_symbol"):
             continue
-        # Never build this path by hand. CON is a real US ticker and a Windows device name, so
-        # company/CON.json IS the console: exists() says True and the read then blocks forever
-        # at 0% CPU. That is what hung `model-portfolio --force` for two hours, looking exactly
-        # like a network stall - which is what I first blamed it on.
-        cf = safe_file(company, f"{r['provider_symbol']}.json")
-        if cf is None or not cf.exists():
+        if r.get("price") is None or r.get("quality_score") is None:
             continue
-        try:
-            st = json.loads(cf.read_text(encoding="utf-8")).get("statements") or {}
-        except (OSError, json.JSONDecodeError):
+        # The same gate the screener applies, read from the same row rather than recomputed.
+        if not (r.get("quality_passed") or r.get("quality_improving")):
             continue
-        q = assess_quality(st)
-        if q.eligible and q.score is not None:
-            # Which set of results these numbers are through - so the portfolio can state
-            # plainly that it is ranking on, say, results to 31-03-2026 rather than implying
-            # the figures are current to today.
-            inc = st.get("income") or []
-            through = str(inc[0].get("fiscal_date") or "")[:10] if inc else None
-            scored.append((q.score, {
-                "provider_symbol": r["provider_symbol"], "symbol": r.get("symbol"),
-                "name": r.get("name"), "sector": r.get("sector"),
-                "quality_score": q.score, "price": r.get("price"),
-                "results_through": through,
-            }))
-    scored.sort(key=lambda t: t[0], reverse=True)
-    return [s for _sc, s in scored]
+        scored.append((float(r["quality_score"]), {
+            "provider_symbol": r["provider_symbol"], "symbol": r.get("symbol"),
+            "name": r.get("name"), "sector": r.get("sector"),
+            "quality_score": r["quality_score"], "price": r.get("price"),
+            "quality_grade": r.get("quality_grade"),
+            "quality_confidence": r.get("quality_confidence"),
+            "results_through": r.get("results_through"),
+        }))
+    scored.sort(key=lambda t: -t[0])
+    return [d for _, d in scored]
 
 
 def rebalance(data_dir: str | Path, force: bool = False) -> dict[str, Any]:

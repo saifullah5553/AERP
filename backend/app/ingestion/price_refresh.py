@@ -21,6 +21,7 @@ import httpx
 
 from app.core.logging import get_logger
 from app.core.safe_path import safe_file
+from app.ingestion.ohlc_store import load_bars
 
 log = get_logger(__name__)
 
@@ -269,3 +270,53 @@ def refresh_prices(
               "pe_computed": sum(1 for v in pe_by_sym.values() if v)}
     log.info("refresh-prices: %s", result)
     return result
+
+
+def fill_missing_prices(out: Path) -> dict[str, int]:
+    """Give a row a price from our OWN daily history when the live feed had none.
+
+    PSX quotes come from the exchange portal and 70 names arrive without one. An unpriced row
+    is invisible to every portfolio - it cannot be bought, so it is filtered out of the ranking
+    - which is how UBL sat at rank 21 by quality and appeared in nothing. 60 SCORED companies
+    were being excluded for want of a number we already hold.
+
+    Deliberately NOT Yahoo's live quote. For UBL.KA that field reads 259.59 while Yahoo's own
+    closes for the same days run 462-478 and no split is reported; the quote is simply wrong
+    for these listings. The last stored close is consistent with the history every return is
+    computed from, which matters more here than being an hour fresher.
+    """
+    path = out / "screener.json"
+    try:
+        rows = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"filled": 0}
+
+    filled = 0
+    for r in rows:
+        if r.get("price") is not None:
+            continue
+        region, symbol = str(r.get("region") or ""), str(r.get("symbol") or "")
+        if not region or not symbol:
+            continue
+        try:
+            bars = load_bars(region, symbol)
+        except Exception:  # noqa: BLE001 - a missing history is not an error here
+            continue
+        if not bars:
+            continue
+        last = max(bars)
+        try:
+            close = float(bars[last][4])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if close <= 0:
+            continue
+        r["price"] = close
+        # Said out loud, so a stale close is never mistaken for a live quote.
+        r["price_source"] = f"last close {last}"
+        filled += 1
+
+    if filled:
+        path.write_text(json.dumps(rows), encoding="utf-8")
+        log.info("fill-missing-prices: %d rows priced from stored history", filled)
+    return {"filled": filled}
