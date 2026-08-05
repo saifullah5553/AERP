@@ -23,7 +23,7 @@ are absent, and their absence flatters the record.
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +34,7 @@ log = get_logger(__name__)
 
 TOP_N = 20
 LAG_MONTHS = 2
-QUARTERS = 4
+QUARTERS = 0        # 0 = every quarter we have scores for, back to 2021
 # Below this the "market" is too thin for a top-20 to mean anything - picking 20 of 25 names is
 # not a selection, it is the market with a haircut.
 MIN_UNIVERSE = 30
@@ -45,9 +45,32 @@ REGION_LABELS = {
 }
 
 
+def _calendar_quarter_end(iso: str) -> str | None:
+    """The CALENDAR quarter a period end falls in: 2026-05-31 -> 2026-06-30.
+
+    Companies do not share a fiscal calendar. Left on their raw period ends, US names produced
+    125 distinct "rebalance dates" - one per fiscal year-end in the market - so the ledger was
+    rebalancing on dates no portfolio could act on and ranking companies that had reported
+    months apart against each other. Bucketing to calendar quarters is what the screener's
+    Jun-26 column already does.
+    """
+    try:
+        year, month = int(iso[:4]), int(iso[5:7])
+    except (ValueError, IndexError):
+        return None
+    if not 1 <= month <= 12:
+        return None
+    end_month = ((month - 1) // 3 + 1) * 3
+    return f"{year:04d}-{end_month:02d}-{ {3: 31, 6: 30, 9: 30, 12: 31}[end_month] }"
+
+
 def _scores_by_quarter(rows: list[dict]) -> dict[str, dict[str, float]]:
-    """{quarter_end: {symbol: score}} - the score each name carried AT that quarter end."""
-    out: dict[str, dict[str, float]] = {}
+    """{calendar quarter end: {symbol: score}} - the score each name carried at that rebalance.
+
+    Where a company reports twice inside one calendar quarter the later print wins: it is the
+    figure that would have been known when the rebalance happened.
+    """
+    out: dict[str, dict[str, tuple[str, float]]] = {}
     for r in rows:
         symbol = r.get("symbol")
         scores = r.get("score_history") or []
@@ -55,9 +78,16 @@ def _scores_by_quarter(rows: list[dict]) -> dict[str, dict[str, float]]:
         if not symbol:
             continue
         for score, when in zip(scores, dates, strict=False):
-            if isinstance(score, int | float) and when:
-                out.setdefault(str(when)[:10], {})[str(symbol)] = float(score)
-    return out
+            if not (isinstance(score, int | float) and when):
+                continue
+            bucket = _calendar_quarter_end(str(when)[:10])
+            if not bucket:
+                continue
+            slot = out.setdefault(bucket, {})
+            prior = slot.get(str(symbol))
+            if prior is None or str(when)[:10] >= prior[0]:
+                slot[str(symbol)] = (str(when)[:10], float(score))
+    return {q: {sym: val for sym, (_, val) in names.items()} for q, names in out.items()}
 
 
 def _quarter_label(iso: str) -> str:
@@ -85,15 +115,24 @@ def build_region(rows: list[dict], region: str, prices: Prices,
                 "note": "not enough scored history for a rebalance"}
 
     # One extra quarter at the front: a position's return needs the rebalance AFTER it, so
-    # showing four completed quarters means walking five boundaries.
-    walk = usable[-(quarters + 1):]
+    # showing N completed quarters means walking N+1 boundaries. quarters=0 walks the lot -
+    # the score history runs twenty periods, so the record reaches back to 2021 rather than
+    # stopping at whatever the last four happen to be.
+    walk = usable if not quarters else usable[-(quarters + 1):]
     names = {r.get("symbol"): r for r in scored}
 
     held: dict[str, dict] = {}         # symbol -> the open position
     out_quarters: list[dict] = []
 
+    today = datetime.now(UTC).date().isoformat()
     for i, quarter_end in enumerate(walk):
         traded_on = _add_months(date.fromisoformat(quarter_end), LAG_MONTHS).isoformat()
+        # A rebalance two months after a quarter that has not finished reporting cannot have
+        # happened. US names with an August fiscal year-end bucket into Sep-26, whose trade
+        # date is in November - showing it as a quarter with no holdings and no return reads
+        # as missing data rather than as the future.
+        if traded_on > today:
+            continue
         ranked = sorted(by_quarter[quarter_end].items(), key=lambda kv: -kv[1])
         picks = {s for s, _ in ranked[:top_n]}
 
@@ -101,6 +140,8 @@ def build_region(rows: list[dict], region: str, prices: Prices,
 
         # Exits first: a name that was held and is no longer in the top 20 is sold at this
         # rebalance, at this rebalance's price - not at some later "current" price.
+        # Snapshot before any changes: these are the names the quarter was actually held in.
+        held_at_start = list(held)
         for symbol in list(held):
             if symbol in picks:
                 continue
@@ -137,6 +178,20 @@ def build_region(rows: list[dict], region: str, prices: Prices,
                 "entry_price": held[symbol]["entry_price"],
             })
 
+        # The PORTFOLIO's return for the quarter just ended: every name held through it,
+        # equal weight, priced from this rebalance back to the last one. Not the average of
+        # what happened to be SOLD - a name held four quarters dumps its whole multi-quarter
+        # gain into the bucket it exits, and compounding those gave PSX +3,531%, which is not a
+        # quarterly return series, it is the same profits counted several times over.
+        period_returns: list[float] = []
+        if i > 0:
+            prev_traded = out_quarters[-1]["traded_on"] if out_quarters else None
+            if prev_traded:
+                for symbol in held_at_start:
+                    ret = prices.ret(symbol, prev_traded, traded_on)
+                    if ret is not None:
+                        period_returns.append(ret * 100)
+
         closed = [e["return_pct"] for e in exits if e["return_pct"] is not None]
         out_quarters.append({
             "results_for": quarter_end,
@@ -149,6 +204,10 @@ def build_region(rows: list[dict], region: str, prices: Prices,
             "closed_avg_return_pct": round(sum(closed) / len(closed), 2) if closed else None,
             "closed_winners": sum(1 for r in closed if r > 0),
             "closed_count": len(closed),
+            # What the portfolio itself did over the quarter - the number worth compounding.
+            "portfolio_return_pct": (round(sum(period_returns) / len(period_returns), 2)
+                                     if period_returns else None),
+            "held_through": len(period_returns),
         })
 
     # Whatever is still held at the end is an OPEN position, marked to the newest close. Shown
@@ -171,6 +230,12 @@ def build_region(rows: list[dict], region: str, prices: Prices,
 
     realised = [e["return_pct"] for q in out_quarters for e in q["exits"]
                 if e["return_pct"] is not None]
+    # Compounded quarter on quarter, equal-weight within each - what the rule would have
+    # returned held continuously, rather than an average of unrelated trades.
+    compounded = 1.0
+    for q in out_quarters[1:]:
+        if q["portfolio_return_pct"] is not None:
+            compounded *= 1 + q["portfolio_return_pct"] / 100
     return {
         "region": region,
         "label": REGION_LABELS.get(region, region.upper()),
@@ -184,6 +249,10 @@ def build_region(rows: list[dict], region: str, prices: Prices,
         "realised_avg_return_pct": (round(sum(realised) / len(realised), 2)
                                     if realised else None),
         "realised_winners": sum(1 for r in realised if r > 0),
+        "compounded_return_pct": round((compounded - 1) * 100, 2) if len(out_quarters) > 1
+        else None,
+        "first_quarter": out_quarters[1]["quarter"] if len(out_quarters) > 1 else None,
+        "last_quarter": out_quarters[-1]["quarter"] if out_quarters else None,
     }
 
 

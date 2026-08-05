@@ -100,6 +100,10 @@ export interface LedgerMarket {
   realised_trades: number;
   realised_avg_return_pct: number | null;
   realised_winners: number;
+  /** Each quarter's equal-weight return, compounded across the whole record. */
+  compounded_return_pct?: number | null;
+  first_quarter?: string | null;
+  last_quarter?: string | null;
   note?: string;
 }
 export interface RebalanceLedger {

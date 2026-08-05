@@ -18,6 +18,14 @@ class FakePrices:
         days = sorted(d for d in self.table.get(symbol, {}) if d >= when)
         return (days[0], self.table[symbol][days[0]]) if days else None
 
+    def ret(self, symbol: str, start: str, end: str):
+        """Return between two dates - what the quarterly portfolio figure is built from."""
+        a = self.on_or_after(symbol, start)
+        b = self.on_or_after(symbol, end)
+        if not a or not b or a[0] >= b[0] or a[1] <= 0:
+            return None
+        return b[1] / a[1] - 1.0
+
 
 def _rows(history: dict[str, list[tuple[str, float]]]) -> list[dict]:
     out = []

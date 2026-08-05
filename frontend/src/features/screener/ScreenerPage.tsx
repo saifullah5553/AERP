@@ -100,7 +100,7 @@ export default function ScreenerPage() {
             Model Portfolio →
           </a>
           <a href="#/signals" className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/25">
-            Buy/Sell Signals →
+            Quarterly History →
           </a>
           <a href="#/movers" className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-xs font-semibold text-amber-300 transition-colors hover:bg-amber-500/25">
             Movers →

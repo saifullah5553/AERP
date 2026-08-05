@@ -131,6 +131,15 @@ function Market({ m }: { m: LedgerMarket }) {
             </span>
           </span>
         )}
+        {m.compounded_return_pct != null && (
+          <span className="text-xs" title="Each quarter's equal-weight return, compounded">
+            <span className="text-slate-500">compounded </span>
+            <Pct v={m.compounded_return_pct} />
+            {m.first_quarter && (
+              <span className="text-slate-500"> · {m.first_quarter} to {m.last_quarter}</span>
+            )}
+          </span>
+        )}
         {m.open_positions?.length > 0 && (
           <span className="ml-auto text-xs text-slate-500">
             {m.open_positions.length} still held
@@ -194,6 +203,7 @@ function Market({ m }: { m: LedgerMarket }) {
 export default function BuySellPage() {
   const [led, setLed] = useState<RebalanceLedger | null>(null);
   const [market, setMarket] = useState("psx");
+  const [quarter, setQuarter] = useState("all");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -204,13 +214,27 @@ export default function BuySellPage() {
   }, []);
 
   const markets = MARKETS.filter((m) => led?.markets?.[m]);
-  const current = led?.markets?.[market] ?? (markets[0] ? led?.markets?.[markets[0]] : null);
+  const base = led?.markets?.[market] ?? (markets[0] ? led?.markets?.[markets[0]] : null);
+  // Newest first in the picker; the record now runs back to 2021 rather than the last four.
+  const quarters = (base?.quarters ?? []).map((q) => q.quarter).reverse();
+  const current = base && quarter !== "all"
+    ? { ...base, quarters: base.quarters.filter((q) => q.quarter === quarter) }
+    : base;
 
   return (
     <div className="flex h-full flex-col bg-base-900 text-slate-200">
       <header className="flex flex-wrap items-center gap-3 border-b border-base-600 bg-base-900 px-5 py-3">
         <Link to="/" className="text-sm text-slate-400 hover:text-accent">← Dashboard</Link>
-        <span className="text-lg font-bold text-slate-100">Quarterly Rebalance</span>
+        <span className="text-lg font-bold text-slate-100">Quarterly History</span>
+        <select
+          value={quarter}
+          onChange={(e) => setQuarter(e.target.value)}
+          className="rounded border border-base-500 bg-base-700 px-2 py-1 text-xs text-slate-200"
+          title="Show one rebalance, or the whole record"
+        >
+          <option value="all">All quarters ({quarters.length})</option>
+          {quarters.map((q) => <option key={q} value={q}>{q}</option>)}
+        </select>
         <div className="ml-auto flex flex-wrap gap-1.5">
           {markets.map((m) => (
             <button
