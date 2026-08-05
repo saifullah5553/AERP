@@ -23,10 +23,14 @@ from typing import Any
 from app.core.logging import get_logger
 from app.core.snapshot_lock import snapshot_lock
 from app.engines.strategy.quality import assess_quality
+from app.ingestion.ohlc_store import load_bars
 
 log = get_logger(__name__)
 
 PORTFOLIO = "model_portfolio.json"
+# Below a 1.5x gap between the recorded price and the stored history, the difference is two
+# sources disagreeing, not a split. The smallest split worth restating is 2:1.
+SPLIT_LIKE_MIN = 1 / 1.5
 SIZE_BY_REGION = {"psx": 20, "us": 15, "india": 15, "australia": 15, "gcc": 15}
 DEFAULT_SIZE = 15
 
@@ -183,8 +187,54 @@ def _rebalance(data_dir: str | Path, force: bool = False) -> dict[str, Any]:
     return {"rebalanced": True, "quarter": qtr, "added": added, "dropped": dropped}
 
 
+def _adjusted_entry(region: str, holding: dict) -> float:
+    """The entry price on TODAY's basis, from our own split-adjusted daily history.
+
+    Falls back to the recorded price when the day is not in the store - a wrong basis is still
+    better than no number, and the fallback is the behaviour this replaces.
+    """
+    recorded = float(holding.get("entry_price") or 0) or 1.0
+    symbol, when = holding.get("symbol"), str(holding.get("entry_date") or "")[:10]
+    if not symbol or not when:
+        return recorded
+    try:
+        bars = load_bars(region, str(symbol))
+    except Exception:  # noqa: BLE001 - a missing history must not stop the marking
+        return recorded
+    on_or_after = sorted(d for d in bars if d >= when)
+    if not on_or_after:
+        return recorded
+    try:
+        close = float(bars[on_or_after[0]][4])
+    except (TypeError, ValueError, IndexError):
+        return recorded
+    if close <= 0:
+        return recorded
+
+    # Only restate when the gap is SPLIT-SIZED. The recorded price came from the market's own
+    # feed and the history from Yahoo, and the two differ by a few percent as a matter of
+    # course - HINOON was out by 1.38x, which is a source disagreement, not a corporate action.
+    # Importing that into the return would replace one wrong number with another.
+    ratio = close / recorded if recorded else 1.0
+    if SPLIT_LIKE_MIN <= ratio <= 1 / SPLIT_LIKE_MIN:
+        return recorded
+
+    # Keep what was actually paid, for the record - the adjusted figure is a restatement, not
+    # a correction of the trade.
+    holding.setdefault("entry_price_nominal", holding.get("entry_price"))
+    holding["entry_price"] = round(close, 4)
+    return close
+
+
 def mark(data_dir: str | Path) -> dict[str, Any]:
-    """Mark open holdings to the latest price so the page shows live P&L daily."""
+    """Mark open holdings to the latest price so the page shows live P&L daily.
+
+    The entry price is re-read from the stored daily history rather than trusted as recorded.
+    That history is split-adjusted, so a holding bought before a 5:1 split is compared with
+    today on the same basis. Trusting the recorded figure is what showed KOHC at -73% and DLL
+    at -89% on the ledger: nothing had been lost, the two ends were simply denominated
+    differently.
+    """
     out = Path(data_dir)
     path = out / PORTFOLIO
     doc = _load(path)
@@ -197,15 +247,14 @@ def mark(data_dir: str | Path) -> dict[str, Any]:
         for r in json.loads((out / "screener.json").read_text(encoding="utf-8"))
     }
     marked = 0
-    for _region, hs in holdings.items():
+    for region, hs in holdings.items():
         for h in hs:
             px = prices.get(h.get("provider_symbol"))
             if px is None or not h.get("entry_price"):
                 continue
+            entry = _adjusted_entry(str(region), h)
             h["price"] = px
-            h["return_pct"] = round(
-                (float(px) - float(h["entry_price"])) / float(h["entry_price"]) * 100, 2
-            )
+            h["return_pct"] = round((float(px) - entry) / entry * 100, 2)
             marked += 1
 
     # Simple equal-weight portfolio return per market, so the page can headline it.
