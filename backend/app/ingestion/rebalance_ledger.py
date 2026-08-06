@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.logging import get_logger
+from app.ingestion.model_portfolio import SIZE_BY_REGION
 from app.ingestion.quarterly_score_backtest import Prices, _add_months
 
 log = get_logger(__name__)
@@ -142,14 +143,25 @@ def build_region(rows: list[dict], region: str, prices: Prices,
 
     today = datetime.now(UTC).date().isoformat()
     for i, quarter_end in enumerate(walk):
-        traded_on = _add_months(date.fromisoformat(quarter_end), LAG_MONTHS).isoformat()
+        # The calendar target. Two months after the quarter end lands on a weekend or a holiday
+        # about a third of the time - 12 of 39 rebalances did, and 2026-05-31 is a Sunday. It
+        # is only ever the date we START looking from; every fill below resolves to a session
+        # that actually traded, and `traded_on` is restated to one further down.
+        target = _add_months(date.fromisoformat(quarter_end), LAG_MONTHS).isoformat()
+        traded_on = target
         # A rebalance two months after a quarter that has not finished reporting cannot have
         # happened. US names with an August fiscal year-end bucket into Sep-26, whose trade
         # date is in November - showing it as a quarter with no holdings and no return reads
         # as missing data rather than as the future.
         if traded_on > today:
             continue
-        ranked = sorted(by_quarter[quarter_end].items(), key=lambda kv: -kv[1])
+        # A name with no price history cannot be bought, held or marked - IMS sat in the PSX
+        # portfolio with no entry price, no current price and a blank return, occupying a slot
+        # the rule would have given to the next scorer. The live portfolio already required a
+        # price to rank; the reconstruction has to require one too, or the two select from
+        # different universes.
+        ranked = [kv for kv in sorted(by_quarter[quarter_end].items(), key=lambda kv: -kv[1])
+                  if prices.series(kv[0])]
         picks = {s for s, _ in ranked[:top_n]}
 
         entries, exits = [], []
@@ -172,7 +184,10 @@ def build_region(rows: list[dict], region: str, prices: Prices,
                 "sector": (names.get(symbol) or {}).get("sector"),
                 "entry_quarter": pos["entry_quarter"], "entry_date": pos["entry_date"],
                 "entry_price": pos.get("entry_price"),
-                "exit_date": traded_on, "exit_price": exit_px, "return_pct": ret,
+                # The session it actually sold on, not the calendar target. The price came from
+                # that session; dating it two days earlier described a fill nobody could have got.
+                "exit_date": sold[0] if sold else traded_on,
+                "exit_price": exit_px, "return_pct": ret,
                 "held_quarters": i - pos["entry_index"],
             })
 
@@ -193,6 +208,18 @@ def build_region(rows: list[dict], region: str, prices: Prices,
                 "entry_date": held[symbol]["entry_date"],
                 "entry_price": held[symbol]["entry_price"],
             })
+
+        # Restate the quarter's trade date to a session the market was actually open on: the
+        # earliest date anything in this rebalance filled. The target is only a starting point,
+        # and a ledger row reading "traded on Sunday 31 May" is not a record of a trade.
+        # Only dates that came from a real price lookup. A name with no history falls back to
+        # the target itself, and since the target is the earliest possible date, letting those
+        # into the min() put the weekend straight back - which is why four PSX quarters still
+        # said Saturday after the first attempt.
+        sessions = [d for d in ([e["entry_date"] for e in entries]
+                                + [x["exit_date"] for x in exits]) if d and d != target]
+        if sessions:
+            traded_on = min(sessions)
 
         # The PORTFOLIO's return for the quarter just ended: every name held through it,
         # equal weight, priced from this rebalance back to the last one. Not the average of
@@ -280,7 +307,11 @@ def build(data_dir: str | Path, top_n: int = TOP_N,
     ledger = {}
     for region in regions:
         prices = Prices(region)
-        ledger[region] = build_region(rows, region, prices, top_n, quarters)
+        # The SAME size the live portfolio holds for this market. Reconstructing a top-20 US
+        # history while the portfolio ran top-15 described a rule nobody was following, and was
+        # one of three reasons the two pages could not agree on a single holding.
+        size = SIZE_BY_REGION.get(region, top_n)
+        ledger[region] = build_region(rows, region, prices, size, quarters)
     doc = {"markets": ledger, "top_n": top_n, "lag_months": LAG_MONTHS,
            "reconstructed": True}
     (out / "rebalance_ledger.json").write_text(json.dumps(doc), encoding="utf-8")

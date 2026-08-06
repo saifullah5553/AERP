@@ -302,6 +302,40 @@ def _rebalance(data_dir: str | Path, force: bool = False) -> dict[str, Any]:
     return {"rebalanced": True, "quarter": qtr, "added": added, "dropped": dropped}
 
 
+# A one-session move this large is a corporate action, not trading. Real single-day moves stop
+# well short of it; a 3x gap between consecutive closes is a split the adjustment did not apply.
+UNADJUSTED_JUMP = 3.0
+
+
+def unadjusted_action(bars: dict, start: str, end: str) -> tuple[str, float] | None:
+    """The first split-sized gap between consecutive closes in [start, end], if any.
+
+    A return is two points on one series, and it is only meaningful if nothing rescaled the
+    series in between. SRVI's history runs 209 on 2026-06-01 and 2,074 two months later - a
+    ten-fold step that is a reverse split nobody applied, and it published as +897%. THCCL's
+    was adjusted the wrong way and published as +768%.
+
+    Neither is detectable by comparing the recorded entry with the stored one: both ends come
+    from the same series, so they agree exactly. The break is INSIDE it, which is why this
+    walks the sessions rather than checking the endpoints.
+    """
+    days = sorted(d for d in bars if start <= d <= end)
+    prev = None
+    for day in days:
+        try:
+            close = float(bars[day][4])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if close <= 0:
+            continue
+        if prev is not None:
+            ratio = close / prev
+            if ratio >= UNADJUSTED_JUMP or ratio <= 1 / UNADJUSTED_JUMP:
+                return day, round(ratio, 2)
+        prev = close
+    return None
+
+
 def _adjusted_entry(region: str, holding: dict) -> float:
     """The entry price on TODAY's basis, from our own split-adjusted daily history.
 
@@ -339,6 +373,86 @@ def _adjusted_entry(region: str, holding: dict) -> float:
     holding.setdefault("entry_price_nominal", holding.get("entry_price"))
     holding["entry_price"] = round(close, 4)
     return close
+
+
+LEDGER = "rebalance_ledger.json"
+
+
+def adopt_from_ledger(data_dir: str | Path,
+                      regions: tuple[str, ...] | None = None) -> dict[str, Any]:
+    """Take the holdings, and their entry dates, from the reconstructed ledger.
+
+    The portfolio file was created on 2 August 2026 and had no memory before that. Every
+    holding was therefore stamped with whatever the then-current basis traded on - all twenty
+    PSX names said "bought 2026-05-28" - which made a position the rule had held since May 2024
+    look four days old. SAZEW read -12.89% against the +144% it had actually run, and THCCL
+    +23% against +768%.
+
+    The ledger walks the rule quarter by quarter from 2021 and knows when each name entered and
+    at what. Deriving the portfolio from it means one engine produces both pages, so they cannot
+    disagree: the holdings ARE the open positions, and "held since" is the rebalance that bought
+    them rather than the day this file happened to be created.
+
+    What this is NOT: a record of trades anybody placed. These are reconstructed fills at
+    historical closes, on a signal three backtests found no edge for. `reconstructed` stays
+    true on the document so the page can say so.
+    """
+    out = Path(data_dir)
+    path = out / PORTFOLIO
+    try:
+        led = json.loads((out / LEDGER).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        log.warning("adopt-from-ledger: no usable ledger (%s)", exc)
+        return {"adopted": 0}
+
+    doc = _load(path)
+    holdings: dict[str, list[dict]] = doc.get("holdings") or {}
+    screener = json.loads((out / "screener.json").read_text(encoding="utf-8"))
+    by_symbol = {(str(r.get("region") or "").lower(), r.get("symbol")): r for r in screener}
+
+    adopted: dict[str, int] = {}
+    basis = dict(doc.get("basis_by_region") or {})
+    for region, market in (led.get("markets") or {}).items():
+        if regions and region not in regions:
+            continue
+        positions = market.get("open_positions") or []
+        if not positions:
+            continue
+        fresh: list[dict] = []
+        for pos in positions:
+            row = by_symbol.get((region, pos.get("symbol"))) or {}
+            if not row.get("provider_symbol"):
+                continue
+            fresh.append({
+                "provider_symbol": row["provider_symbol"],
+                "symbol": pos.get("symbol"),
+                "name": pos.get("name") or row.get("name"),
+                "sector": pos.get("sector") or row.get("sector"),
+                # Straight from the reconstruction - the quarter that bought it and the close
+                # it filled at. Never today, and never re-stamped on a later rebalance.
+                "entry_quarter": pos.get("entry_quarter"),
+                "entry_date": pos.get("entry_date"),
+                "entry_price": pos.get("entry_price"),
+                "entry_quality": row.get("quality_score"),
+                "quality_score": row.get("quality_score"),
+                "quality_grade": row.get("quality_grade"),
+                "quality_confidence": row.get("quality_confidence"),
+                "results_through": row.get("results_through"),
+            })
+        holdings[region] = sorted(fresh, key=lambda h: h.get("quality_score") or 0,
+                                  reverse=True)
+        adopted[region] = len(fresh)
+        last = market.get("last_quarter")
+        if last:
+            basis[region] = last
+
+    doc["holdings"] = holdings
+    doc["basis_by_region"] = basis
+    doc["reconstructed"] = True
+    doc["updated_at"] = datetime.now(UTC).isoformat()
+    path.write_text(json.dumps(doc), encoding="utf-8")
+    log.info("model-portfolio adopt-from-ledger: %s", adopted)
+    return adopted
 
 
 def mark(data_dir: str | Path) -> dict[str, Any]:
@@ -382,6 +496,27 @@ def mark(data_dir: str | Path) -> dict[str, Any]:
                     h[field] = fresh[field]
             h["price"] = px
             h["return_pct"] = round((float(px) - entry) / entry * 100, 2)
+
+            # Both ends of the return have to sit on one unbroken series. If the history was
+            # rescaled between the entry and today by a corporate action nobody applied, the
+            # number is an artefact - +897% for SRVI - and publishing it is worse than saying
+            # nothing, because it is indistinguishable from a real result on the page.
+            try:
+                bars = load_bars(str(region), str(h.get("symbol") or ""))
+            except Exception:  # noqa: BLE001 - a marking must not fail on a missing history
+                bars = {}
+            broke = unadjusted_action(bars, str(h.get("entry_date") or "")[:10],
+                                      datetime.now(UTC).date().isoformat()) if bars else None
+            if broke:
+                day, ratio = broke
+                h["return_pct"] = None
+                h["price_warning"] = (f"unadjusted {ratio}x step on {day} - the price history "
+                                      "is rescaled between entry and today, so no return can "
+                                      "be stated")
+                log.warning("model-portfolio[%s]: %s has a %sx step on %s - return withheld",
+                            region, h.get("symbol"), ratio, day)
+            else:
+                h.pop("price_warning", None)
             marked += 1
 
     # Simple equal-weight portfolio return per market, so the page can headline it.

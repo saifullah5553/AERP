@@ -28,6 +28,13 @@ def _region(value: str | None) -> MarketRegion | None:
     return MarketRegion(value) if value else None
 
 
+# Only markets whose fundamentals are complete enough to reconstruct honestly. India and
+# Australia are 58% and 67% scored while their scrapes run, so a "top 15 of what we happen to
+# have" history would read as the rule's record rather than as a half-loaded universe. They
+# keep their existing holdings untouched until their data is in.
+RECONSTRUCTED_REGIONS = ("us", "psx")
+
+
 def refresh_derived_views(out) -> None:
     """Rebuild everything that reads the screener, in the order it must be read.
 
@@ -46,16 +53,25 @@ def refresh_derived_views(out) -> None:
         fill_missing_prices(out)
     except Exception as exc:  # noqa: BLE001
         log.warning("fill-missing-prices failed: %s", exc)
-    try:
-        from app.ingestion.model_portfolio import mark as mark_portfolio
-        mark_portfolio(out)
-    except Exception as exc:  # noqa: BLE001 - a view must not fail the run that fed it
-        log.warning("model-portfolio mark failed: %s", exc)
+    # The ledger BEFORE the portfolio, because the portfolio is now derived from it. One engine
+    # walks the rule from 2021 and produces both the quarterly history and the open positions,
+    # so the two pages cannot describe different rules - which they did, on every one of the 35
+    # holdings, disagreeing on entry date, entry price and return for all of them.
     try:
         from app.ingestion.rebalance_ledger import build as build_ledger
         build_ledger(out)
     except Exception as exc:  # noqa: BLE001
         log.warning("rebalance ledger failed: %s", exc)
+    try:
+        from app.ingestion.model_portfolio import adopt_from_ledger
+        adopt_from_ledger(out, regions=RECONSTRUCTED_REGIONS)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("model-portfolio adopt failed: %s", exc)
+    try:
+        from app.ingestion.model_portfolio import mark as mark_portfolio
+        mark_portfolio(out)
+    except Exception as exc:  # noqa: BLE001 - a view must not fail the run that fed it
+        log.warning("model-portfolio mark failed: %s", exc)
 
 
 def cmd_pending_results(args: argparse.Namespace) -> None:
