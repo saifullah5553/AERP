@@ -197,6 +197,13 @@ def build_region(rows: list[dict], region: str, prices: Prices,
             bought = prices.on_or_after(symbol, traded_on)
             held[symbol] = {
                 "entry_quarter": _quarter_label(quarter_end),
+                # The period end whose results BOUGHT this position. Carried explicitly rather
+                # than re-derived later from the company's newest filing: a holding entered on
+                # Mar-26 results does not start trading on Jun-26 results merely because June
+                # has since been published. That substitution put results dated 2026-06-30 on
+                # positions bought 2026-06-01 - a purchase made on figures that did not exist
+                # for another month.
+                "entry_results_for": quarter_end,
                 "entry_date": bought[0] if bought else traded_on,
                 "entry_price": bought[1] if bought else None,
                 "entry_index": i,
@@ -267,6 +274,7 @@ def build_region(rows: list[dict], region: str, prices: Prices,
             "symbol": symbol, "name": (names.get(symbol) or {}).get("name"),
             "sector": (names.get(symbol) or {}).get("sector"),
             "entry_quarter": pos["entry_quarter"], "entry_date": pos["entry_date"],
+            "entry_results_for": pos.get("entry_results_for"),
             "entry_price": pos.get("entry_price"), "last_price": px,
             "return_pct": ret, "open": True,
         })

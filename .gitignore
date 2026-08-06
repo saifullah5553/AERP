@@ -88,3 +88,7 @@ data/fund_cache/
 data/earnings_refresh.log
 data/fundamentals_batch.log
 data/sector_cache.json
+
+# Held while a writer has the snapshot open. Runtime state, never versioned - a committed
+# lock makes every later run think another writer is active.
+/frontend/public/data/.snapshot.lock

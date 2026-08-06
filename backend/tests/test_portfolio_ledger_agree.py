@@ -96,6 +96,48 @@ def test_the_reconstruction_covers_only_complete_markets() -> None:
     assert set(RECONSTRUCTED_REGIONS) == {"us", "psx"}
 
 
+def test_a_holding_records_the_quarter_that_bought_it_not_the_newest_filing(tmp_path) -> None:
+    """The rule acts two months after a quarter ends, and the record must show that it did.
+
+    Taking `results_through` from the screener row - the company's NEWEST filing - dated ten
+    holdings to 2026-06-30 while their buy date was 2026-06-01: a purchase made on results
+    published a month later. Twenty-six of thirty-five rows were impossible in this way.
+    """
+    import json
+
+    from app.ingestion.model_portfolio import adopt_from_ledger
+
+    (tmp_path / "rebalance_ledger.json").write_text(json.dumps({"markets": {"psx": {
+        "quarters": [{"results_for": "2026-03-31"}],
+        "open_positions": [{"symbol": "COLG", "name": "Colgate", "sector": "X",
+                            "entry_quarter": "Mar 26", "entry_date": "2026-06-01",
+                            "entry_results_for": "2026-03-31", "entry_price": 1148.37}],
+    }}}), encoding="utf-8")
+    # The screener says this company has since reported June - which must NOT become the
+    # basis of a purchase made on 1 June.
+    (tmp_path / "screener.json").write_text(json.dumps([
+        {"region": "psx", "symbol": "COLG", "provider_symbol": "COLG.KA",
+         "quality_score": 70.0, "results_through": "2026-06-30", "price": 1238.76},
+    ]), encoding="utf-8")
+
+    adopt_from_ledger(tmp_path, regions=("psx",))
+    doc = json.loads((tmp_path / "model_portfolio.json").read_text(encoding="utf-8"))
+    held = doc["holdings"]["psx"][0]
+    assert held["results_through"] == "2026-03-31", "took the newest filing, not the picker"
+    assert held["entry_date"] > held["results_through"]
+    # And the basis is the period END, not the display label.
+    assert doc["basis_by_region"]["psx"] == "2026-03-31"
+
+
+def test_two_months_after_a_quarter_end_is_what_the_lag_means() -> None:
+    """Mar-26 results cannot buy before 31 May; Jun-26 results cannot buy before 30 August."""
+    from app.ingestion.quarterly_score_backtest import _add_months
+
+    assert _add_months(date(2026, 3, 31), 2).isoformat() == "2026-05-31"
+    assert _add_months(date(2026, 6, 30), 2).isoformat() == "2026-08-30"
+    assert _add_months(date(2025, 12, 31), 2).isoformat() == "2026-02-28"
+
+
 def test_a_quarter_end_plus_two_months_can_land_on_a_weekend() -> None:
     """The premise of restating traded_on: 12 of 39 rebalances did, and 2026-05-31 is Sunday.
 

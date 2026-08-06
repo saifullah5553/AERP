@@ -437,14 +437,23 @@ def adopt_from_ledger(data_dir: str | Path,
                 "quality_score": row.get("quality_score"),
                 "quality_grade": row.get("quality_grade"),
                 "quality_confidence": row.get("quality_confidence"),
-                "results_through": row.get("results_through"),
+                # The quarter whose results BOUGHT it, from the ledger - NOT the company's
+                # newest filing off the screener row. Taking the latter dated ten holdings to
+                # 2026-06-30 while they were bought on 2026-06-01, which asserts a purchase
+                # made on results published a month later. The rule acts two months after a
+                # quarter ends; the record has to be able to show that it did.
+                "results_through": pos.get("entry_results_for"),
             })
         holdings[region] = sorted(fresh, key=lambda h: h.get("quality_score") or 0,
                                   reverse=True)
         adopted[region] = len(fresh)
-        last = market.get("last_quarter")
-        if last:
-            basis[region] = last
+        # The period END of the most recent rebalance, as an ISO date. `last_quarter` is a
+        # display label ("Mar 26"); writing that here left psx and us spelling the basis one
+        # way and india and australia another, in the same object.
+        ends = [q.get("results_for") for q in (market.get("quarters") or [])
+                if q.get("results_for")]
+        if ends:
+            basis[region] = max(ends)
 
     doc["holdings"] = holdings
     doc["basis_by_region"] = basis
