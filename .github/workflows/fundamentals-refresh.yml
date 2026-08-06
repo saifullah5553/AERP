@@ -60,7 +60,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install playwright pandas sqlalchemy && python -m playwright install --with-deps chromium
+      # The FULL backend requirements, as every other workflow that runs app.cli installs. This
+      # job named three packages by hand and the CLI needs more than three: pending-results
+      # imports httpx, which was not among them, so every `python -m app.cli` call died on
+      # ModuleNotFoundError. `|| true` swallowed it, the job announced "Pending: 0", and the
+      # two steps that do the actual work were skipped by their own `if:`.
+      - run: pip install -r backend/requirements.txt
+      - run: pip install playwright && python -m playwright install --with-deps chromium
 
       - name: Companies reporting today (US calendar)
         id: cal
@@ -82,14 +88,27 @@ jobs:
           # old enough to have been superseded are asked, which takes the five markets from
           # 11,684 requests to about 9,700 - roughly seven minutes rather than an hour and three
           # quarters.
+          OK=0
           for REGION in us india australia psx gcc; do
-            python -m app.cli pending-results --region "$REGION" --days "${DAYS:-5}"               --data-dir ../frontend/public/data || true
+            # One market failing must not lose the other four - but ALL of them failing is not
+            # a quiet day, it is a broken job, and it reported success as "Pending: 0" for
+            # weeks. Count the ones that worked and insist on at least one.
+            if python -m app.cli pending-results --region "$REGION" --days "${DAYS:-5}" \
+                 --data-dir ../frontend/public/data; then
+              OK=$((OK + 1))
+            else
+              echo "::warning::pending-results failed for $REGION"
+            fi
           done
+          if [ "$OK" -eq 0 ]; then
+            echo "::error::pending-results failed for EVERY market - refusing to report success"
+            exit 1
+          fi
           cd ..
           cat data/pending/*.txt 2>/dev/null | grep -v '^#' | grep -v '^$' | sort -u > /tmp/pending_all.txt
           SYMS=$(paste -sd, - < /tmp/pending_all.txt)
           echo "symbols=$SYMS" >> "$GITHUB_OUTPUT"
-          echo "Pending across all markets: $(wc -l < /tmp/pending_all.txt)"
+          echo "Pending across all markets: $(wc -l < /tmp/pending_all.txt) (from $OK of 5 markets)"
 
       - name: Re-scrape them
         if: steps.pick.outputs.symbols != ''
@@ -115,7 +134,11 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/fundamentals_ttm frontend/public/data/company data/pending
+          # NOT data/pending: it is gitignored, and `git add` on an ignored path is a fatal
+          # error, not a skip. That alone failed this job in 59 seconds every run - after the
+          # missing dependency had already emptied the symbol list and skipped the real work.
+          # The lists are rebuilt from scratch at the start of every run, so nothing is lost.
+          git add data/fundamentals_ttm frontend/public/data/company
           if git diff --cached --quiet; then
             echo "Store unchanged - nothing to commit."
           else

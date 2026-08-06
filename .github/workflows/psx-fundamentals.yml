@@ -76,7 +76,10 @@ jobs:
           # computed from statements_ttm in the company files, which come from the consolidated
           # store - so without these two commands a freshly announced quarter is scraped,
           # committed, ingested, and still never scored.
-          pip install -r requirements.txt >/dev/null 2>&1 || true
+          # Loudly, and before it is needed: swallowing this makes the two commands below
+          # fail on a missing import and then be swallowed themselves, so the job reports
+          # success having scored nothing.
+          pip install -r requirements.txt
           python -m app.cli consolidate-fundamentals --csv-dir ../data --regions psx || true
           python -m app.cli apply-fundamentals --regions psx --data-dir ../frontend/public/data || true
 
@@ -86,7 +89,9 @@ jobs:
           tar czf data/psx_csv.tar.gz -C data psx_csv
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/psx_csv.tar.gz data/fundamentals_ttm frontend/public/data/company data/pending
+          # NOT data/pending - it is gitignored, and `git add` on an ignored path is a
+          # fatal error rather than a skip. Same fault as fundamentals-refresh.yml.
+          git add data/psx_csv.tar.gz data/fundamentals_ttm frontend/public/data/company
           if git diff --cached --quiet; then
             echo "No fundamentals changed."
           else
