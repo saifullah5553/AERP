@@ -836,7 +836,12 @@ function SectorComparison({ detail, sectorStats }: { detail: CompanyDetail; sect
   const region = String(sec.region ?? "");
   const sector = (sec.sector as string) ?? null;
   const r = detail.ratios ?? {};
-  const stat: SectorStat | undefined = (sectorStats?.[region] ?? []).find((s) => s.sector === sector);
+  // Case-insensitive: sector_stats is built from the database and the page from the snapshot,
+  // and PSX came out of the two in different cases. An exact match hid this card for 450 of
+  // 453 PSX companies without anything failing.
+  const stat: SectorStat | undefined = (sectorStats?.[region] ?? []).find(
+    (s) => (s.sector ?? "").toLowerCase() === (sector ?? "").toLowerCase(),
+  );
   if (!stat || !sector) return null;
   const fmt = (v: number | null, kind: string) => (v == null ? "—" : kind === "pct" ? fmtPercent(v) : fmtNumber(v));
   return (

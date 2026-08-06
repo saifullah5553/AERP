@@ -244,8 +244,18 @@ function applyScreener(all: ScreenerRow[], q: ScreenerQuery): Page<ScreenerRow> 
     );
   }
   if (q.region) rows = rows.filter((r) => r.region === q.region);
-  if (q.asset_class) rows = rows.filter((r) => r.asset_class === q.asset_class);
-  if (q.sector) rows = rows.filter((r) => r.sector === q.sector);
+  // A row with no asset class is an ordinary company: that is what the backend derives, and
+  // matching it here too means a stale snapshot degrades to showing too much rather than to
+  // hiding almost everything. Selecting Equity used to return 503 of 6,034 US names because
+  // only the original S&P 500 rows carried the field and this compared strictly against null.
+  if (q.asset_class)
+    rows = rows.filter((r) => (r.asset_class ?? "equity") === q.asset_class);
+  // Sector likewise: the grid and the dropdown are built from the same rows, so they agree on
+  // spelling, but a case difference must not silently filter to nothing.
+  if (q.sector) {
+    const want = q.sector.toLowerCase();
+    rows = rows.filter((r) => (r.sector ?? "").toLowerCase() === want);
+  }
   if (q.has_fundamentals) rows = rows.filter((r) => r.fundamental_score != null);
   if (q.min_composite != null)
     rows = rows.filter((r) => r.composite_score != null && r.composite_score >= q.min_composite!);

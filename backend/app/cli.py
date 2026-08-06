@@ -45,6 +45,15 @@ def refresh_derived_views(out) -> None:
     """
     from pathlib import Path as _Path
     out = _Path(out)
+    # Taxonomy first, because everything below groups by it. Peer margins bucket on the raw
+    # sector string, so "CEMENT" and "Cement" were two groups and the smaller never reached
+    # MIN_PEER_GROUP - those companies were graded against absolute anchors rather than their
+    # own industry. Normalising after the views were built would have left them disagreeing.
+    try:
+        from app.ingestion.taxonomy import normalize_snapshot
+        normalize_snapshot(out)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("taxonomy normalise failed: %s", exc)
     # Price first: an unpriced row is invisible to every portfolio, because a name that cannot
     # be bought is filtered out of the ranking. Filling those before the views are built is the
     # difference between UBL being ranked and UBL not existing.
