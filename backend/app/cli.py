@@ -100,11 +100,29 @@ def cmd_consolidate_fundamentals(args: argparse.Namespace) -> None:
     """Distil the scraped CSVs into the compact per-market store that CI reads."""
     from pathlib import Path
 
-    from app.ingestion.fundamentals_store import consolidate
+    from app.core.snapshot_lock import snapshot_lock
+    from app.ingestion.fundamentals_store import apply_to_snapshot, consolidate
 
     regions = [r.strip() for r in args.regions.split(",")] if args.regions else None
     log.info("consolidate-fundamentals: %s",
              consolidate(Path(args.csv_dir), Path(args.store_dir), regions))
+
+    # Then push it straight into the company files. Scoring reads `statements_ttm` from THOSE,
+    # never from the store, so a consolidate on its own moves nothing a page can see: after the
+    # US scrape finished, 4,805 companies sat in the store with twenty quarters each and scored
+    # blank, because this second step was left to be remembered. It reported success both times.
+    # The pipelines already pair the two commands; this makes a hand-run unable to get it wrong.
+    if args.no_apply:
+        log.info("consolidate-fundamentals: --no-apply, company files left untouched")
+        return
+    data_dir = args.data_dir or "../frontend/public/data"
+    with snapshot_lock("consolidate-fundamentals", data_dir) as ok:
+        if not ok:
+            log.warning("consolidate-fundamentals: another writer holds the snapshot - the "
+                        "store is updated but company files are STALE; rerun apply-fundamentals")
+            return
+        log.info("consolidate-fundamentals: applied %s",
+                 apply_to_snapshot(Path(data_dir), Path(args.store_dir), regions))
 
 
 def cmd_ingest_fundamentals_store(args: argparse.Namespace) -> None:
@@ -1009,6 +1027,9 @@ def build_parser() -> argparse.ArgumentParser:
     cons.add_argument("--csv-dir", default="../data/fundamentals_csv")
     cons.add_argument("--store-dir", default="../data/fundamentals_ttm")
     cons.add_argument("--regions", default=None, help="comma list, default all")
+    cons.add_argument("--data-dir", default=None)
+    cons.add_argument("--no-apply", action="store_true",
+                      help="update the store only; leave the company files stale")
     ems = add("export-missing-sectors", cmd_export_missing_sectors)
     ems.add_argument("--data-dir", default=None)
     qbt = add("quarterly-score-backtest", cmd_quarterly_score_backtest)

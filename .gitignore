@@ -68,6 +68,9 @@ redisdata/
 # not as an unexplained gap months later.
 !/data/symbols/
 !/data/symbols/*.csv
+# Each scraper writes its CSVs next to itself. Same rule as the market folders above: the raw
+# downloads stay local, only the distilled store is versioned.
+/scripts/market_scrapers/*_data/
 # Symbols with no financial statements at the source. export-static applies these, so CI needs
 # them: unversioned, every refresh silently re-adds the 955 funds, SPACs and dead tickers we
 # just removed. A deletion that does not survive the next rebuild is not a deletion.
