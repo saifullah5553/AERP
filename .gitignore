@@ -68,6 +68,11 @@ redisdata/
 # not as an unexplained gap months later.
 !/data/symbols/
 !/data/symbols/*.csv
+# Symbols with no financial statements at the source. export-static applies these, so CI needs
+# them: unversioned, every refresh silently re-adds the 955 funds, SPACs and dead tickers we
+# just removed. A deletion that does not survive the next rebuild is not a deletion.
+!/data/exclusions/
+!/data/exclusions/*.txt
 # Resolved sectors, versioned so no run ever re-derives them from an external service. A sector
 # changes about never; re-fetching it every time was a dependency we did not need.
 !/data/sectors/

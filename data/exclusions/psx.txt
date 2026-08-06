@@ -1,0 +1,26 @@
+# PSX - no financial statements at the source.
+# Every symbol here returned a 404 on every statement page, with nothing saved.
+# Transient failures (timeouts, half-rendered tables) are NOT listed: those stay in
+# the universe and are retried.
+# Confirmed 2026-08-05: financials page returns 404 at the source.
+ARCTM
+ASIC
+BELA
+FIL
+GCIL
+KHYT
+LSECL
+LSEFSL
+MWMP
+NATM
+NCML
+OBOY
+PIAHCLB
+PIM
+SASML
+SHCM
+SSOM
+STYLERS
+SUHJ
+UDLI
+YOUW
