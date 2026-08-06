@@ -67,6 +67,12 @@ REGION_META: dict[str, tuple[str, str]] = {
 # "Income Tax Expense" where the US one says "Provision for Income Taxes". Without these the
 # metric silently goes missing for a whole market, which is far harder to notice than a crash.
 ALIASES: dict[str, tuple[str, ...]] = {
+    # Insurers and REITs get "Total Revenue" where an industrial gets "Revenue" - premiums plus
+    # investment income, or rental plus other, summed to the same top line. 34 PSX names use it
+    # (AICL, EFUG, IGIHL, JLICL, IREIT, JSRR...) and 5 US ones. Without this they scored with no
+    # revenue at all: JSRR could not be graded, and the insurers were graded on a revenue series
+    # that silently did not exist, which is the worse of the two failures.
+    "Revenue": ("Total Revenue",),
     "Income Tax Expense": ("Provision for Income Taxes",),
     "Receivables": ("Accounts Receivable", "Total Trade Receivables",
                     "Accrued Interest and Accounts Receivable"),
