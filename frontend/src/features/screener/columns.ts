@@ -1,4 +1,4 @@
-import type { ColDef, ValueFormatterParams, ValueGetterParams } from "ag-grid-community";
+import type { ColDef } from "ag-grid-community";
 
 import { fmtInt, fmtNumber, fmtPercent, scoreHeatBg, titleize } from "@/lib/format";
 import type { ScreenerRow } from "@/types/api";
@@ -120,40 +120,6 @@ function quarterColumns(): ColDef<ScreenerRow>[] {
   }));
 }
 
-/** The six scoring categories, with the budget each is marked out of. */
-const CATEGORIES: { key: string; label: string; outOf: number; tip: string }[] = [
-  { key: "growth", label: "Grw", outOf: 20, tip: "Growth & growth quality" },
-  { key: "profitability", label: "Prof", outOf: 20, tip: "Profitability, margins and returns (incl. ROIC)" },
-  { key: "cash_flow", label: "Cash", outOf: 25, tip: "Cash flow & earnings quality - the heaviest category" },
-  { key: "balance_sheet", label: "BS", outOf: 15, tip: "Balance sheet, leverage and its servicing" },
-  { key: "liquidity", label: "Liq", outOf: 10, tip: "Liquidity & cash reserves, relative to obligations" },
-  { key: "working_capital", label: "WC", outOf: 10, tip: "Working capital & capital efficiency" },
-];
-
-/** One column per scoring category, showing the newest period's mark out of its budget. */
-function categoryColumns(): ColDef<ScreenerRow>[] {
-  return CATEGORIES.map((c) => ({
-    colId: `cat_${c.key}`,
-    headerName: `${c.label} /${c.outOf}`,
-    headerTooltip: `${c.tip}. Marked out of ${c.outOf} for the latest TTM period.`,
-    width: 84,
-    sortable: true,
-    // Read out of the nested object rather than a flat field: six more top-level keys on
-    // every one of 11,000 rows is weight the file does not need to carry.
-    valueGetter: (p: ValueGetterParams<ScreenerRow>) =>
-      p.data?.score_cats?.[c.key] ?? null,
-    valueFormatter: (p: ValueFormatterParams<ScreenerRow>) =>
-      typeof p.value === "number" ? p.value.toFixed(1) : "—",
-    // Same shape as `heat`: scoreHeatBg returns "transparent" for a missing value, so the
-    // style is always a string. Returning undefined does not satisfy ag-grid's CellStyle.
-    cellStyle: (p: { value: unknown }) => ({
-      backgroundColor: scoreHeatBg(
-        typeof p.value === "number" ? (p.value / c.outOf) * 100 : null,
-      ),
-    }),
-  }));
-}
-
 export function buildColumnDefs(): ColDef<ScreenerRow>[] {
   return [
     {
@@ -212,29 +178,6 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
       sortable: true,
       cellRenderer: TrendCell,
     },
-    // Where the newest score sits in the company's OWN five-year range. Sorting the grid by
-    // percentile finds the companies at their personal best or worst, which the raw score
-    // cannot: 62 is a recovery for one business and a collapse for another.
-    num("score_percentile", "vs Own", {
-      width: 92,
-      // num() derives sortable from SERVER_SORTABLE, which lists what the API can order by.
-      // The static build sorts every field client-side, and an unsortable percentile column
-      // would defeat the reason for adding it.
-      sortable: true,
-      headerTooltip:
-        "Percentile of the latest fundamental score within this company's own TTM history. " +
-        "100 = its best period on record.",
-      valueFormatter: (p) => (p.value == null ? "—" : `${Math.round(p.value)}%`),
-    }),
-    num("score_avg", "Avg", {
-      width: 84,
-      sortable: true,
-      headerTooltip: "Mean fundamental score across the stored TTM history.",
-      valueFormatter: (p) => fmtNumber(p.value),
-    }),
-    // The six category marks behind the newest score. A total of 62 can be strong cash flow
-    // carrying weak growth or the reverse, and those are different companies.
-    ...categoryColumns(),
     ...quarterColumns(),
     {
       field: "technical_score",
