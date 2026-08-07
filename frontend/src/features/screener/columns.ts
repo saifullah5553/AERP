@@ -156,30 +156,6 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
     // carries the edge (beat the typical stock by +47pp to +65pp across two markets), while
     // technical inputs measured negative. So Action and Quality lead, and Tech is demoted.
     {
-      field: "strategy_action",
-      headerName: "Action",
-      headerTooltip:
-        "Quality gate + price action: BUY (strong/improving and starting to move), HOLD, " +
-        "WATCH (quality, awaiting a move), AVOID (fails the fundamental gate)",
-      width: 110,
-      sortable: true,
-      cellRenderer: ActionCell,
-    },
-    // No standalone "Fund Score" column: the headline score IS the newest quarter, so it
-    // repeated whichever quarter column that company last reported. The grid still OPENS
-    // ranked by it (lib/api.ts sorts on quality_score when no column is sorted) - the
-    // duplicate display is what went, not the ordering.
-    {
-      field: "quality_trend",
-      headerName: "Trend",
-      headerTooltip:
-        "Direction of the fundamental score across its trailing-twelve-month history.",
-      width: 110,
-      sortable: true,
-      cellRenderer: TrendCell,
-    },
-    ...quarterColumns(),
-    {
       field: "technical_score",
       headerName: "Tech",
       headerTooltip:
@@ -206,5 +182,29 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
       cellRenderer: PatternCell,
       valueFormatter: (p) => titleize(p.value),
     },
+    {
+      field: "strategy_action",
+      headerName: "Action",
+      headerTooltip:
+        "Quality gate + price action: BUY (strong/improving and starting to move), HOLD, " +
+        "WATCH (quality, awaiting a move), AVOID (fails the fundamental gate)",
+      width: 110,
+      sortable: true,
+      cellRenderer: ActionCell,
+    },
+    // No standalone "Fund Score" column: the headline score IS the newest quarter, so it
+    // repeated whichever quarter column that company last reported. The grid still OPENS
+    // ranked by it (lib/api.ts sorts on quality_score when no column is sorted) - the
+    // duplicate display is what went, not the ordering.
+    {
+      field: "quality_trend",
+      headerName: "Trend",
+      headerTooltip:
+        "Direction of the fundamental score across its trailing-twelve-month history.",
+      width: 110,
+      sortable: true,
+      cellRenderer: TrendCell,
+    },
+    ...quarterColumns(),
   ];
 }
