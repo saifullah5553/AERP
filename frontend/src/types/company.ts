@@ -40,6 +40,36 @@ export interface CompanyDetail {
   insider_summary: Row | null;
   ai_summary: string;
   fundamental_scorecard?: FundamentalScorecard | null;
+  /** The fundamental score for EVERY stored TTM period, oldest first, each with the six
+   *  category marks that produced it. This is the primary output of the scoring engine - the
+   *  latest score is simply its last point. */
+  quality_history?: QualityPoint[] | null;
+  /** Direction fitted across the whole history, plus where the latest score sits in it. */
+  quality_trend?: QualityTrend | null;
+}
+
+export interface QualityPoint {
+  date: string;
+  score: number;
+  passed?: boolean | null;
+  period?: string;
+  /** Marks out of growth 20, profitability 20, cash_flow 25, balance_sheet 15,
+   *  liquidity 10, working_capital 10. */
+  cats?: Record<string, number> | null;
+  confidence?: number | null;
+}
+
+export interface QualityTrend {
+  direction: string;
+  /** The LATEST step - this TTM against the one before it. */
+  change: number | null;
+  points: number;
+  period?: string;
+  score_high?: number | null;
+  score_low?: number | null;
+  score_avg?: number | null;
+  score_percentile?: number | null;
+  score_periods?: number | null;
 }
 
 /** The six-category Fundamental Quality Score, as computed for this company. */

@@ -2,12 +2,20 @@
 
 Six categories, weighted as specified:
 
-    Growth & growth quality       20
-    Profitability & margins       20
-    Capital efficiency            20
-    Cash flow & earnings quality  20
-    Balance sheet & solvency      15
-    Working capital & efficiency   5
+    A  Growth & growth quality            20
+    B  Profitability & margins            20
+    C  Cash flow & earnings quality       25
+    D  Balance sheet & debt               15
+    E  Liquidity & cash reserves          10
+    F  Working capital & capital efficiency 10
+
+Cash flow carries the largest single weight, which is the point of the design: reported profit
+is an opinion until it arrives as cash, and the category that checks whether it did should
+outweigh the one that reports it.
+
+EVERY ONE OF THE 20 TTM PERIODS IS SCORED SEPARATELY, each on only the statements that existed
+at that point - never on later ones. The primary output is the time series, not the latest
+number; the latest number is simply its last point.
 
 Four rules run through the whole engine, and they are what separate it from a checklist:
 
@@ -41,13 +49,22 @@ from dataclasses import dataclass, field
 from typing import Any
 
 # ── category budgets ────────────────────────────────────────────────────────────────────
+# A: growth. B: profitability AND the returns earned on the accounting base. C: cash flow and
+# earnings quality, the heaviest single category. D: leverage and its servicing. E: liquidity,
+# which used to be two ratios buried in D and is now judged on its own terms. F: how efficiently
+# capital and working capital are turned.
+#
+# ROIC is scored ONCE, in F. The specification lists it under both B and F; scoring it twice
+# would let one characteristic carry
+# a fifth of the total through the back door, which is the
+# double-counting the spec itself warns against.
 CATEGORY_POINTS: dict[str, float] = {
     "growth": 20.0,
     "profitability": 20.0,
-    "capital_efficiency": 20.0,
-    "cash_flow": 20.0,
+    "cash_flow": 25.0,
     "balance_sheet": 15.0,
-    "working_capital": 5.0,
+    "liquidity": 10.0,
+    "working_capital": 10.0,
 }
 MAX_PERIODS = 20
 
@@ -286,7 +303,7 @@ def _peer_relative(value: float | None, median: float | None) -> float | None:
                        (1.8, 0.88), (2.5, 1.0)])
 
 
-def _score_profitability(m: dict, peers: dict | None) -> Category:
+def _score_profitability(m: dict, peers: dict | None, financial: bool = False) -> Category:
     peers = peers or {}
     gross = _ratio_series(m["gross_profit"], m["revenue"])
     ebitda_m = _ratio_series(m["ebitda"], m["revenue"])
@@ -302,11 +319,42 @@ def _score_profitability(m: dict, peers: dict | None) -> Category:
             return rel
         return level if rel is None else level * 0.7 + rel * 0.3
 
+    # Returns on the accounting base belong here with the margins: a margin says what the
+    # business keeps of each sale, a return says what it earns on what was put in, and judging
+    # profitability on the first alone flatters an asset-heavy company that never earns its
+    # capital back. ROIC is deliberately NOT here - it is scored once, in working capital.
+    roe = _ratio_series(m["net_income"], m["total_equity"])
+    roa = _ratio_series(m["net_income"], m["total_assets"])
+
+    # DuPont: leverage inflates ROE without improving the business. A 25% ROE carried by
+    # assets/equity of 6x is not the same achievement as one at 1.5x, so the score is damped by
+    # how much of it is borrowed rather than earned.
+    lev = _ratio_series(m["total_assets"], m["total_equity"])
+    lev_now = _latest(lev)
+    roe_level = _blend(curve(_latest(roe), _RETURN_KNOTS), trend(roe))
+    if roe_level is not None and lev_now is not None and not financial:
+        damp = curve(lev_now, [(1.5, 1.0), (2.5, 0.95), (4.0, 0.82), (6.0, 0.68), (9.0, 0.5)])
+        roe_level *= damp if damp is not None else 1.0
+
+    # ROIC sits HERE, with the other return measures, and nowhere else. It is the return a
+    # business earns on the capital actually put into it - the measure compared against the
+    # cost of that capital to decide whether value is being created at all - which makes it a
+    # profitability question, not an operational-efficiency one. Asset turnover and the cash
+    # cycle are the efficiency drivers, and they stay in category F.
+    #
+    # It carries the largest weight in the category for the same reason: margins say what the
+    # business keeps per sale, ROIC says whether the sale was worth financing.
+    roic = None if financial else _blend(curve(_latest(_roic_series(m)), _RETURN_KNOTS),
+                                         trend(_roic_series(m)))
+
     parts: dict[str, tuple[float | None, float]] = {
-        "gross_margin": (pair(gross, _GROSS_KNOTS, "gross_margin"), 0.22),
-        "ebitda_margin": (pair(ebitda_m, _MARGIN_KNOTS, "ebitda_margin"), 0.26),
-        "operating_margin": (pair(op_m, _MARGIN_KNOTS, "operating_margin"), 0.28),
-        "net_margin": (pair(net_m, _MARGIN_KNOTS, "net_margin"), 0.24),
+        "gross_margin": (pair(gross, _GROSS_KNOTS, "gross_margin"), 0.12),
+        "ebitda_margin": (pair(ebitda_m, _MARGIN_KNOTS, "ebitda_margin"), 0.14),
+        "operating_margin": (pair(op_m, _MARGIN_KNOTS, "operating_margin"), 0.16),
+        "net_margin": (pair(net_m, _MARGIN_KNOTS, "net_margin"), 0.14),
+        "roic": (roic, 0.24),
+        "roe": (roe_level, 0.12),
+        "roa": (_blend(curve(_latest(roa), _ROA_KNOTS), trend(roa)), 0.08),
     }
     return _weigh(parts, CATEGORY_POINTS["profitability"])
 
@@ -326,9 +374,13 @@ _TURNOVER_KNOTS = [(0.15, 0.10), (0.35, 0.30), (0.60, 0.55), (0.90, 0.75),
                    (1.30, 0.90), (2.00, 1.0)]
 
 
-def _score_capital_efficiency(m: dict, financial: bool) -> Category:
-    # ROIC = NOPAT / (debt + equity - cash). Meaningless for a bank, where debt IS the raw
-    # material, so it is dropped there rather than scored as catastrophic.
+def _roic_series(m: dict) -> list[float | None]:
+    """ROIC = NOPAT / (debt + equity - cash), period by period.
+
+    Split out of the old capital-efficiency category so it can be scored in exactly one place.
+    Meaningless for a bank, where debt IS the raw material, so the caller drops it there rather
+    than scoring it as catastrophic.
+    """
     tax_rate = []
     for pre, tax in zip(m["income_before_tax"], m["income_tax_expense"], strict=False):
         tax_rate.append(max(0.0, min(0.45, tax / pre)) if (pre and pre > 0 and tax) else 0.25)
@@ -341,29 +393,7 @@ def _score_capital_efficiency(m: dict, financial: bool) -> Category:
             continue
         base = (debt or 0.0) + eq - (cash or 0.0)
         invested.append(base if base > 0 else None)
-    roic = _ratio_series(nopat, invested)
-    roe = _ratio_series(m["net_income"], m["total_equity"])
-    roa = _ratio_series(m["net_income"], m["total_assets"])
-    turn = _ratio_series(m["revenue"], m["total_assets"])
-
-    # DuPont: leverage inflates ROE without improving the business. A 25% ROE carried by
-    # assets/equity of 6x is not the same achievement as one at 1.5x, so the score is damped
-    # by how much of it is borrowed rather than earned.
-    lev = _ratio_series(m["total_assets"], m["total_equity"])
-    lev_now = _latest(lev)
-    roe_level = _blend(curve(_latest(roe), _RETURN_KNOTS), trend(roe))
-    if roe_level is not None and lev_now is not None and not financial:
-        damp = curve(lev_now, [(1.5, 1.0), (2.5, 0.95), (4.0, 0.82), (6.0, 0.68), (9.0, 0.5)])
-        roe_level *= damp if damp is not None else 1.0
-
-    parts: dict[str, tuple[float | None, float]] = {
-        "roic": (None if financial else _blend(curve(_latest(roic), _RETURN_KNOTS),
-                                               trend(roic)), 0.38),
-        "roe": (roe_level, 0.30),
-        "roa": (_blend(curve(_latest(roa), _ROA_KNOTS), trend(roa)), 0.20),
-        "asset_turnover": (None if financial else curve(_latest(turn), _TURNOVER_KNOTS), 0.12),
-    }
-    return _weigh(parts, CATEGORY_POINTS["capital_efficiency"])
+    return _ratio_series(nopat, invested)
 
 
 # ── D. Cash flow & earnings quality — 20 ────────────────────────────────────────────────
@@ -452,6 +482,12 @@ _DE_KNOTS = [(0.0, 0.95), (0.3, 0.90), (0.6, 0.78), (1.0, 0.62),
 _CURRENT_KNOTS = [(0.6, 0.05), (1.0, 0.30), (1.3, 0.55), (1.7, 0.78),
                   (2.5, 0.92), (4.0, 0.85)]
 _QUICK_KNOTS = [(0.3, 0.05), (0.7, 0.30), (1.0, 0.60), (1.4, 0.82), (2.2, 0.95)]
+# FCF / total debt. Rating-agency territory: below ~5% the debt is not being repaid out of
+# operations, around 20% is comfortable, and above 60% the company could clear its borrowings
+# inside two years. Flat at the top - being able to repay three times over is not three times
+# safer than being able to repay once.
+_FCF_DEBT_KNOTS = [(-0.10, 0.0), (0.0, 0.10), (0.05, 0.28), (0.12, 0.50),
+                   (0.20, 0.68), (0.35, 0.85), (0.60, 1.0)]
 _DEBT_ASSETS_KNOTS = [(0.0, 0.95), (0.15, 0.85), (0.30, 0.68), (0.45, 0.45),
                       (0.60, 0.22), (0.80, 0.05)]
 
@@ -469,11 +505,14 @@ def _score_balance_sheet(m: dict, financial: bool) -> Category:
     nd_ebitda = _ratio_series(net_debt, m["ebitda"])
     de = _ratio_series(m["total_debt"], m["total_equity"])
     debt_assets = _ratio_series(m["total_debt"], m["total_assets"])
-    current = _ratio_series(m["current_assets"], m["current_liabilities"])
-    quick = _ratio_series(
-        [(ca - (inv or 0.0)) if ca is not None else None
-         for ca, inv in zip(m["current_assets"], m["inventory"], strict=False)],
-        m["current_liabilities"])
+    # Free cash flow against total debt: the share of borrowings a year's free cash could
+    # retire. Reported FCF where the statement gives it, otherwise CFO less capex.
+    fcf = [f if f is not None else ((o - abs(c)) if (o is not None and c is not None) else None)
+           for f, o, c in zip(m["free_cash_flow"], m["operating_cash_flow"],
+                              m["capital_expenditure"], strict=False)]
+    fcf_debt = _ratio_series(fcf, m["total_debt"])
+    # The current and quick ratios have moved to the liquidity category, where they are scored
+    # against cash cover rather than competing with leverage for the same 15 points.
 
     # One coverage curve for every market: can this company pay its interest out of operating
     # profit, and by how wide a margin.
@@ -490,13 +529,78 @@ def _score_balance_sheet(m: dict, financial: bool) -> Category:
         "net_debt_to_ebitda": (
             None if financial else _blend(curve(_latest(nd_ebitda), _NET_DEBT_EBITDA_KNOTS),
                                           _negated(trend(nd_ebitda))), 0.24),
-        "debt_to_equity": (curve(_latest(de), _DE_KNOTS), 0.20),
-        "debt_to_assets": (curve(_latest(debt_assets), _DEBT_ASSETS_KNOTS), 0.12),
-        "interest_coverage": (_blend(curve(_latest(cover), cover_knots), trend(cover)), 0.26),
-        "current_ratio": (None if financial else curve(_latest(current), _CURRENT_KNOTS), 0.10),
-        "quick_ratio": (None if financial else curve(_latest(quick), _QUICK_KNOTS), 0.08),
+        # Direction is folded into the leverage RATIOS, never measured on the absolute debt
+        # figure. A growing company funds a bigger business with a bigger balance sheet; its
+        # debt rises in step with its equity and nothing has weakened. Scoring the raw total
+        # docked 0.7 points from a company purely for growing at 25% instead of 10%, which is
+        # the opposite of what the balance sheet is being asked.
+        "debt_to_equity": (_blend(curve(_latest(de), _DE_KNOTS), _negated(trend(de))), 0.18),
+        "debt_to_assets": (_blend(curve(_latest(debt_assets), _DEBT_ASSETS_KNOTS),
+                                  _negated(trend(debt_assets))), 0.12),
+        "interest_coverage": (_blend(curve(_latest(cover), cover_knots), trend(cover)), 0.24),
+        # Repayment capacity: how much of the debt one year's free cash flow would retire. The
+        # standard credit measure, and the right way to express "profit up, cash flow up, debt
+        # down" - it rises when cash generation outpaces borrowing and falls when it does not,
+        # WITHOUT punishing a company for funding a larger business with a larger balance
+        # sheet. Trending the raw debt total did punish exactly that.
+        "fcf_to_debt": (None if financial else _blend(curve(_latest(fcf_debt),
+                                                            _FCF_DEBT_KNOTS),
+                                                      trend(fcf_debt)), 0.24),
     }
     return _weigh(parts, CATEGORY_POINTS["balance_sheet"])
+
+
+# ── E. Liquidity & cash reserves — 10 ───────────────────────────────────────────────────
+# Its own category now. The current and quick ratios used to sit inside the balance sheet on a
+# combined 18% of 15 points - under three points for the entire question of whether the company
+# can pay what falls due. Cash against debt and against current liabilities was not asked at all.
+_CASH_DEBT_KNOTS = [(0.0, 0.05), (0.10, 0.22), (0.25, 0.42), (0.50, 0.62),
+                    (1.00, 0.85), (2.00, 1.0)]
+_CASH_CL_KNOTS = [(0.0, 0.05), (0.08, 0.20), (0.20, 0.40), (0.40, 0.62),
+                  (0.75, 0.85), (1.50, 1.0)]
+
+
+def _score_liquidity(m: dict, financial: bool) -> Category:
+    """Can this company meet what falls due, and is that getting easier or harder?
+
+    Scored relative to obligations, never on the absolute cash pile: a large balance means
+    nothing next to larger debts, and the spec is explicit that size alone must not be
+    rewarded.
+    """
+    cash_total = []
+    for cash, sti in zip(m["cash"], m["short_term_investments"], strict=False):
+        cash_total.append(None if cash is None else cash + (sti or 0.0))
+
+    cash_debt = [(c / d) if (c is not None and d) else (1.5 if (c and not d) else None)
+                 for c, d in zip(cash_total, m["total_debt"], strict=False)]
+    cash_cl = _ratio_series(cash_total, m["current_liabilities"])
+    current = _ratio_series(m["current_assets"], m["current_liabilities"])
+    quick = _ratio_series(
+        [(ca - (inv or 0.0)) if ca is not None else None
+         for ca, inv in zip(m["current_assets"], m["inventory"], strict=False)],
+        m["current_liabilities"])
+
+    # Net cash - holding more cash than total debt - is a genuine step change in resilience,
+    # not a point on a continuum, so it earns a flat mark of its own.
+    net_cash = None
+    c_now, d_now = _latest(cash_total), _latest(m["total_debt"])
+    if c_now is not None and d_now is not None:
+        net_cash = 1.0 if c_now > d_now else curve(c_now / d_now if d_now else 1.5,
+                                                   _CASH_DEBT_KNOTS)
+
+    parts: dict[str, tuple[float | None, float]] = {
+        "cash_to_debt": (_blend(curve(_latest(cash_debt), _CASH_DEBT_KNOTS),
+                                trend(cash_debt)), 0.30),
+        "cash_to_current_liabilities": (_blend(curve(_latest(cash_cl), _CASH_CL_KNOTS),
+                                               trend(cash_cl)), 0.24),
+        "net_cash_position": (net_cash, 0.16),
+        # A bank's current ratio is not a solvency statement; its cash cover still is.
+        "current_ratio": (None if financial else _blend(curve(_latest(current),
+                                                              _CURRENT_KNOTS),
+                                                        trend(current)), 0.18),
+        "quick_ratio": (None if financial else curve(_latest(quick), _QUICK_KNOTS), 0.12),
+    }
+    return _weigh(parts, CATEGORY_POINTS["liquidity"])
 
 
 # ── F. Working capital & operating efficiency — 5 ───────────────────────────────────────
@@ -504,7 +608,7 @@ _CCC_KNOTS = [(-60.0, 1.0), (0.0, 0.92), (30.0, 0.75), (60.0, 0.58),
               (100.0, 0.38), (160.0, 0.18), (240.0, 0.05)]
 
 
-def _score_working_capital(m: dict, financial: bool) -> Category:
+def _score_working_capital(m: dict, financial: bool, per_year: int = 4) -> Category:
     if financial:
         # A bank has no inventory and no cash-conversion cycle. Scoring one would be inventing
         # a number, so the category is skipped and its weight returns to the others.
@@ -522,13 +626,33 @@ def _score_working_capital(m: dict, financial: bool) -> Category:
 
     # Direction carries more weight here than level: a long cycle can be structural to the
     # business, but a LENGTHENING one is cash draining out whatever the industry norm is.
+    # Working capital DISCIPLINE: is revenue outrunning the receivables and inventory it is
+    # carried on? Revenue +10% against receivables +30% is the classic tell that reported sales
+    # are not turning into cash, and it is scored explicitly rather than left to the CCC level.
+    rev_g = _yoy(m["revenue"], per_year)
+    rec_g = _yoy(m["receivables"], per_year)
+    inv_g = _yoy(m["inventory"], per_year)
+    spread_knots = [(-0.25, 0.05), (-0.10, 0.25), (0.0, 0.55), (0.05, 0.75), (0.15, 1.0)]
+    rec_spread = curve(rev_g - rec_g, spread_knots) if (rev_g is not None
+                                                        and rec_g is not None) else None
+    inv_spread = curve(rev_g - inv_g, spread_knots) if (rev_g is not None
+                                                        and inv_g is not None) else None
+
+    turn = _ratio_series(m["revenue"], m["total_assets"])
+
+    # ROIC is NOT here - it is a return measure and lives in profitability. What belongs here
+    # are its operational drivers: how hard the asset base is worked, and how much cash the
+    # working-capital cycle ties up getting there.
     parts: dict[str, tuple[float | None, float]] = {
         "cash_conversion_cycle": (_blend(curve(_latest(ccc), _CCC_KNOTS),
-                                         _negated(trend(ccc)), 0.35), 0.55),
+                                         _negated(trend(ccc)), 0.35), 0.30),
+        "asset_turnover": (_blend(curve(_latest(turn), _TURNOVER_KNOTS), trend(turn)), 0.20),
+        "receivables_vs_revenue": (rec_spread, 0.18),
+        "inventory_vs_revenue": (inv_spread, 0.14),
         "receivable_days": (curve(_latest(dso), [(15.0, 1.0), (45.0, 0.75), (75.0, 0.5),
-                                                 (120.0, 0.25), (200.0, 0.05)]), 0.22),
+                                                 (120.0, 0.25), (200.0, 0.05)]), 0.09),
         "inventory_days": (curve(_latest(dio), [(20.0, 1.0), (60.0, 0.75), (110.0, 0.5),
-                                                (180.0, 0.25), (300.0, 0.05)]), 0.23),
+                                                (180.0, 0.25), (300.0, 0.05)]), 0.09),
     }
     return _weigh(parts, CATEGORY_POINTS["working_capital"])
 
@@ -630,12 +754,12 @@ def score_fundamentals(statements: dict[str, list[dict]],
 
     cats: dict[str, Category] = {
         "growth": _score_growth(m, per_year),
-        "profitability": _score_profitability(m, peers),
-        "capital_efficiency": _score_capital_efficiency(m, financial),
+        "profitability": _score_profitability(m, peers, financial),
     }
     cats["cash_flow"], flags = _score_cash_flow(m, per_year)
     cats["balance_sheet"] = _score_balance_sheet(m, financial)
-    cats["working_capital"] = _score_working_capital(m, financial)
+    cats["liquidity"] = _score_liquidity(m, financial)
+    cats["working_capital"] = _score_working_capital(m, financial, per_year)
 
     # Renormalise over the categories that applied. A bank skips working capital, so its score
     # is out of 95 rescaled to 100 - not 95 out of 100, which would cap every bank at 95.

@@ -83,8 +83,25 @@ def _series_from_cache(sym: str, peers: dict | None = None,
             out.append({
                 "date": inc[i].fiscal_date.isoformat(),
                 "score": res.score, "passed": res.passed, "period": "ttm",
+                # The six category marks for THIS period. The whole point of scoring each TTM
+                # separately is to be able to see which part of the business moved, and a bare
+                # total cannot answer that: 62 -> 71 could be cash flow recovering or leverage
+                # coming down, and those are different companies.
+                "cats": _cat_points(res),
+                "confidence": res.confidence,
             })
     return out[-MAX_POINTS:] or None
+
+
+def _cat_points(res) -> dict[str, float]:
+    """{category: earned} for one period, rounded. Points budgets are fixed and live in
+    CATEGORY_POINTS, so only what was earned needs storing per period."""
+    out = {}
+    for name, cat in (getattr(res, "categories", None) or {}).items():
+        earned = cat.get("earned") if isinstance(cat, dict) else getattr(cat, "earned", None)
+        if earned is not None:
+            out[name] = round(float(earned), 2)
+    return out
 
 
 def _price_lookup(region: str, symbol: str):
@@ -147,21 +164,88 @@ def _series_from_statements(doc: dict, key: str = "statements",
             out.append({
                 "date": str(inc[i].get("fiscal_date") or "")[:10],
                 "score": res.score, "passed": res.passed, "period": period,
+                "cats": _cat_points(res),
+                "confidence": res.confidence,
             })
     return out[-MAX_POINTS:] or None
 
 
+# Fitted movement across the whole history, in score points, at which a trajectory earns each
+# label. STRONG is reserved for a move of 15 points - roughly a grade and a half - so it means
+# something when it appears.
+_STRONG = 15.0
+_MOVE = 5.0
+# Scatter around the fit, above which a flat net change is "mixed" rather than "stable": a
+# company that ran 50 -> 80 -> 50 did not have a stable five years.
+_NOISE = 6.0
+
+
 def _trend(series: list[dict]) -> tuple[str, float | None]:
-    """Direction of the last few points: improving / stable / deteriorating."""
-    if len(series) < 2:
+    """Classify the WHOLE score history, not its endpoints.
+
+    First-versus-last reads 50 -> 80 -> 50 as unchanged and 50 -> 20 -> 55 as an improvement.
+    Both are the same answer for opposite stories, and both were being published. A least-
+    squares fit over every period asks the different question - which way has this company been
+    going, on balance, across five years - and the scatter around that fit separates a steady
+    company from a volatile one whose net change happens to be small.
+
+    Returns (label, latest-minus-previous). The change is the LAST STEP, because that is the
+    most recent fundamental signal; the label carries the long view.
+    """
+    scores = [s["score"] for s in series if s.get("score") is not None]
+    if len(scores) < 2:
         return "unknown", None
-    first, last = series[0]["score"], series[-1]["score"]
-    change = round(last - first, 2)
-    if change >= 5:
-        return "improving", change
-    if change <= -5:
-        return "deteriorating", change
-    return "stable", change
+    step = round(scores[-1] - scores[-2], 2)
+    if len(scores) < 4:
+        # Too short to fit a line through with any confidence; fall back to the net move.
+        net = scores[-1] - scores[0]
+        if net >= _MOVE:
+            return "improving", step
+        if net <= -_MOVE:
+            return "deteriorating", step
+        return "stable", step
+
+    n = len(scores)
+    mean_x = (n - 1) / 2
+    mean_y = sum(scores) / n
+    sxx = sum((i - mean_x) ** 2 for i in range(n))
+    sxy = sum((i - mean_x) * (y - mean_y) for i, y in enumerate(scores))
+    slope = (sxy / sxx) if sxx else 0.0
+    fitted = slope * (n - 1)          # the move the fit implies across the whole series
+
+    resid = [y - (mean_y + slope * (i - mean_x)) for i, y in enumerate(scores)]
+    noise = (sum(r * r for r in resid) / n) ** 0.5
+
+    if fitted >= _STRONG:
+        return "strongly_improving", step
+    if fitted >= _MOVE:
+        return "improving", step
+    if fitted <= -_STRONG:
+        return "strongly_deteriorating", step
+    if fitted <= -_MOVE:
+        return "deteriorating", step
+    return ("mixed" if noise > _NOISE else "stable"), step
+
+
+def _history_stats(series: list[dict]) -> dict[str, float | None]:
+    """Where the latest score sits against the company's OWN five-year record.
+
+    A score of 62 means one thing for a company that has never been above 60 and another for
+    one that spent four years in the eighties. The percentile is what makes the difference
+    legible without having to read the whole series.
+    """
+    scores = [s["score"] for s in series if s.get("score") is not None]
+    if not scores:
+        return {}
+    latest = scores[-1]
+    at_or_below = sum(1 for s in scores if s <= latest)
+    return {
+        "score_high": round(max(scores), 2),
+        "score_low": round(min(scores), 2),
+        "score_avg": round(sum(scores) / len(scores), 2),
+        "score_percentile": round(100 * at_or_below / len(scores), 1),
+        "score_periods": len(scores),
+    }
 
 
 def refresh_quality_history(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
@@ -219,9 +303,11 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
             continue
 
         direction, change = _trend(series)
+        stats = _history_stats(series)
         doc["quality_history"] = series
         doc["quality_trend"] = {"direction": direction, "change": change,
-                                "points": len(series), "period": series[-1]["period"]}
+                                "points": len(series), "period": series[-1]["period"],
+                                **stats}
         try:
             cfile.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
         except OSError:
@@ -234,7 +320,19 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
         # Two numbers answering one question, with nothing to say which was right.
         r["quality_score"] = series[-1]["score"]
         r["quality_trend"] = direction
+        # The LATEST step - this TTM against the one before it. The most recent fundamental
+        # signal there is, and the one worth sorting a screener by.
         r["quality_change"] = change
+        # Where the latest score sits in the company's own five-year range. 62 means one thing
+        # for a company that has never been above 60 and another for one that spent four years
+        # in the eighties, and the raw score cannot tell those apart.
+        for key in ("score_high", "score_low", "score_avg", "score_percentile"):
+            if stats.get(key) is not None:
+                r[key] = stats[key]
+        # The six category marks for the newest period, so the grid can show WHERE the quality
+        # is rather than only how much of it there is.
+        if series[-1].get("cats"):
+            r["score_cats"] = series[-1]["cats"]
         # The series itself, oldest -> newest, so the screener can draw the arc rather than
         # just name its direction. Scores only: dates live in the company file.
         r["score_history"] = [p["score"] for p in series]

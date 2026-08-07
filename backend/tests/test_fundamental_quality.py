@@ -118,10 +118,20 @@ def test_the_score_carries_no_country_assumption() -> None:
 
 
 def test_a_bank_skips_metrics_that_do_not_apply() -> None:
-    """No inventory, no cash-conversion cycle - and still scored out of 100."""
+    """No inventory, no cash-conversion cycle, no ROIC - and still scored out of 100.
+
+    ROIC now lives in working capital, which a bank skips entirely, so it drops out with the
+    category rather than needing its own exemption. A bank's debt is its funding, not its
+    leverage, and dividing by it produces a number that means nothing.
+    """
     bank = score_fundamentals(_company(), sector="Commercial Banks")
     assert bank.categories["working_capital"]["points"] == 0.0
-    assert bank.categories["capital_efficiency"]["parts"]["roic"] is None
+    assert "roic" not in bank.categories["working_capital"].get("parts", {})
+    # Liquidity still applies - cash cover is meaningful for a bank - but the industrial
+    # current/quick ratios inside it do not.
+    liq = bank.categories["liquidity"]["parts"]
+    assert liq["current_ratio"] is None and liq["quick_ratio"] is None
+    assert liq["cash_to_debt"] is not None
     assert bank.score is not None and 0 <= bank.score <= 100
 
 

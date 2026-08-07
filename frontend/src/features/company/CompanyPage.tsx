@@ -50,9 +50,10 @@ import type {
   SectorStatsData,
   SnapshotMeta,
 } from "@/types/api";
-import type { CompanyDetail, Row } from "@/types/company";
+import type { CompanyDetail, QualityTrend, Row } from "@/types/company";
 import PabraiRadar from "./PabraiRadar";
 import PeersTable from "./PeersTable";
+import QualityHistoryTable from "./QualityHistoryTable";
 import ScoreHistoryChart from "./ScoreHistoryChart";
 import StatementsTable, {
   BALANCE_FIELDS,
@@ -411,6 +412,12 @@ export default function CompanyPage() {
           <InsiderCard summary={data.insider_summary} transactions={data.insider} />
           <PeersTable peers={data.peers} />
           <NewsCard news={data.news} />
+          <Card
+            title="Fundamental score by TTM period"
+            right={<TrendSummary trend={data.quality_trend} />}
+          >
+            <QualityHistoryTable history={data.quality_history} />
+          </Card>
           <ScoreHistoryChart history={data.score_history} />
           <DataSourcesCard
             region={String(sec.region ?? "")}
@@ -830,6 +837,54 @@ const _CMP_METRICS: [string, string, "pct" | "num", boolean][] = [
   ["debt_to_equity", "Debt / Equity", "num", false],
   ["pe_ratio", "P/E", "num", false],
 ];
+
+// Six trend levels, fitted across the whole TTM history rather than read off its endpoints.
+const TREND_TEXT: Record<string, { label: string; fg: string }> = {
+  strongly_improving: { label: "Strongly improving", fg: "#16a34a" },
+  improving: { label: "Improving", fg: "#22c55e" },
+  stable: { label: "Stable", fg: "#94a3b8" },
+  mixed: { label: "Mixed", fg: "#eab308" },
+  deteriorating: { label: "Deteriorating", fg: "#ef4444" },
+  strongly_deteriorating: { label: "Strongly deteriorating", fg: "#dc2626" },
+};
+
+/** Trend, latest step, and where the newest score sits in this company's own record. */
+function TrendSummary({ trend }: { trend?: QualityTrend | null }) {
+  if (!trend) return null;
+  const t = TREND_TEXT[trend.direction];
+  const chg = trend.change;
+  return (
+    <span className="flex items-center gap-3 text-[11px]">
+      {t && (
+        <span style={{ color: t.fg }} className="font-semibold">
+          {t.label}
+        </span>
+      )}
+      {chg != null && (
+        <span
+          style={{ color: chg > 0 ? "#22c55e" : chg < 0 ? "#ef4444" : undefined }}
+          title="Latest TTM against the one before it - the most recent fundamental signal"
+        >
+          {chg > 0 ? "+" : ""}
+          {chg.toFixed(1)} latest
+        </span>
+      )}
+      {trend.score_percentile != null && (
+        <span
+          className="text-slate-500"
+          title={
+            `Percentile within this company's own history` +
+            (trend.score_low != null && trend.score_high != null
+              ? ` (range ${trend.score_low.toFixed(1)}–${trend.score_high.toFixed(1)})`
+              : "")
+          }
+        >
+          {Math.round(trend.score_percentile)}th vs own
+        </span>
+      )}
+    </span>
+  );
+}
 
 function SectorComparison({ detail, sectorStats }: { detail: CompanyDetail; sectorStats: SectorStatsData | null }) {
   const sec = detail.security as Row;

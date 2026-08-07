@@ -126,12 +126,32 @@ export interface ScreenerRow {
   /** Exceptional / Excellent / Good / Acceptable / Weak / Poor / Very Poor. */
   quality_grade?: string | null;
   quality_passed?: boolean | null;
-  quality_trend?: "improving" | "stable" | "deteriorating" | "unknown" | null;
+  /** Six levels, fitted across the whole TTM history rather than read off its endpoints. */
+  quality_trend?:
+    | "strongly_improving"
+    | "improving"
+    | "stable"
+    | "mixed"
+    | "deteriorating"
+    | "strongly_deteriorating"
+    | "unknown"
+    | null;
+  /** The LATEST step: this TTM against the one before it - the most recent signal. */
   quality_change?: number | null;
   /** Fundamental score at each trailing-twelve-month point, oldest to newest (up to 20). */
   score_history?: number[] | null;
   /** Period-end date for each score, aligned with score_history. */
   score_history_dates?: string[] | null;
+  /** The latest score placed against the company's OWN five-year record. 62 means one thing
+   *  for a company never above 60 and another for one that spent four years in the eighties. */
+  score_high?: number | null;
+  score_low?: number | null;
+  score_avg?: number | null;
+  score_percentile?: number | null;
+  /** The six category marks for the newest period, out of their own budgets:
+   *  growth 20, profitability 20, cash_flow 25, balance_sheet 15, liquidity 10,
+   *  working_capital 10. */
+  score_cats?: Record<string, number> | null;
   results_through?: string | null;
   entry_score?: number | null;
   signal: SignalType | null;

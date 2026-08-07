@@ -48,10 +48,18 @@ export function ActionCell(p: ICellRendererParams) {
 }
 
 // Quality trend across the stored TTM points: is the business getting stronger or weaker?
+// Six levels, fitted across the whole 20-period history rather than read off its endpoints.
+// The three "strong" and "mixed" labels are new; without them those rows rendered as an
+// em-dash, so the companies moving fastest were the ones showing nothing.
 const TREND_STYLE: Record<string, { fg: string; label: string }> = {
+  strongly_improving: { fg: "#16a34a", label: "▲▲ Strongly improving" },
   improving: { fg: "#22c55e", label: "▲ Improving" },
   stable: { fg: "#94a3b8", label: "→ Stable" },
+  // Not "unknown": a company that ran 50 → 80 → 50 has a real and important trajectory. It is
+  // simply not a direction, and calling it stable was the previous answer.
+  mixed: { fg: "#eab308", label: "↕ Mixed" },
   deteriorating: { fg: "#ef4444", label: "▼ Declining" },
+  strongly_deteriorating: { fg: "#dc2626", label: "▼▼ Strongly declining" },
 };
 
 export function TrendCell(p: ICellRendererParams) {
