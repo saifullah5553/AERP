@@ -52,9 +52,16 @@ export interface ScoreSet {
 
 export function scoreSet(detail: CompanyDetail): ScoreSet {
   const s = detail.scores ?? {};
+  // "Fundamental" must be the Fundamental Quality Score - the same number the scorecard below
+  // it reports and the same one the screener ranks on. `scores.fundamental` is a different,
+  // older ratio-based metric that survives only as an input to the composite and the
+  // backtests; showing it under this label put 77 in the header against 93.7 in the card on
+  // the same page, both called fundamental, and neither equal to the 85.4 the grid was sorting
+  // by. Three numbers, one question.
+  const card = detail.fundamental_scorecard?.score;
   return {
     overall: num(s.composite),
-    fundamental: num(s.fundamental),
+    fundamental: card != null ? num(card) : num(s.fundamental),
     technical: num(s.technical),
     quality: num(s.quality),
     risk: num(s.risk),

@@ -27,6 +27,7 @@ from typing import Any
 from app.core.logging import get_logger
 from app.core.safe_path import safe_file
 from app.core.snapshot_lock import snapshot_lock
+from app.engines.strategy.fundamental_quality import grade_for
 from app.engines.strategy.quality import assess_quality
 from app.ingestion.fundamentals_web import _cache_to_dtos, _roll_ttm
 from app.ingestion.ohlc_store import load_bars
@@ -76,10 +77,12 @@ def _series_from_cache(sym: str, peers: dict | None = None,
         return None
 
     out: list[dict] = []
+    last_res = None
     for i in range(len(inc)):
         res = assess_quality(_statements_at(inc, bal, cfl, i), peers=peers,
                              sector=sector)
         if res.score is not None:
+            last_res = res
             out.append({
                 "date": inc[i].fiscal_date.isoformat(),
                 "score": res.score, "passed": res.passed, "period": "ttm",
@@ -90,7 +93,15 @@ def _series_from_cache(sym: str, peers: dict | None = None,
                 "cats": _cat_points(res),
                 "confidence": res.confidence,
             })
-    return out[-MAX_POINTS:] or None
+    out = out[-MAX_POINTS:]
+    if out:
+        # Only the newest point carries the full category detail: it is what the scorecard
+        # renders, and repeating every sub-metric for all twenty periods would multiply the
+        # company file for a table nobody reads twenty times over.
+        out[-1]["full_cats"] = getattr(last_res, "categories", None) or None
+        out[-1]["flags"] = list(getattr(last_res, "flags", None) or [])
+        out[-1]["fund_metrics"] = getattr(last_res, "fundamental_metrics", None) or None
+    return out or None
 
 
 def _cat_points(res) -> dict[str, float]:
@@ -139,6 +150,7 @@ def _series_from_statements(doc: dict, key: str = "statements",
         return None
     period = str(inc[0].get("period") or "ttm")
     out: list[dict] = []
+    last_res = None
     # Only the newest MAX_POINTS are kept, so only those are worth computing. Scoring all ~20
     # stored quarters and then slicing cost 2.5s per company - about 8 hours over the universe,
     # which is why this job never once ran to completion.
@@ -161,13 +173,22 @@ def _series_from_statements(doc: dict, key: str = "statements",
         res = assess_quality(view, market=market, peers=peers,
                              sector=sector)
         if res.score is not None:
+            last_res = res
             out.append({
                 "date": str(inc[i].get("fiscal_date") or "")[:10],
                 "score": res.score, "passed": res.passed, "period": period,
                 "cats": _cat_points(res),
                 "confidence": res.confidence,
             })
-    return out[-MAX_POINTS:] or None
+    out = out[-MAX_POINTS:]
+    if out:
+        # Only the newest point carries the full category detail: it is what the scorecard
+        # renders, and repeating every sub-metric for all twenty periods would multiply the
+        # company file for a table nobody reads twenty times over.
+        out[-1]["full_cats"] = getattr(last_res, "categories", None) or None
+        out[-1]["flags"] = list(getattr(last_res, "flags", None) or [])
+        out[-1]["fund_metrics"] = getattr(last_res, "fundamental_metrics", None) or None
+    return out or None
 
 
 # Fitted movement across the whole history, in score points, at which a trajectory earns each
@@ -308,6 +329,51 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
         doc["quality_trend"] = {"direction": direction, "change": change,
                                 "points": len(series), "period": series[-1]["period"],
                                 **stats}
+
+        # The scorecard on the company page IS the newest period of this series, restated here
+        # rather than left to a separate job to compute and hope they agree. They did not:
+        # refresh-quality scores the company independently and last ran on the previous engine,
+        # so HCI published 93.7 in the scorecard against 85.4 everywhere else - two numbers
+        # answering one question, under headings a reader would take to be the same thing, and
+        # the scorecard still itemising a category that no longer exists.
+        newest = series[-1]
+        card = dict(doc.get("fundamental_scorecard") or {})
+        card["score"] = newest["score"]
+        card["grade"] = grade_for(newest["score"])
+        card["as_of"] = newest.get("date")
+        if newest.get("confidence") is not None:
+            card["confidence"] = newest["confidence"]
+        # Categories come from the newest period in full - earned, budget and the sub-metrics
+        # behind them - so a category the engine has retired cannot linger on the page. The
+        # scorecard was still itemising "Capital Efficiency /20", which no longer exists.
+        if newest.get("full_cats"):
+            card["categories"] = newest["full_cats"]
+        if newest.get("flags") is not None:
+            card["flags"] = newest["flags"]
+        if newest.get("fund_metrics"):
+            card["metrics"] = newest["fund_metrics"]
+        doc["fundamental_scorecard"] = card
+
+        # The Fundamental Analysis panel reads doc["fundamentals"]. Those figures came from the
+        # legacy ratio engine, which - handed quarterly TTM rows - measured growth against the
+        # ADJACENT quarter and labelled it "(TTM)". HCI showed 2.90% revenue growth and -3.46%
+        # EPS beside a net profit growth of 128.64% that was annual: one panel, two bases, and
+        # the score computed from neither of the two that were wrong.
+        #
+        # Overwrite only what the engine actually measured; anything else on the panel is left
+        # alone rather than blanked.
+        if newest.get("fund_metrics"):
+            fundamentals = dict(doc.get("fundamentals") or {})
+            for key, value in newest["fund_metrics"].items():
+                if value is not None:
+                    fundamentals[key] = value
+            doc["fundamentals"] = fundamentals
+            # ...and the same figures on the screener row, so the grid's Rev Gr / ROE columns
+            # cannot disagree with the company page they link to.
+            for key in ("revenue_growth", "eps_growth", "roe", "roa", "net_margin",
+                        "gross_margin", "operating_margin", "debt_to_equity", "roic"):
+                if newest["fund_metrics"].get(key) is not None:
+                    r[key] = newest["fund_metrics"][key]
         try:
             cfile.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
         except OSError:

@@ -276,6 +276,11 @@ class QualityResult:
     grade_label: str = "Unrated"               # Exceptional / Excellent / Good / ...
     categories: dict = field(default_factory=dict)   # per-category earned/points/parts
     flags: list[str] = field(default_factory=list)   # earnings-quality red flags
+    # Growth, margins and returns exactly as the six-category engine measured them - year on
+    # year, with the period spacing read off the dates. The legacy ratio engine computed its
+    # own and, fed quarterly TTM rows, compared adjacent quarters: HCI published 2.90% revenue
+    # growth beside a 128.64% net profit growth that WAS annual.
+    fundamental_metrics: dict = field(default_factory=dict)
 
     @property
     def eligible(self) -> bool:
@@ -645,4 +650,8 @@ def assess_quality(statements: dict[str, list[dict]], min_checks: int = 5,
     return QualityResult(passed=passed, score=score, checks=checks, grades=grades,
                          confidence=fq.confidence, grade_label=fq.grade,
                          categories=fq.categories, flags=fq.flags,
+                         # The figures the SCORE was computed from. Kept separate from
+                         # `metrics`, which the older checks still read, so the page can show
+                         # the numbers behind the score rather than a second opinion on them.
+                         fundamental_metrics=fq.metrics,
                          metrics=metrics, reasons=reasons, improving=improving)

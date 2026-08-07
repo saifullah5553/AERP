@@ -74,6 +74,75 @@ def _ebit(income: Any) -> float | None:
     return f(getattr(income, "ebit", None)) or f(getattr(income, "operating_income", None))
 
 
+def _fiscal_months(row: Any) -> int | None:
+    """Fiscal date as a month ordinal, so two statements can be spaced without date parsing."""
+    raw = str(getattr(row, "fiscal_date", "") or "")[:10]
+    try:
+        return int(raw[:4]) * 12 + int(raw[5:7])
+    except (ValueError, IndexError):
+        return None
+
+
+def _years_back(incomes: list[Any], years: int) -> tuple[Any | None, float | None]:
+    """The statement closest to `years` before the newest, and the span actually covered.
+
+    Returns the real span rather than the requested one: a company with three years of history
+    should be compounded over three, and one with only two over two, instead of the shorter
+    record being annualised as though it were longer.
+    """
+    if len(incomes) < 2:
+        return None, None
+    end = _fiscal_months(incomes[-1])
+    if end is None:
+        # No dates to reason with. Fall back to the old row-count assumption, which is right
+        # for annual data and is what this did before.
+        window = incomes[-(years + 1):]
+        return (window[0], float(len(window) - 1)) if len(window) >= 2 else (None, None)
+
+    want = years * 12
+    best, best_gap = None, None
+    for row in incomes[:-1]:
+        when = _fiscal_months(row)
+        if when is None:
+            continue
+        gap = end - when
+        if gap >= 10 and (best_gap is None or abs(gap - want) < abs(best_gap - want)):
+            best, best_gap = row, gap
+    if best is None or not best_gap:
+        return None, None
+    return best, round(best_gap / 12.0, 2)
+
+
+def _year_ago(incomes: list[Any]) -> Any | None:
+    """The statement roughly twelve months before the newest one.
+
+    Read off the fiscal dates rather than assumed, because the same list arrives at different
+    spacings: the scraped store is quarterly TTM, the fallback statements are annual. Stepping
+    back one row is right for one and a quarter of the way for the other, and the caller cannot
+    tell which it was handed.
+
+    Falls back to the previous row when the dates cannot be read - the old behaviour, which is
+    correct for annual data and no worse than nothing for anything else.
+    """
+    if len(incomes) < 2:
+        return None
+    end = _fiscal_months(incomes[-1])
+    if end is None:
+        return incomes[-2]
+    # The row closest to twelve months back, provided it really is a step back in time. A
+    # ten-to-fourteen-month window absorbs the odd 52/53-week fiscal calendar without matching
+    # the adjacent quarter.
+    best, best_gap = None, None
+    for row in incomes[:-1]:
+        when = _fiscal_months(row)
+        if when is None:
+            continue
+        gap = end - when
+        if 10 <= gap <= 14 and (best_gap is None or abs(gap - 12) < abs(best_gap - 12)):
+            best, best_gap = row, gap
+    return best if best is not None else incomes[-2]
+
+
 def compute_ratios(
     incomes: list[Any],
     balances: list[Any],
@@ -84,7 +153,13 @@ def compute_ratios(
     market = market or MarketInputs()
 
     inc = incomes[-1] if incomes else None
-    inc_prev = incomes[-2] if len(incomes) >= 2 else None
+    # A YEAR back, not one row back. This engine was written for annual filings, where the two
+    # are the same thing. Fed quarterly-spaced TTM rows it compared the newest twelve months
+    # with the twelve months ending one QUARTER earlier and published the answer as "Revenue
+    # Growth (TTM)". HCI showed 2.90% revenue and -3.46% EPS on that basis; year-on-year it
+    # grew 22.05% and 90.99%. Worse, net profit growth on the same panel WAS annual, so one
+    # card carried two different bases and invited exactly the comparison it failed.
+    inc_prev = _year_ago(incomes)
     bal = balances[-1] if balances else None
     cf = cashflows[-1] if cashflows else None
 
@@ -112,12 +187,17 @@ def compute_ratios(
         r.revenue_growth = growth(f(inc.revenue), f(inc_prev.revenue))
         r.eps_growth = growth(f(inc.eps), f(inc_prev.eps))
 
-    rev_window = [f(s.revenue) for s in incomes[-4:]]
-    if len(rev_window) >= 2 and rev_window[0] and rev_window[-1]:
-        r.revenue_cagr_3y = cagr(rev_window[0], rev_window[-1], len(rev_window) - 1)
-    eps_window = [f(s.eps) for s in incomes[-4:]]
-    if len(eps_window) >= 2 and eps_window[0] and eps_window[-1]:
-        r.eps_cagr_3y = cagr(eps_window[0], eps_window[-1], len(eps_window) - 1)
+    # Three YEARS back, and compounded over the years actually spanned. `incomes[-4:]` is three
+    # years of annual filings but only one year of quarterly TTM, and it then annualised that
+    # one year as though it were three - reporting a company that grew 22% as compounding 6.9%.
+    start, years = _years_back(incomes, 3)
+    if start is not None and years:
+        rev_now, rev_then = f(inc.revenue) if inc else None, f(start.revenue)
+        if rev_now and rev_then:
+            r.revenue_cagr_3y = cagr(rev_then, rev_now, years)
+        eps_now, eps_then = f(inc.eps) if inc else None, f(start.eps)
+        if eps_now and eps_then:
+            r.eps_cagr_3y = cagr(eps_then, eps_now, years)
 
     # ── Leverage / liquidity ─────────────────────────────────
     if bal is not None:
