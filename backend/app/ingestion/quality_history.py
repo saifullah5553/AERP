@@ -9,17 +9,22 @@ December, a fertiliser company's planting season), which would show up as a fake
 point is a full trailing twelve months, so consecutive points differ only by what actually
 changed year-on-year.
 
-Two sources, both already local — nothing is re-fetched:
-  * statements_ttm          - ~20 quarterly TTM columns straight from the scraped store. Best
-    source, the only one covering every market uniformly, and the reason the series runs to
-    20 points: PSX has five years of TTM today, other markets as their scrapes land.
-  * data/fund_cache/*.json  - up to 12 raw QUARTERS per name, rolled into ~8 quarterly-spaced
-    TTM points. Only exists for names yfinance managed to serve.
-  * the stored statements   - one point a year, so the trend is annual. Last resort.
+ONE SOURCE: `statements_ttm`, the ~20 quarterly TTM columns scraped from stockanalysis into
+data/fundamentals_ttm/. No annual fallback, no yfinance cache.
+
+The chain that used to sit here made scores incomparable. A company scored on twenty quarterly
+TTM points and one scored on three ANNUAL points ranked side by side as though the numbers
+meant the same thing, and which source a company got depended on whether a scrape had reached
+it - so the same business could move tens of points by changing source rather than by changing.
+
+A company with no TTM statements is UNRATED, and any score it carried from the retired path is
+stripped rather than left standing. No score beats a score that means something different from
+the one beside it.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
 from pathlib import Path
 from typing import Any
@@ -71,6 +76,29 @@ def prune_quarter_columns(row: dict) -> int:
     return len(stale)
 
 
+# Everything downstream of a score. Cleared together, because a row carrying half of them is
+# worse than one carrying none: the grid would sort on a q_ column while the cell read blank.
+_SCORE_FIELDS = ("quality_score", "quality_trend", "quality_change", "quality_grade",
+                 "quality_confidence", "score_history", "score_history_dates", "score_cats",
+                 "score_high", "score_low", "score_avg", "score_percentile",
+                 "results_through")
+
+
+def _clear_score(row: dict, doc: dict) -> int:
+    """Strip a score that no longer has statements behind it. Returns 1 if anything went."""
+    gone = False
+    for key in _SCORE_FIELDS:
+        if row.pop(key, None) is not None:
+            gone = True
+    for key in [k for k in row if k.startswith("q_")]:
+        del row[key]
+        gone = True
+    for key in ("quality_history", "quality_trend", "fundamental_scorecard"):
+        if doc.pop(key, None) is not None:
+            gone = True
+    return 1 if gone else 0
+
+
 def _statements_at(inc: list, bal: list, cf: list, upto: int) -> dict[str, list[dict]]:
     """Statement view as of index `upto` (inclusive), newest-first, for assess_quality."""
     def pack(rows: list) -> list[dict]:
@@ -120,6 +148,7 @@ def _series_from_cache(sym: str, peers: dict | None = None,
                 # total cannot answer that: 62 -> 71 could be cash flow recovering or leverage
                 # coming down, and those are different companies.
                 "cats": _cat_points(res),
+                "cats_max": _cat_budget(res),
                 "confidence": res.confidence,
             })
     out = out[-MAX_POINTS:]
@@ -134,13 +163,31 @@ def _series_from_cache(sym: str, peers: dict | None = None,
 
 
 def _cat_points(res) -> dict[str, float]:
-    """{category: earned} for one period, rounded. Points budgets are fixed and live in
-    CATEGORY_POINTS, so only what was earned needs storing per period."""
+    """{category: earned} for one period, rounded."""
     out = {}
     for name, cat in (getattr(res, "categories", None) or {}).items():
         earned = cat.get("earned") if isinstance(cat, dict) else getattr(cat, "earned", None)
         if earned is not None:
             out[name] = round(float(earned), 2)
+    return out
+
+
+def _cat_budget(res) -> dict[str, float]:
+    """{category: points available} for one period - NOT always the standard budget.
+
+    A category that does not apply is scored out of ZERO and the total renormalises over what
+    is left: a bank has no cash-conversion cycle, so working capital is skipped and its score
+    is out of 90 rescaled to 100. Storing only what was earned made that invisible - the page
+    printed "WC /10  0.0", which reads as a company that scored nothing rather than one the
+    measure does not fit, and the six marks then failed to add up to the published score for
+    800 of every 4,000 companies. Whoever adds the row up is owed an explanation, not a
+    discrepancy.
+    """
+    out = {}
+    for name, cat in (getattr(res, "categories", None) or {}).items():
+        points = cat.get("points") if isinstance(cat, dict) else getattr(cat, "points", None)
+        if points is not None:
+            out[name] = round(float(points), 2)
     return out
 
 
@@ -207,6 +254,7 @@ def _series_from_statements(doc: dict, key: str = "statements",
                 "date": str(inc[i].get("fiscal_date") or "")[:10],
                 "score": res.score, "passed": res.passed, "period": period,
                 "cats": _cat_points(res),
+                "cats_max": _cat_budget(res),
                 "confidence": res.confidence,
             })
     out = out[-MAX_POINTS:]
@@ -318,6 +366,7 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
     medians = _peer_margins(targets, cdir)
 
     built = from_store = from_cache = improving = deteriorating = 0
+    cleared = 0
     for i, r in enumerate(targets, 1):
         # This is a read-modify-write over every company file, so a full pass takes tens of
         # minutes. Without a heartbeat it is indistinguishable from a hang, and a silent
@@ -340,17 +389,30 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
         price_on = _price_lookup(str(r.get("region") or ""), str(r.get("symbol") or ""))
         peers = _peers_for(r, medians)
         sector = r.get("sector")
+        # ONE SOURCE: the quarterly TTM series scraped from stockanalysis. No annual fallback,
+        # no yfinance cache.
+        #
+        # The chain that used to sit here made scores incomparable. A company scored on twenty
+        # quarterly TTM points and one scored on three ANNUAL points ranked side by side as
+        # though the numbers meant the same thing, and which source a company got depended on
+        # whether a scrape had reached it - so the same business could move tens of points by
+        # changing source rather than by changing. Growth measured between annual rows is a
+        # different quantity from growth measured between TTM quarters, and averaging the two
+        # into one ranking is not a ranking.
+        #
+        # A company whose CSV has not been scraped is now UNRATED. That is the intended trade:
+        # no score beats a score that means something different from the one beside it.
         series = _series_from_statements(doc, "statements_ttm", price_on, peers, sector)
-        if series:
-            from_store += 1
-        else:
-            series = _series_from_cache(r["provider_symbol"], peers, sector)
-            if series:
-                from_cache += 1
-            else:
-                series = _series_from_statements(doc, "statements", price_on, peers, sector)
         if not series:
+            # No TTM statements, so no score - and the OLD one has to go with them. Leaving it
+            # was the quiet half of the problem: 1,365 rows kept a score the retired annual
+            # engine had produced, indistinguishable on the page from one this engine computed,
+            # and permanent because nothing would ever rewrite a row it could not score.
+            cleared += _clear_score(r, doc)
+            with contextlib.suppress(OSError):
+                cfile.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
             continue
+        from_store += 1
 
         direction, change = _trend(series)
         stats = _history_stats(series)
@@ -470,6 +532,7 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
     result: dict[str, Any] = {
         "targets": len(targets), "built": built,
         "quarterly_from_store": from_store, "quarterly_from_cache": from_cache,
+        "cleared_no_ttm": cleared,
         "improving": improving, "deteriorating": deteriorating,
     }
     log.info("refresh-quality-history: %s", result)

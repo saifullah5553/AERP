@@ -402,16 +402,31 @@ def apply_to_snapshot(data_dir: Path, store_dir: Path,
                 doc = json.loads(cfile.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 continue
-            # Never trade richer history for thinner. A company whose scrape came back partial
-            # would otherwise lose the years it already had, and the quality gate needs 5 known
-            # checks before it will score at all - so a silent downgrade reads as "no data"
-            # rather than as an error.
+            # Two SEPARATE series, and they must be judged separately.
+            #
+            # The annual guard is right: never trade richer history for thinner, because a
+            # partial scrape would otherwise cost a company the years it already had, and the
+            # quality gate needs five known checks before it scores at all.
+            #
+            # But `continue` also skipped statements_ttm, which is a different series and the
+            # one scoring PREFERS. HUB holds ten quarterly TTM periods in the store and had
+            # more annual rows on file than those ten quarters can derive, so its whole TTM
+            # series was discarded on the strength of an unrelated comparison - and it scored
+            # 3 points off annual data instead of 10 off TTM. 785 Australian companies were in
+            # exactly that position, which is what "recent quarters have no score" looked like.
+            ttm = _statement_rows(rec, currency, quarterly=True)
+            wrote_something = False
+            if ttm.get("income"):
+                doc["statements_ttm"] = ttm
+                wrote_something = True
             have = len((doc.get("statements") or {}).get("income") or [])
-            if have > len(annual.get("income") or []):
+            if have <= len(annual.get("income") or []):
+                doc["statements"] = annual
+                wrote_something = True
+            else:
                 skipped += 1
+            if not wrote_something:
                 continue
-            doc["statements"] = annual
-            doc["statements_ttm"] = _statement_rows(rec, currency, quarterly=True)
             try:
                 cfile.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
             except OSError:

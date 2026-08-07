@@ -148,9 +148,18 @@ def test_apply_never_replaces_richer_history(tmp_path: Path) -> None:
 
     from app.ingestion.fundamentals_store import apply_to_snapshot
 
-    assert apply_to_snapshot(tmp_path / "data", store, regions=["us"]) == {"us": 0}
+    apply_to_snapshot(tmp_path / "data", store, regions=["us"])
     doc = json.loads((cdir / "AAA.json").read_text(encoding="utf-8"))
+
+    # The guarantee this test is named for: the five annual years survive a one-period scrape.
     assert len(doc["statements"]["income"]) == 5
+
+    # ...but the TTM series IS written, because it is a DIFFERENT series and the only one
+    # scoring reads. Skipping the whole company to protect the annual history cost 785
+    # Australian companies their entire quarterly history - HUB held ten TTM periods in the
+    # store and none in its file, and scored three points off annual data instead of ten off
+    # TTM. Counting files written is not the property worth asserting; these two are.
+    assert doc["statements_ttm"]["income"], "the TTM series was discarded with the annual guard"
 
 
 def test_consolidate_merges_instead_of_dropping_absent_companies(tmp_path: Path) -> None:

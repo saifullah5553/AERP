@@ -56,6 +56,10 @@ export interface QualityPoint {
   /** Marks out of growth 20, profitability 20, cash_flow 25, balance_sheet 15,
    *  liquidity 10, working_capital 10. */
   cats?: Record<string, number> | null;
+  /** Points AVAILABLE per category for that period. Zero means the category did not apply -
+   *  a bank has no cash-conversion cycle - and the score renormalises over the rest, which is
+   *  why the six marks can add to less than the published score. */
+  cats_max?: Record<string, number> | null;
   confidence?: number | null;
 }
 

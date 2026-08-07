@@ -69,11 +69,15 @@ def test_leverage_can_no_longer_be_waved_through() -> None:
     assert levered.checks["net_debt_to_ebitda_safe"] is False     # 5.5x
     assert levered.checks["interest_coverage_safe"] is False      # 1.1x
     assert levered.checks["quick_ratio_healthy"] is False
-    # One reported period cannot be scored by the six-category engine, which needs a
-    # history to measure trend and year-on-year change - so it reports None rather than
-    # a number. The property this test names is asserted against the live engine, on a
-    # full 20-period company, in test_fundamental_quality.py.
-    assert sound.score is None and levered.score is None
+    # A single reported period IS scored now: fundamentals come only from the scraped TTM
+    # CSVs, and refusing to score a company we hold real statements for would leave it
+    # unrated rather than thinly rated. Growth and every trend need two periods and drop
+    # out, so the categories renormalise and data confidence carries the thinness.
+    for res in (sound, levered):
+        assert res.score is not None and 0 <= res.score <= 100
+        # Growth is uncomputable from one period, so its budget leaves the total
+        # rather than scoring zero against the company.
+        assert res.categories["growth"]["points"] == 0.0
 
 
 def test_quick_ratio_excludes_inventory() -> None:
@@ -107,11 +111,15 @@ def test_cash_generation_outweighs_a_tidy_balance_sheet() -> None:
     """Same company twice, differing only in whether it generates cash."""
     generating = assess_quality(_company(ocf=180.0, fcf=120.0))
     burning = assess_quality(_company(ocf=-180.0, fcf=-220.0))
-    # One reported period cannot be scored by the six-category engine, which needs a
-    # history to measure trend and year-on-year change - so it reports None rather than
-    # a number. The property this test names is asserted against the live engine, on a
-    # full 20-period company, in test_fundamental_quality.py.
-    assert generating.score is None and burning.score is None
+    # A single reported period IS scored now: fundamentals come only from the scraped TTM
+    # CSVs, and refusing to score a company we hold real statements for would leave it
+    # unrated rather than thinly rated. Growth and every trend need two periods and drop
+    # out, so the categories renormalise and data confidence carries the thinness.
+    for res in (generating, burning):
+        assert res.score is not None and 0 <= res.score <= 100
+        # Growth is uncomputable from one period, so its budget leaves the total
+        # rather than scoring zero against the company.
+        assert res.categories["growth"]["points"] == 0.0
 
 
 def test_returns_are_computed_even_though_they_are_not_scored() -> None:
@@ -174,11 +182,15 @@ def test_margins_are_graded_against_peers_not_a_fixed_line() -> None:
 
     assert software.grades["gross_margin_healthy"] == 0.0
     assert grocery.grades["gross_margin_healthy"] == 100.0
-    # One reported period cannot be scored by the six-category engine, which needs a
-    # history to measure trend and year-on-year change - so it reports None rather than
-    # a number. The property this test names is asserted against the live engine, on a
-    # full 20-period company, in test_fundamental_quality.py.
-    assert grocery.score is None and software.score is None
+    # A single reported period IS scored now: fundamentals come only from the scraped TTM
+    # CSVs, and refusing to score a company we hold real statements for would leave it
+    # unrated rather than thinly rated. Growth and every trend need two periods and drop
+    # out, so the categories renormalise and data confidence carries the thinness.
+    for res in (grocery, software):
+        assert res.score is not None and 0 <= res.score <= 100
+        # Growth is uncomputable from one period, so its budget leaves the total
+        # rather than scoring zero against the company.
+        assert res.categories["growth"]["points"] == 0.0
 
 
 def test_a_loss_making_peer_group_falls_back_to_absolute_anchors() -> None:
@@ -205,11 +217,15 @@ def test_operating_and_free_cash_flow_are_scored_by_magnitude() -> None:
     assert thin.metrics["fcf_margin"] == 0.005
     assert strong.grades["cash_flow_positive"] > thin.grades["cash_flow_positive"]
     assert strong.grades["free_cash_flow_positive"] > thin.grades["free_cash_flow_positive"]
-    # One reported period cannot be scored by the six-category engine, which needs a
-    # history to measure trend and year-on-year change - so it reports None rather than
-    # a number. The property this test names is asserted against the live engine, on a
-    # full 20-period company, in test_fundamental_quality.py.
-    assert strong.score is None and thin.score is None
+    # A single reported period IS scored now: fundamentals come only from the scraped TTM
+    # CSVs, and refusing to score a company we hold real statements for would leave it
+    # unrated rather than thinly rated. Growth and every trend need two periods and drop
+    # out, so the categories renormalise and data confidence carries the thinness.
+    for res in (strong, thin):
+        assert res.score is not None and 0 <= res.score <= 100
+        # Growth is uncomputable from one period, so its budget leaves the total
+        # rather than scoring zero against the company.
+        assert res.categories["growth"]["points"] == 0.0
 
 
 def test_roic_is_earned_on_capital_actually_employed() -> None:

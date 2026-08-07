@@ -240,6 +240,15 @@ def _weigh(parts: dict[str, tuple[float | None, float]], points: float) -> Categ
     """
     live = {k: (s, w) for k, (s, w) in parts.items() if s is not None}
     total_w = sum(w for _, w in live.values())
+    if not total_w:
+        # NOTHING in this category could be computed, which is not the same as failing it.
+        # Scoring 0 out of the full budget marks a company down for what we cannot see - and
+        # with a single quarter of history, growth and every trend are uncomputable, so a
+        # newly-scraped company would be handed 0/20 for growth it was never measured on.
+        # Dropping the budget to zero renormalises the category away, exactly as a bank's
+        # working capital is, and the loss is reported through data confidence instead.
+        return Category(points=0.0, earned=0.0,
+                        parts={k: None for k in parts})
     earned = (sum(s * w for s, w in live.values()) / total_w * points) if total_w else 0.0
     return Category(points=points, earned=earned,
                     parts={k: (round(s, 4) if s is not None else None)
@@ -747,7 +756,11 @@ def score_fundamentals(statements: dict[str, list[dict]],
 
     financial = (sector or "").strip().lower() in FINANCIAL_SECTORS
     required = _ESSENTIAL_FINANCIAL if financial else _ESSENTIAL
-    if periods < 2 or any(not _clean(m[k]) for k in required):
+    # ONE period is enough to score a level, which is what the CSVs sometimes give for a newly
+    # covered company. Growth and every trend need two and simply drop out - the categories
+    # renormalise over what could be measured, and data confidence carries the thinness. The
+    # alternative is refusing to score a company we hold real statements for.
+    if periods < 1 or any(not _clean(m[k]) for k in required):
         return FundamentalScore(score=None, confidence=confidence, grade="Unrated",
                                 categories={}, metrics={}, flags=["insufficient statements"],
                                 periods=periods)
