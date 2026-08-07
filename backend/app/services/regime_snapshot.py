@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.logging import get_logger
+from app.services.macro_regime import REGION_LABEL
 
 log = get_logger(__name__)
 
@@ -146,7 +147,12 @@ def merge_live_signals(regime: dict[str, Any], data_dir: str | Path,
         keep = [s for s in (country.get("signals") or [])
                 if s.get("key") not in {sig["key"] for sig in fresh}]
         country["signals"] = fresh + keep
-        country.setdefault("region", region)
+        country["region"] = region
+        # ALWAYS set the label, never setdefault. A market this function creates - Dubai had no
+        # regime entry at all - would otherwise render as a card with no title, which is exactly
+        # how it shipped. And a market that was RENAMED keeps the old label forever if the
+        # existing entry is left alone: "GCC (Saudi)" survived the rename to "Saudi (Tadawul)".
+        country["label"] = REGION_LABEL.get(region, region.upper())
 
         scored = [(s["key"], s["score"]) for s in country["signals"]
                   if s.get("score") is not None]

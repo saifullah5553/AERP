@@ -314,13 +314,47 @@ def build_region(rows: list[dict], region: str, prices: Prices,
     }
 
 
+def _has_bars(region: str) -> bool:
+    """Does the local OHLC store hold anything at all for this market?
+
+    Cheap on purpose - one directory listing, not a load of every symbol. The question is only
+    whether the input exists, not how complete it is.
+    """
+    from app.ingestion.ohlc_store import STORE
+
+    folder = STORE / region
+    return folder.is_dir() and any(folder.iterdir())
+
+
 def build(data_dir: str | Path, top_n: int = TOP_N,
           quarters: int = QUARTERS) -> dict[str, Any]:
     out = Path(data_dir)
     rows = json.loads((out / "screener.json").read_text(encoding="utf-8"))
     regions = [r for r in REGION_LABELS if any(x.get("region") == r for x in rows)]
+
+    # What is already published, so a run without the inputs cannot erase it.
+    try:
+        prior = (json.loads((out / "rebalance_ledger.json").read_text(encoding="utf-8"))
+                 .get("markets") or {})
+    except (OSError, json.JSONDecodeError):
+        prior = {}
+
     ledger = {}
     for region in regions:
+        # NO PRICE HISTORY, NO REBUILD. data/ohlc is gitignored - it is hundreds of megabytes
+        # and rebuildable - so CI starts every run with an empty store, and export-static runs
+        # BEFORE refresh-prices anyway. A company with no bars cannot be picked, so the whole
+        # market rebuilt as zero trades and overwrote a good history with an artefact of a
+        # missing input: every market published 0 trades after the last deploy.
+        #
+        # This is not the freeze pattern. It is "do not replace real output with the shape of
+        # an absent input", and it self-heals the moment the bars are there.
+        if not _has_bars(region) and prior.get(region, {}).get("realised_trades"):
+            ledger[region] = prior[region]
+            log.warning("rebalance-ledger[%s]: no stored bars - keeping the published history "
+                        "(%d trades) rather than rebuilding it empty",
+                        region, prior[region].get("realised_trades", 0))
+            continue
         prices = Prices(region)
         # The SAME size the live portfolio holds for this market. Reconstructing a top-20 US
         # history while the portfolio ran top-15 described a rule nobody was following, and was

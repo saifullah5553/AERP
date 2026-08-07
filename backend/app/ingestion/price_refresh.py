@@ -289,10 +289,33 @@ def fill_missing_prices(out: Path) -> dict[str, int]:
     try:
         rows = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return {"filled": 0}
+        return {"filled": 0, "moves": 0}
 
-    filled = 0
+    filled = moved = 0
     for r in rows:
+        # The DAILY MOVE, from the same stored history, whenever the live feed did not supply
+        # one. This is what the advancers/decliners tiles count, and they were counting only
+        # the rows that happened to have it: Saudi showed 11 up and 11 down out of 385 because
+        # 23 rows carried a change, and Dubai showed 0 and 0 because none did. A market tile
+        # reporting on 6% of its market reads as the market.
+        if r.get("change_pct") is None:
+            region, symbol = str(r.get("region") or ""), str(r.get("symbol") or "")
+            if region and symbol:
+                try:
+                    bars = load_bars(region, symbol)
+                except Exception:  # noqa: BLE001
+                    bars = {}
+                days = sorted(bars)[-2:] if bars else []
+                if len(days) == 2:
+                    try:
+                        prev, last = float(bars[days[0]][4]), float(bars[days[1]][4])
+                    except (TypeError, ValueError, IndexError):
+                        prev = last = 0.0
+                    if prev > 0 and last > 0:
+                        r["change"] = round(last - prev, 6)
+                        r["change_pct"] = round((last / prev - 1) * 100, 6)
+                        moved += 1
+
         if r.get("price") is not None:
             continue
         region, symbol = str(r.get("region") or ""), str(r.get("symbol") or "")
@@ -316,7 +339,7 @@ def fill_missing_prices(out: Path) -> dict[str, int]:
         r["price_source"] = f"last close {last}"
         filled += 1
 
-    if filled:
+    if filled or moved:
         path.write_text(json.dumps(rows), encoding="utf-8")
         log.info("fill-missing-prices: %d rows priced from stored history", filled)
     return {"filled": filled}
