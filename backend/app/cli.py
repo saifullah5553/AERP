@@ -28,11 +28,15 @@ def _region(value: str | None) -> MarketRegion | None:
     return MarketRegion(value) if value else None
 
 
-# Only markets whose fundamentals are complete enough to reconstruct honestly. India and
-# Australia are 58% and 67% scored while their scrapes run, so a "top 15 of what we happen to
-# have" history would read as the rule's record rather than as a half-loaded universe. They
-# keep their existing holdings untouched until their data is in.
-RECONSTRUCTED_REGIONS = ("us", "psx")
+# Every market whose CSVs are in. The restriction to us/psx was there because India and
+# Australia were 58% and 67% scored mid-scrape, and a "top 15 of whatever we happen to hold"
+# history reads as the rule's record rather than as a half-loaded universe. All six now score
+# from the same source, so all six get a portfolio and a quarterly history.
+#
+# The thin-market guard has not gone, it has moved to where it belongs: build_region refuses a
+# market with fewer than MIN_UNIVERSE names, because picking 20 out of 25 is the market with a
+# haircut rather than a selection.
+RECONSTRUCTED_REGIONS = ("us", "psx", "india", "australia", "gcc", "dfm")
 
 
 def refresh_derived_views(out) -> None:

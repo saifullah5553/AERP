@@ -19,7 +19,8 @@ REGION_LABELS: dict[str, str] = {
     "us": "US",
     "psx": "Pakistan",
     "india": "India",
-    "gcc": "GCC",
+    "gcc": "Saudi (Tadawul)",
+    "dfm": "Dubai (DFM)",
     "australia": "Australia",
     "global": "Global",
 }

@@ -15,7 +15,6 @@ interface Point {
   cats?: Record<string, number> | null;
   /** Points AVAILABLE per category for that period - not always the standard budget. */
   cats_max?: Record<string, number> | null;
-  confidence?: number | null;
 }
 
 const CATEGORIES: { key: string; label: string; outOf: number }[] = [

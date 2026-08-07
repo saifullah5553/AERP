@@ -41,14 +41,6 @@ export default function FundamentalScorecard({ card }: { card: Scorecard }) {
         </div>
         <div className="flex flex-col gap-0.5">
           <span className="text-sm font-semibold text-slate-200">{card.grade}</span>
-          {card.confidence != null && (
-            // Not decoration. A 62 built on five periods and half the inputs is a weaker claim
-            // than a 62 built on twenty and all of them, and only this says which you have.
-            <span className="text-[11px] text-slate-500"
-                  title="How much of this score rests on reported data rather than on what happened to be available">
-              data confidence {card.confidence.toFixed(0)}%
-            </span>
-          )}
         </div>
       </div>
 

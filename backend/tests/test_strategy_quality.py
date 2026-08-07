@@ -40,7 +40,6 @@ def test_strong_grower_with_building_cash_passes() -> None:
     # a number. The property this test names is asserted against the live engine, on a
     # full 20-period company, in test_fundamental_quality.py.
     assert q.score is None
-    assert q.confidence is not None
 
 
 def test_falling_eps_fails_even_when_everything_else_is_fine() -> None:

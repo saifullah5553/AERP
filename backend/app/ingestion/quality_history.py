@@ -149,7 +149,6 @@ def _series_from_cache(sym: str, peers: dict | None = None,
                 # coming down, and those are different companies.
                 "cats": _cat_points(res),
                 "cats_max": _cat_budget(res),
-                "confidence": res.confidence,
             })
     out = out[-MAX_POINTS:]
     if out:
@@ -255,7 +254,6 @@ def _series_from_statements(doc: dict, key: str = "statements",
                 "score": res.score, "passed": res.passed, "period": period,
                 "cats": _cat_points(res),
                 "cats_max": _cat_budget(res),
-                "confidence": res.confidence,
             })
     out = out[-MAX_POINTS:]
     if out:
@@ -432,8 +430,6 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
         card["score"] = newest["score"]
         card["grade"] = grade_for(newest["score"])
         card["as_of"] = newest.get("date")
-        if newest.get("confidence") is not None:
-            card["confidence"] = newest["confidence"]
         # Categories come from the newest period in full - earned, budget and the sub-metrics
         # behind them - so a category the engine has retired cannot linger on the page. The
         # scorecard was still itemising "Capital Efficiency /20", which no longer exists.
@@ -524,6 +520,12 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
     # Every row, not just the ones that rebuilt this pass. A row that failed to build keeps
     # its old fields, and those could already disagree with its own history: after the writer
     # was fixed, 245 rows still carried 285 quarters their history no longer contained.
+    # Data confidence was removed from the engine; strip the values it left behind. Dropping
+    # the WRITE does not drop the FIELD - a row that still scores keeps whatever it last had,
+    # so the page would go on showing a number nothing computes any more.
+    retired = sum(1 for r in rows if r.pop("quality_confidence", None) is not None)
+    if retired:
+        log.info("quality-history: removed %d stale data-confidence values", retired)
     pruned = sum(prune_quarter_columns(r) for r in rows)
     if pruned:
         log.info("quality-history: dropped %d quarter values with no history behind them",

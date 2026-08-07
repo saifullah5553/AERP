@@ -88,12 +88,26 @@ def test_both_pages_size_each_market_the_same_way() -> None:
     assert SIZE_BY_REGION["us"] == 15
 
 
-def test_the_reconstruction_covers_only_complete_markets() -> None:
-    """India at 58% and Australia at 67% scored would render a half-loaded universe as a
-    record of the rule. They are excluded until their scrapes finish."""
-    from app.cli import RECONSTRUCTED_REGIONS
+def test_every_market_with_data_gets_a_portfolio_and_a_history() -> None:
+    """The us/psx restriction was temporary - India and Australia were mid-scrape at 58% and
+    67%, and a "top 15 of whatever we hold" history reads as the rule's record rather than as
+    a half-loaded universe. All six now score from the same TTM source.
 
-    assert set(RECONSTRUCTED_REGIONS) == {"us", "psx"}
+    The thin-market guard did not go away, it moved: build_region refuses a market with fewer
+    than MIN_UNIVERSE scored names, which is the check that actually protects the output.
+    """
+    from app.cli import RECONSTRUCTED_REGIONS
+    from app.ingestion.rebalance_ledger import MIN_UNIVERSE, REGION_LABELS
+
+    assert set(RECONSTRUCTED_REGIONS) == {"us", "psx", "india", "australia", "gcc", "dfm"}
+    # A market cannot be reconstructed if the ledger has no label for it.
+    assert set(RECONSTRUCTED_REGIONS) <= set(REGION_LABELS)
+    assert MIN_UNIVERSE >= 30
+
+
+def test_dfm_is_sized_for_the_market_it_is() -> None:
+    """51 listings. A top-15 would be a third of the market - that is an index, not a pick."""
+    assert SIZE_BY_REGION["dfm"] < SIZE_BY_REGION["us"]
 
 
 def test_a_holding_records_the_quarter_that_bought_it_not_the_newest_filing(tmp_path) -> None:

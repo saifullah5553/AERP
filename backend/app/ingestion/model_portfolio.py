@@ -30,7 +30,11 @@ PORTFOLIO = "model_portfolio.json"
 # Below a 1.5x gap between the recorded price and the stored history, the difference is two
 # sources disagreeing, not a split. The smallest split worth restating is 2:1.
 SPLIT_LIKE_MIN = 1 / 1.5
-SIZE_BY_REGION = {"psx": 20, "us": 15, "india": 15, "australia": 15, "gcc": 15}
+# DFM lists ~51 companies, so a top-15 is a third of the market. Ten keeps it a
+# selection; build_region still refuses the market outright if it thins below
+# MIN_UNIVERSE names with scores.
+SIZE_BY_REGION = {"psx": 20, "us": 15, "india": 15, "australia": 15, "gcc": 15,
+                  "dfm": 10}
 DEFAULT_SIZE = 15
 
 
@@ -129,7 +133,6 @@ def _rank(rows: list[dict], region: str, company: Path,
             "name": r.get("name"), "sector": r.get("sector"),
             "quality_score": score, "price": r.get("price"),
             "quality_grade": r.get("quality_grade"),
-            "quality_confidence": r.get("quality_confidence"),
             "results_through": basis or r.get("results_through"),
         }))
     scored.sort(key=lambda t: -t[0])
@@ -230,7 +233,6 @@ def _rebalance(data_dir: str | Path, force: bool = False) -> dict[str, Any]:
             if sym in target:
                 h["quality_score"] = target[sym]["quality_score"]
                 h["quality_grade"] = target[sym].get("quality_grade")
-                h["quality_confidence"] = target[sym].get("quality_confidence")
                 h["results_through"] = target[sym].get("results_through")
                 keep.append(h)
             else:
@@ -271,7 +273,6 @@ def _rebalance(data_dir: str | Path, force: bool = False) -> dict[str, Any]:
                 "entry_price": bought_at if bought_at is not None else t["price"],
                 "entry_quality": t["quality_score"], "quality_score": t["quality_score"],
                 "quality_grade": t.get("quality_grade"),
-                "quality_confidence": t.get("quality_confidence"),
                 "results_through": t.get("results_through"),
             })
             gained = t["quality_score"]
@@ -436,7 +437,6 @@ def adopt_from_ledger(data_dir: str | Path,
                 "entry_quality": row.get("quality_score"),
                 "quality_score": row.get("quality_score"),
                 "quality_grade": row.get("quality_grade"),
-                "quality_confidence": row.get("quality_confidence"),
                 # The quarter whose results BOUGHT it, from the ledger - NOT the company's
                 # newest filing off the screener row. Taking the latter dated ten holdings to
                 # 2026-06-30 while they were bought on 2026-06-01, which asserts a purchase
@@ -500,7 +500,7 @@ def mark(data_dir: str | Path) -> dict[str, Any]:
             # company's latest filing made 14 holdings claim they were bought on Jun-26 results
             # while the rebalance had ranked the whole market on Mar-26 - the page would have
             # asserted a basis that did not exist on the day.
-            for field in ("quality_grade", "quality_confidence", "quality_score"):
+            for field in ("quality_grade", "quality_score"):
                 if fresh.get(field) is not None:
                     h[field] = fresh[field]
             h["price"] = px

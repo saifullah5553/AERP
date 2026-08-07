@@ -47,8 +47,15 @@ MIN_UNIVERSE = 30
 MIN_COVERAGE = 0.70
 
 REGION_LABELS = {
+    # Dubai, added once its CSVs landed. A market absent from this map is absent from the
+    # quarterly history and the portfolio no matter how complete its data is.
+    "dfm": "Dubai (DFM)",
     "psx": "Pakistan", "us": "US", "india": "India",
-    "australia": "Australia", "gcc": "GCC",
+    "australia": "Australia",
+    # Saudi only - the region key stays "gcc" because it is stored in every snapshot and
+    # every OHLC path, but the LABEL has to say what is actually in it. With Dubai now a
+    # separate market beside it, "GCC" reads as though it covered both.
+    "gcc": "Saudi (Tadawul)",
 }
 
 

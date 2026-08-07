@@ -36,8 +36,8 @@ PURELY QUANTITATIVE. Only the statements decide the score. No country, inflation
 score moves because a macro constant was revised.
 
 WHAT CANNOT BE COMPUTED IS NOT GUESSED. A missing input drops out and its category renormalises
-over what remains; the loss is reported as data confidence rather than filled with a default
-that would read as a real measurement.
+over what remains, rather than being filled with a default that would read as a real
+measurement. A category with nothing measurable drops its budget instead of scoring zero.
 
 The input is ALREADY TTM - each row is a full trailing twelve months. Nothing here re-rolls or
 re-sums it.
@@ -246,7 +246,7 @@ def _weigh(parts: dict[str, tuple[float | None, float]], points: float) -> Categ
         # with a single quarter of history, growth and every trend are uncomputable, so a
         # newly-scraped company would be handed 0/20 for growth it was never measured on.
         # Dropping the budget to zero renormalises the category away, exactly as a bank's
-        # working capital is, and the loss is reported through data confidence instead.
+        # working capital is.
         return Category(points=0.0, earned=0.0,
                         parts={k: None for k in parts})
     earned = (sum(s * w for s, w in live.values()) / total_w * points) if total_w else 0.0
@@ -700,20 +700,6 @@ def _extract(statements: dict[str, list[dict]]) -> dict[str, list[float | None]]
     return out
 
 
-def _data_confidence(m: dict, periods: int) -> float:
-    """0-100: how much of this score rests on real data rather than on what survived.
-
-    Two halves - how many of the twenty periods exist, and how many of the inputs are actually
-    populated. A score built on four periods and half the fields may be the best available read
-    and still should not be trusted like one built on twenty and all of them.
-    """
-    depth = min(1.0, periods / MAX_PERIODS)
-    wanted = _INCOME_KEYS + _BALANCE_KEYS + _CASHFLOW_KEYS
-    filled = sum(1 for k in wanted if _latest(m.get(k) or [])is not None)
-    breadth = filled / len(wanted)
-    return round(100 * (depth * 0.45 + breadth * 0.55), 1)
-
-
 GRADES = ((90, "Exceptional"), (80, "Excellent"), (70, "Good"),
           (60, "Acceptable"), (50, "Weak"), (40, "Poor"))
 
@@ -730,7 +716,6 @@ def grade_for(score: float | None) -> str:
 @dataclass(slots=True)
 class FundamentalScore:
     score: float | None
-    confidence: float
     grade: str
     categories: dict[str, dict[str, Any]]
     metrics: dict[str, float | None]
@@ -752,16 +737,15 @@ def score_fundamentals(statements: dict[str, list[dict]],
     m = _extract(statements)
     per_year = periods_per_year(statements.get("income") or [])
     periods = len(_clean(m["revenue"])) or len(_clean(m["net_income"]))
-    confidence = _data_confidence(m, periods)
 
     financial = (sector or "").strip().lower() in FINANCIAL_SECTORS
     required = _ESSENTIAL_FINANCIAL if financial else _ESSENTIAL
     # ONE period is enough to score a level, which is what the CSVs sometimes give for a newly
     # covered company. Growth and every trend need two and simply drop out - the categories
-    # renormalise over what could be measured, and data confidence carries the thinness. The
-    # alternative is refusing to score a company we hold real statements for.
+    # renormalise over what could be measured. The alternative is refusing to score a company
+    # we hold real statements for.
     if periods < 1 or any(not _clean(m[k]) for k in required):
-        return FundamentalScore(score=None, confidence=confidence, grade="Unrated",
+        return FundamentalScore(score=None, grade="Unrated",
                                 categories={}, metrics={}, flags=["insufficient statements"],
                                 periods=periods)
 
@@ -782,7 +766,6 @@ def score_fundamentals(statements: dict[str, list[dict]],
 
     return FundamentalScore(
         score=score,
-        confidence=confidence,
         grade=grade_for(score),
         categories={k: {"earned": round(c.earned, 2), "points": c.points, "parts": c.parts}
                     for k, c in cats.items()},

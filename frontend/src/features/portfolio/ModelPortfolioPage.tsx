@@ -10,7 +10,8 @@ const MARKETS: { key: string; label: string }[] = [
   { key: "us", label: "US" },
   { key: "india", label: "India" },
   { key: "australia", label: "Australia" },
-  { key: "gcc", label: "GCC" },
+  { key: "gcc", label: "Saudi (Tadawul)" },
+  { key: "dfm", label: "Dubai (DFM)" },
 ];
 
 function pctColor(v: number | null | undefined): string {

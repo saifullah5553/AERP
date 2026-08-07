@@ -45,7 +45,8 @@ REGIONS = {
     "australia": ("AU", "^AXJO", False),
 }
 REGION_LABEL = {"psx": "Pakistan", "us": "United States", "india": "India",
-                "gcc": "GCC (Saudi)", "australia": "Australia"}
+                "gcc": "Saudi (Tadawul)", "australia": "Australia",
+                "dfm": "Dubai (DFM)"}
 
 # Signal weights (configurable). Renormalized over whichever signals are available.
 WEIGHTS = {

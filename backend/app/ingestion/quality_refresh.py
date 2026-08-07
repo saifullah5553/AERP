@@ -146,7 +146,6 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
         # was being discarded. The grade names what the score means, and confidence says how
         # much of it rests on real data - a 62 built on four periods and half the inputs is
         # not the same claim as a 62 built on twenty and all of them.
-        r["quality_confidence"] = q.confidence
         r["quality_grade"] = q.grade_label
         # A failed gate is a verdict on its own - no price data needed to say "avoid".
         if not q.eligible:
@@ -178,7 +177,7 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
         # The full scorecard, for the company page: category-by-category, the current TTM
         # figures behind it, and any earnings-quality red flags.
         doc["fundamental_scorecard"] = {
-            "score": q.score, "confidence": q.confidence, "grade": q.grade_label,
+            "score": q.score, "grade": q.grade_label,
             "categories": q.categories, "metrics": q.metrics, "flags": q.flags,
         }
         try:

@@ -135,13 +135,6 @@ def test_a_bank_skips_metrics_that_do_not_apply() -> None:
     assert bank.score is not None and 0 <= bank.score <= 100
 
 
-def test_confidence_falls_with_shorter_history() -> None:
-    deep = score_fundamentals(_company(periods=20))
-    thin = score_fundamentals(_company(periods=5))
-    assert deep.confidence > thin.confidence
-    assert deep.periods == 20
-
-
 def test_nothing_is_invented_when_there_is_no_data() -> None:
     empty = score_fundamentals({"income": [], "balance": [], "cashflow": []})
     assert empty.score is None

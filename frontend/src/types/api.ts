@@ -8,7 +8,14 @@ export type AssetClass =
   | "index"
   | "etf";
 
-export type MarketRegion = "psx" | "us" | "india" | "gcc" | "australia" | "global";
+export type MarketRegion =
+  | "psx"
+  | "us"
+  | "india"
+  | "gcc"
+  | "australia"
+  | "dfm"
+  | "global";
 
 export interface RegimeSignal {
   key: string;
@@ -121,8 +128,6 @@ export interface ScreenerRow {
   strategy_action?: "buy" | "hold" | "watch" | "avoid" | null;
   strategy_conviction?: number | null;
   quality_score?: number | null;
-  /** 0-100: how much real data is behind quality_score. */
-  quality_confidence?: number | null;
   /** Exceptional / Excellent / Good / Acceptable / Weak / Poor / Very Poor. */
   quality_grade?: string | null;
   quality_passed?: boolean | null;

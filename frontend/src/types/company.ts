@@ -60,7 +60,6 @@ export interface QualityPoint {
    *  a bank has no cash-conversion cycle - and the score renormalises over the rest, which is
    *  why the six marks can add to less than the published score. */
   cats_max?: Record<string, number> | null;
-  confidence?: number | null;
 }
 
 export interface QualityTrend {
@@ -84,8 +83,6 @@ export interface ScoreCategory {
 }
 export interface FundamentalScorecard {
   score: number | null;
-  /** 0-100: how much of the score rests on real data rather than what survived. */
-  confidence: number | null;
   grade: string;
   categories: Record<string, ScoreCategory>;
   metrics: Record<string, number | null>;

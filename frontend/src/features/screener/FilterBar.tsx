@@ -10,7 +10,8 @@ const REGIONS: { value: MarketRegion | "all"; label: string }[] = [
   { value: "us", label: "US" },
   { value: "psx", label: "Pakistan" },
   { value: "india", label: "India" },
-  { value: "gcc", label: "GCC" },
+  { value: "gcc", label: "Saudi (Tadawul)" },
+  { value: "dfm", label: "Dubai (DFM)" },
   { value: "australia", label: "Australia" },
   { value: "global", label: "Forex / Commodities / Crypto" },
 ];

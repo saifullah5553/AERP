@@ -272,7 +272,6 @@ class QualityResult:
     reasons: list[str] = field(default_factory=list)
     improving: bool = False        # not yet fully strong, but the trend is the right way
     # From the six-category engine (fundamental_quality.py), which now sets `score`.
-    confidence: float | None = None            # 0-100: how much real data is behind it
     grade_label: str = "Unrated"               # Exceptional / Excellent / Good / ...
     categories: dict = field(default_factory=dict)   # per-category earned/points/parts
     flags: list[str] = field(default_factory=list)   # earnings-quality red flags
@@ -648,7 +647,7 @@ def assess_quality(statements: dict[str, list[dict]], min_checks: int = 5,
     score = fq.score
 
     return QualityResult(passed=passed, score=score, checks=checks, grades=grades,
-                         confidence=fq.confidence, grade_label=fq.grade,
+                         grade_label=fq.grade,
                          categories=fq.categories, flags=fq.flags,
                          # The figures the SCORE was computed from. Kept separate from
                          # `metrics`, which the older checks still read, so the page can show

@@ -114,4 +114,7 @@ def test_a_market_with_no_history_renders_empty_rather_than_breaking() -> None:
     led = build_region([], "gcc", FakePrices({}))
     assert led["quarters"] == []
     assert led["realised_trades"] == 0
-    assert led["label"] == "GCC"
+    # Saudi only. The region KEY stays "gcc" - it is written into every snapshot and every
+    # OHLC path - but the label has to say what is in it, now that Dubai is a separate market
+    # sitting beside it and "GCC" would read as covering both.
+    assert led["label"] == "Saudi (Tadawul)"
