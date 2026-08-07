@@ -21,9 +21,16 @@ jobs:
     # overlap permanently and report "All jobs were cancelled" - which reads like an outage
     # rather than what it is, a job that ran out of time with nothing to show for it.
     #
-    # 90 minutes is comfortably more than the work needs and comfortably less than the gap, so
-    # a slow run now FAILS, visibly, at a step you can name.
-    timeout-minutes: 90
+    # The budget has to be larger than the sum of the per-step budgets below, or the job kills
+    # itself part-way and reports the same unexplained cancellation this was meant to end:
+    #
+    #   7 ingests x 10 min      70
+    #   compute                 40
+    #   checkout / pip / unpack  5
+    #   worst case             115   <  150, with headroom, and far inside the 6-hour interval
+    #
+    # Change one of those numbers and change this one with it.
+    timeout-minutes: 150
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       AERP_PSX_CSV_DIR: ../data/psx_csv
@@ -72,8 +79,9 @@ jobs:
           run_step() {
             NAME="$1"; shift
             # Bounded individually: an ingest that hangs on a network read otherwise consumes
-            # the whole job budget and takes the steps after it down with it.
-            if timeout 900 "$@"; then
+            # the whole job budget and takes the steps after it down with it. 10 minutes each,
+            # so all seven together still leave room for compute - see timeout-minutes above.
+            if timeout 600 "$@"; then
               OK=$((OK + 1))
             else
               FAILED="$FAILED $NAME"
