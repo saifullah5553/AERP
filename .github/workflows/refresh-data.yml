@@ -33,6 +33,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     env:
       DATABASE_URL: sqlite+pysqlite:///./aerp.db
       AERP_PSX_CSV_DIR: ../data/psx_csv
@@ -153,6 +154,7 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -169,6 +171,7 @@ jobs:
     needs: [build, deploy]
     if: always() # a failed run must still hand off, or the loop dies on the first bad day
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     permissions:
       actions: write
     env:
