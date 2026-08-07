@@ -701,7 +701,12 @@ def _carry_enrichment(fresh: dict, prior: dict | None) -> dict:
     for key, value in prior.items():
         if key.startswith("q_") and _empty(fresh.get(key)) and not _empty(value):
             fresh[key] = value
+    # One definition, in the module that writes these fields.
+    from app.ingestion.quality_history import prune_quarter_columns
+    prune_quarter_columns(fresh)
     return fresh
+
+
 
 
 def cmd_export_static(args: argparse.Namespace) -> None:
@@ -807,6 +812,20 @@ def cmd_export_static(args: argparse.Namespace) -> None:
         if merge:
             regime = _merge_regime(regime, out / "macro_regime.json")
             sector_stats = _merge_sector_stats(sector_stats, out / "sector_stats.json")
+        # ...then overwrite the two signals the snapshot can measure TODAY. The merge above
+        # exists so a partial run does not blank the page, but for every market except Pakistan
+        # it WAS the answer: us/india/gcc/australia held 61.5/57.5/35.5/70.0 unchanged across
+        # all 141 commits that ever touched the file, because their signals read a database the
+        # static pipeline never populates. Index trend and breadth come from prices and are
+        # simply wrong when stale - Australia published breadth of 61.1 against an actual 37.6.
+        # Rates and inflation are deliberately NOT touched: old is not the same as wrong for a
+        # policy rate, and inventing one would be worse than carrying it.
+        try:
+            from app.services.macro_regime import WEIGHTS, _regime_label
+            from app.services.regime_snapshot import merge_live_signals
+            regime = merge_live_signals(regime, out, WEIGHTS, _regime_label)
+        except Exception as exc:  # noqa: BLE001 - a stale regime must not fail the export
+            log.warning("regime snapshot refresh failed: %s", exc)
         raw_materials = build_raw_materials(out / "company")
 
         # Signal inception date + return-since. We can't fabricate a past signal we never
@@ -1116,7 +1135,10 @@ def build_parser() -> argparse.ArgumentParser:
     rn.add_argument("--only-missing", action="store_true", help="only names without news yet")
     eu = add("expand-universe", cmd_expand_universe, limit=True)
     eu.add_argument("--region", required=True,
-                    choices=["us", "india", "australia", "psx"])
+                    # Kept in step with expand_universe._SOURCES. A region missing here
+                    # fails at the argument parser with a usage message, which is easy
+                    # to read as "nothing to do" rather than "the command never ran".
+                    choices=["us", "india", "australia", "psx", "gcc", "dfm"])
     eu.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
     bt = add("backtest", cmd_backtest)
     bt.add_argument("--horizon", type=int, default=60, help="trading days to look forward")

@@ -1,4 +1,4 @@
-import type { ColDef } from "ag-grid-community";
+import type { ColDef, ValueFormatterParams, ValueGetterParams } from "ag-grid-community";
 
 import { fmtInt, fmtNumber, fmtPercent, scoreHeatBg, titleize } from "@/lib/format";
 import type { ScreenerRow } from "@/types/api";
@@ -140,11 +140,16 @@ function categoryColumns(): ColDef<ScreenerRow>[] {
     sortable: true,
     // Read out of the nested object rather than a flat field: six more top-level keys on
     // every one of 11,000 rows is weight the file does not need to carry.
-    valueGetter: (p) => p.data?.score_cats?.[c.key] ?? null,
-    valueFormatter: (p) => (p.value == null ? "—" : p.value.toFixed(1)),
+    valueGetter: (p: ValueGetterParams<ScreenerRow>) =>
+      p.data?.score_cats?.[c.key] ?? null,
+    valueFormatter: (p: ValueFormatterParams<ScreenerRow>) =>
+      typeof p.value === "number" ? p.value.toFixed(1) : "—",
+    // Same shape as `heat`: scoreHeatBg returns "transparent" for a missing value, so the
+    // style is always a string. Returning undefined does not satisfy ag-grid's CellStyle.
     cellStyle: (p: { value: unknown }) => ({
-      backgroundColor:
-        typeof p.value === "number" ? scoreHeatBg((p.value / c.outOf) * 100) : undefined,
+      backgroundColor: scoreHeatBg(
+        typeof p.value === "number" ? (p.value / c.outOf) * 100 : null,
+      ),
     }),
   }));
 }
@@ -212,6 +217,10 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
     // cannot: 62 is a recovery for one business and a collapse for another.
     num("score_percentile", "vs Own", {
       width: 92,
+      // num() derives sortable from SERVER_SORTABLE, which lists what the API can order by.
+      // The static build sorts every field client-side, and an unsortable percentile column
+      // would defeat the reason for adding it.
+      sortable: true,
       headerTooltip:
         "Percentile of the latest fundamental score within this company's own TTM history. " +
         "100 = its best period on record.",
@@ -219,6 +228,7 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
     }),
     num("score_avg", "Avg", {
       width: 84,
+      sortable: true,
       headerTooltip: "Mean fundamental score across the stored TTM history.",
       valueFormatter: (p) => fmtNumber(p.value),
     }),

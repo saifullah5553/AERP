@@ -103,6 +103,12 @@ _LISTED_META = {
     "india": ("NSE", ".NS"),
     "australia": ("ASX", ".AX"),
     "psx": ("PSX", ".KA"),
+    # Neither exchange publishes a directory we can reach, so these lists are captured from
+    # the same stockanalysis listing the fundamentals come from - a name it lists is a name we
+    # can score. Both suffixes were confirmed against live quotes rather than assumed: 2222.SR
+    # returns SAR on exchange SAU, EMAAR.AE returns AED on DFM, and EMAAR.DU does not exist.
+    "gcc": ("Tadawul", ".SR"),
+    "dfm": ("DFM", ".AE"),
 }
 
 
@@ -162,6 +168,11 @@ _SOURCES = {
     # PSX has no machine-readable directory we can reach - its own portal has been down for
     # stretches of this project - so the captured listing is the whole source here.
     "psx": lambda: fetch_listed_symbols("psx"),
+    # 379 Tadawul companies had fundamentals scraped and 23 rows to show them on; DFM had 51
+    # and none at all - the market existed in the store and nowhere on the dashboard. Scoring
+    # cannot reach a company that has no row, so the universe has to carry them first.
+    "gcc": lambda: fetch_listed_symbols("gcc"),
+    "dfm": lambda: fetch_listed_symbols("dfm"),
 }
 
 # Windows can't create files whose base name is a reserved device (PRN.AX.json fails). The

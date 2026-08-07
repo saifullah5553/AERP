@@ -42,6 +42,35 @@ CACHE = Path(__file__).resolve().parents[3] / "data" / "fund_cache"
 MAX_POINTS = 20
 
 
+def quarter_key(iso: str) -> str | None:
+    """'2026-03-31' -> 'q_2026Q1'. None when the date cannot be read."""
+    try:
+        year, month = int(str(iso)[:4]), int(str(iso)[5:7])
+    except (TypeError, ValueError, IndexError):
+        return None
+    return f"q_{year}Q{(month - 1) // 3 + 1}"
+
+
+def prune_quarter_columns(row: dict) -> int:
+    """The q_ columns must be EXACTLY the quarters in score_history, and nothing else.
+
+    Defined here because this module writes them, and imported by the export so both paths
+    enforce one rule. Duplicating five lines across two files is how the two drift, which is
+    the fault this exists to prevent.
+
+    Left alone when there is no history to check against: a row whose rebuild produced nothing
+    keeps what it had rather than being stripped on the strength of a missing input.
+    """
+    dates = row.get("score_history_dates")
+    if not dates:
+        return 0
+    keep = {k for k in (quarter_key(d) for d in dates) if k}
+    stale = [k for k in row if k.startswith("q_") and k not in keep]
+    for key in stale:
+        del row[key]
+    return len(stale)
+
+
 def _statements_at(inc: list, bal: list, cf: list, upto: int) -> dict[str, list[dict]]:
     """Statement view as of index `upto` (inclusive), newest-first, for assess_quality."""
     def pack(rows: list) -> list[dict]:
@@ -409,6 +438,16 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
         # One flat field per quarter (q_2026Q2), because the grid sorts by column id and the
         # static sort path reads a plain numeric field. Emitted only for quarters a company
         # actually reported, so a name with three points costs three fields rather than twenty.
+        #
+        # CLEARED FIRST. These rows survive between runs, and the fields were only ever added,
+        # never removed, so a quarter that dropped out of a company's history kept its old
+        # score forever. The grid then disagreed with itself: the CELL reads score_history and
+        # correctly showed nothing, while the SORT reads these fields and ranked the row on a
+        # number no longer in evidence. Sorting Mar-26 descending put DPM top on a stale 97.01
+        # while its own cell was blank - which reads as "sorting puts blanks first" and is
+        # actually "sorting on a value the page will not show".
+        for stale in [k for k in r if k.startswith("q_")]:
+            del r[stale]
         for point in series:
             when = str(point.get("date") or "")
             if len(when) >= 7:
@@ -420,6 +459,13 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
         improving += direction == "improving"
         deteriorating += direction == "deteriorating"
 
+    # Every row, not just the ones that rebuilt this pass. A row that failed to build keeps
+    # its old fields, and those could already disagree with its own history: after the writer
+    # was fixed, 245 rows still carried 285 quarters their history no longer contained.
+    pruned = sum(prune_quarter_columns(r) for r in rows)
+    if pruned:
+        log.info("quality-history: dropped %d quarter values with no history behind them",
+                 pruned)
     (out / "screener.json").write_text(json.dumps(rows), encoding="utf-8")
     result: dict[str, Any] = {
         "targets": len(targets), "built": built,
