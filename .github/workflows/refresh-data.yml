@@ -103,7 +103,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add frontend/public/data
+          git add frontend/public/data data/prices
 
           # screener.json (11.6 MB) and movers.json (4.3 MB) are ~1.4 MB of packed history
           # EVERY run. That was fine at the 5 runs a day GitHub's scheduler actually

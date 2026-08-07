@@ -280,6 +280,28 @@ def refresh_technicals(
     finally:
         client.close()
 
+    # Keep what we just downloaded. chart-v8 hands back a year of daily bars per symbol and this
+    # pass used to discard every one of them after scoring, so the price history only ever grew
+    # on the machine that ran a separate fetch - and CI, which has no raw CSVs at all, could
+    # price nothing and rebuilt every quarterly history as zero trades. Folding the closes in
+    # here costs no extra request and advances the store on every run, everywhere.
+    try:
+        from app.ingestion.price_pack import merge_series
+
+        by_region: dict[str, dict[str, dict[str, float]]] = {}
+        for r in targets:
+            h = hist.get(r.get("provider_symbol"))
+            if not h or not r.get("region") or not r.get("symbol"):
+                continue
+            dates, _o, _h, _l, closes, _v = h
+            points = {d: c for d, c in zip(dates, closes, strict=False) if d and c}
+            if points:
+                by_region.setdefault(r["region"], {})[r["symbol"]] = points
+        for region, series in by_region.items():
+            log.info("price-pack(%s): %s", region, merge_series(region, series))
+    except Exception as exc:  # noqa: BLE001 - storing history must never fail the refresh
+        log.warning("price-pack from technicals failed: %s", exc)
+
     company = out / "company"
     today = datetime.now(UTC).date().isoformat()
     updated = 0

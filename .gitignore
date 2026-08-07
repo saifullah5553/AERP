@@ -83,6 +83,11 @@ redisdata/
 # Our own accumulated daily OHLC is the opposite - hundreds of MB and growing every day, so it
 # stays local. Yahoo serves a rolling window, which is exactly why we keep our own copy.
 /data/ohlc/
+# ...but DO version the close-only pack built from it. 1.1 GB of per-symbol CSVs
+# cannot be committed; ~45 MB of gzipped closes can, and without them CI cannot
+# price a single company - which rebuilt every quarterly history as zero trades.
+!/data/prices/
+!/data/prices/*.json.gz
 data/fund_cache/
 
 data/earnings_refresh.log

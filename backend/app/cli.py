@@ -87,6 +87,16 @@ def refresh_derived_views(out) -> None:
         log.warning("model-portfolio mark failed: %s", exc)
 
 
+def cmd_pack_prices(args: argparse.Namespace) -> None:
+    """Pack the local daily closes into data/prices/<region>.json.gz for CI to read."""
+    from app.ingestion.price_pack import pack_region
+
+    regions = ([r.strip() for r in args.regions.split(",")] if args.regions
+               else ["us", "india", "australia", "psx", "gcc", "dfm", "global"])
+    for region in regions:
+        log.info("pack-prices(%s): %s", region, pack_region(region))
+
+
 def cmd_pending_results(args: argparse.Namespace) -> None:
     """Write data/pending/<region>.txt - the companies with results we do not hold yet."""
     import json as _json
@@ -234,6 +244,11 @@ def cmd_refresh_ohlc(args: argparse.Namespace) -> None:
         if syms:
             log.info("refresh-ohlc(%s): %s",
                      region, refresh(region, syms, range_=args.range, pause=args.pause))
+            # Re-pack the moment the raw store changes. The pack is what CI prices from, so a
+            # pack that lags the CSVs is a history rebuilt on yesterday's closes - and nothing
+            # would say so. Making it a step someone has to remember is how it goes stale.
+            from app.ingestion.price_pack import pack_region
+            log.info("price-pack(%s): %s", region, pack_region(region))
     log.info("ohlc coverage: %s", coverage())
 
 
@@ -1168,6 +1183,8 @@ def build_parser() -> argparse.ArgumentParser:
     rq.add_argument("--out", default=None)
     qh = add("refresh-quality-history", cmd_quality_history, limit=True)
 
+    pp = add("pack-prices", cmd_pack_prices)
+    pp.add_argument("--regions", default=None, help="comma list, default every market")
     pend = sub.add_parser("pending-results")
     pend.add_argument("--region", default="psx")
     pend.add_argument("--days", type=int, default=5)

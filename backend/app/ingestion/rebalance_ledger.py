@@ -315,15 +315,23 @@ def build_region(rows: list[dict], region: str, prices: Prices,
 
 
 def _has_bars(region: str) -> bool:
-    """Does the local OHLC store hold anything at all for this market?
+    """Can this market be priced at all - from the raw CSVs, or from the versioned pack?
 
-    Cheap on purpose - one directory listing, not a load of every symbol. The question is only
-    whether the input exists, not how complete it is.
+    Cheap on purpose - one directory listing and one stat, not a load of every symbol. The
+    question is only whether the input exists, not how complete it is.
+
+    Both sources count. The raw store is local-only and gitignored, so on CI the answer used to
+    be "no" for every market and every history was preserved rather than rebuilt - which was the
+    safe behaviour, but it also meant a run could never produce a NEW quarter. With the pack
+    versioned, CI prices companies the same way this machine does and genuinely rebuilds.
     """
     from app.ingestion.ohlc_store import STORE
+    from app.ingestion.price_pack import PACK_DIR
 
     folder = STORE / region
-    return folder.is_dir() and any(folder.iterdir())
+    if folder.is_dir() and any(folder.iterdir()):
+        return True
+    return (PACK_DIR / f"{region}.json.gz").exists()
 
 
 def build(data_dir: str | Path, top_n: int = TOP_N,

@@ -52,7 +52,18 @@ def load_bars(region: str, symbol: str, store: Path | None = None) -> dict[str, 
     """{date: row} for everything already stored."""
     path = _path(region, symbol, store)
     if path is None or not path.exists():
-        return {}
+        # The per-symbol CSVs are gitignored - 1.1 GB - so CI has none of them. Fall back to
+        # the versioned close-only pack, which is why the quarterly history can be rebuilt
+        # anywhere rather than only on the machine that holds the raw store.
+        #
+        # Only for the DEFAULT store. A caller that names a store is asking for that store, and
+        # answering from the global pack would merge one market's history into somebody else's
+        # directory - which is what it did to every isolated store the moment the pack existed.
+        if store is not None:
+            return {}
+        from app.ingestion.price_pack import packed_bars
+
+        return packed_bars(region, symbol)
     out: dict[str, list] = {}
     try:
         with open(path, encoding="utf-8") as fh:
