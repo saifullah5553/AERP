@@ -424,6 +424,11 @@ def cmd_refresh_prices(args: argparse.Namespace) -> None:
 
     out = args.out or "../frontend/public/data"
     log.info("refresh-prices: %s", refresh_prices(out, limit=args.limit))
+    # The screener's prices just changed, so every view derived from them is stale: the
+    # portfolio's mark, the day's advancers and losers, the ledger's open positions. Rebuilding
+    # here is what makes the refresh actually reach the pages instead of waiting for whichever
+    # later command happens to run.
+    refresh_derived_views(out)
 
 
 def cmd_refresh_news(args: argparse.Namespace) -> None:

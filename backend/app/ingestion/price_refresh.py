@@ -13,7 +13,9 @@ prices come from the PSX portal in the main pipeline).
 from __future__ import annotations
 
 import json
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -25,8 +27,33 @@ from app.ingestion.ohlc_store import load_bars
 
 log = get_logger(__name__)
 
-_CHART = "https://query1.finance.yahoo.com/v8/finance/chart/{sym}?range=1d&interval=1d"
+# 5d, not 1d: one bar leaves nothing to fall back on when the quote block is frozen, and no
+# previous close to compute a change from. Five sessions cover a long weekend and a holiday.
+_CHART = "https://query1.finance.yahoo.com/v8/finance/chart/{sym}?range=5d&interval=1d"
 _UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)"
+_PSX_TZ = timezone(timedelta(hours=5))  # PKT, no DST
+
+
+def _session_date(meta: dict[str, Any]) -> str | None:
+    """The exchange-local trading date a quote belongs to.
+
+    Without this a price has no age, so a row frozen in July looked exactly like one refreshed
+    this minute - FCUV sat at its 31 July close, and nothing in the data said so. In the
+    exchange's own timezone, not UTC: Sydney's session is already tomorrow by UTC reckoning,
+    which would mark all of Australia a day stale every single day.
+    """
+    ts = meta.get("regularMarketTime")
+    # 0 is not a date. PMGOLD.AX returns exactly that, and stamping it produced 1970-01-01 -
+    # a bogus date is worse than no date, because it reads as a real answer.
+    if not isinstance(ts, int | float) or ts <= 0:
+        return None
+    offset = meta.get("gmtoffset")
+    if not isinstance(offset, int | float):
+        offset = 0
+    try:
+        return datetime.fromtimestamp(ts + offset, tz=UTC).date().isoformat()
+    except (OSError, OverflowError, ValueError):
+        return None
 
 
 def parse_chart_meta(meta: dict[str, Any]) -> dict[str, Any] | None:
@@ -44,6 +71,7 @@ def parse_chart_meta(meta: dict[str, Any]) -> dict[str, Any] | None:
         "day_high": meta.get("regularMarketDayHigh"),
         "day_low": meta.get("regularMarketDayLow"),
         "volume": meta.get("regularMarketVolume"),
+        "as_of": _session_date(meta),
     }
     if prev not in (None, 0):
         out["change"] = round(price - prev, 6)
@@ -54,6 +82,69 @@ def parse_chart_meta(meta: dict[str, Any]) -> dict[str, Any] | None:
     return out
 
 
+def parse_chart_result(result: dict[str, Any]) -> dict[str, Any] | None:
+    """A quote from a chart-v8 result, preferring the daily bars when the quote block is stale.
+
+    Yahoo freezes the ``meta`` block for a few hundred listings while still serving current
+    bars in the SAME response. It is not a rounding problem - the frozen quote is a different
+    number entirely:
+
+        SABAR.NS   meta 26.65 (24 Jul 2024)   last bar   6.55     4x too high
+        AKIKO.NS   meta 76.75 (24 Jul 2024)   last bar 321.25     4x too low
+        PMGOLD.AX  meta 17.94 (no timestamp)  last bar  60.50     3x too low
+
+    308 rows carried prices like these, and every P/E, return and portfolio mark computed from
+    them was wrong. So the bars win whenever they are newer than the quote, or whenever the
+    quote has no date to judge it by.
+    """
+    meta = result.get("meta") or {}
+    quote = parse_chart_meta(meta)
+
+    stamps = result.get("timestamp") or []
+    closes = ((result.get("indicators") or {}).get("quote") or [{}])[0].get("close") or []
+    offset = meta.get("gmtoffset")
+    if not isinstance(offset, int | float):
+        offset = 0
+    bars: list[tuple[str, float]] = []
+    for stamp, close in zip(stamps, closes, strict=False):
+        if not isinstance(stamp, int | float) or close is None:
+            continue
+        try:
+            day = datetime.fromtimestamp(stamp + offset, tz=UTC).date().isoformat()
+            value = float(close)
+        except (OSError, OverflowError, TypeError, ValueError):
+            continue
+        if value > 0:
+            bars.append((day, value))
+    if not bars:
+        return quote
+    bars.sort()
+
+    if quote and quote.get("as_of") and quote["as_of"] >= bars[-1][0]:
+        # The quote is current, so keep it - but take the change from the bars. Over a 5-day
+        # window ``chartPreviousClose`` is the close BEFORE the window, which turned Apple's
+        # 0.29% day into 1.43% and would have re-sorted every gainers and losers table.
+        prior = [c for day, c in bars if day < quote["as_of"]]
+        if prior:
+            prev, price = prior[-1], quote["price"]
+            quote["prev_close"] = prev
+            quote["change"] = round(price - prev, 6)
+            quote["change_pct"] = round((price - prev) / prev * 100.0, 6)
+        return quote
+
+    day, price = bars[-1]
+    prev = bars[-2][1] if len(bars) > 1 else None
+    out: dict[str, Any] = {
+        "price": price, "prev_close": prev, "as_of": day, "from_bars": True,
+        "day_open": None, "day_high": None, "day_low": None, "volume": None,
+        "change": None, "change_pct": None,
+    }
+    if prev:
+        out["change"] = round(price - prev, 6)
+        out["change_pct"] = round((price - prev) / prev * 100.0, 6)
+    return out
+
+
 def fetch_quote(sym: str, client: httpx.Client) -> dict[str, Any] | None:
     try:
         resp = client.get(_CHART.format(sym=sym), headers={"User-Agent": _UA}, timeout=15)
@@ -61,7 +152,7 @@ def fetch_quote(sym: str, client: httpx.Client) -> dict[str, Any] | None:
         result = resp.json()["chart"]["result"]
         if not result:
             return None
-        return parse_chart_meta(result[0]["meta"])
+        return parse_chart_result(result[0])
     except Exception:  # noqa: BLE001 - one bad/delisted symbol shouldn't stop the batch
         return None
 
@@ -158,6 +249,11 @@ def _add_psx_quotes(rows: list[dict], quotes: dict[str, dict]) -> None:
             "price": price, "prev_close": prev, "change": change, "change_pct": change_pct,
             "day_open": mr.open, "day_high": mr.high, "day_low": mr.low, "volume": mr.volume,
             "sector": sectors.get(mr.symbol),
+            # The market-watch table has no date column - it is whatever session the exchange is
+            # showing right now, so date it in Karachi. Without a stamp all 453 PSX rows were
+            # invisible to the staleness check, which is the one market we cannot re-fetch from
+            # anywhere else.
+            "as_of": datetime.now(tz=_PSX_TZ).date().isoformat(),
         }
     log.info("PSX market-watch: %d symbols patched", sum(1 for k in quotes if k.endswith(".KA")))
 
@@ -178,6 +274,12 @@ def refresh_prices(
         if r.get("region") not in skip_regions and r.get("provider_symbol")
     ]
     if limit is not None:
+        # STALEST FIRST, not the first N of a composite sort. The screener is composite-sorted,
+        # so a fixed cap always refreshed the same head of the list and the tail was never
+        # refreshed at all - not "later", never. FCUV kept its 31 July price for eight days
+        # while its real price fell from 11.60 to 5.20. Ordering by age makes any cap a
+        # rotation that self-heals: whatever misses this run is the stalest next run.
+        targets.sort(key=lambda r: (r.get("price_as_of") or "", r.get("symbol") or ""))
         targets = targets[:limit]
 
     quotes: dict[str, dict] = {}
@@ -203,6 +305,8 @@ def refresh_prices(
         r["price"] = q["price"]
         r["change"] = q["change"]
         r["change_pct"] = q["change_pct"]
+        if q.get("as_of"):
+            r["price_as_of"] = q["as_of"]
         if q.get("volume") is not None:
             r["volume"] = q["volume"]
         if q.get("sector"):  # PSX sector from /symbols
@@ -218,6 +322,7 @@ def refresh_prices(
     # back onto the screener rows below before screener.json is written.
     company_dir = out / "company"
     patched_files = 0
+    failed_files = 0
     pe_by_sym: dict[str, float | None] = {}
     for sym, q in quotes.items():
         cf = safe_file(company_dir, f"{sym}.json")
@@ -256,7 +361,16 @@ def refresh_prices(
         if isinstance(sigblk, dict) and sigblk.get("price_at_signal"):
             pas = sigblk["price_at_signal"]
             sigblk["signal_return_pct"] = round((q["price"] - pas) / pas * 100.0, 2)
-        cf.write_text(json.dumps(detail, ensure_ascii=False), encoding="utf-8")
+        try:
+            cf.write_text(json.dumps(detail, ensure_ascii=False), encoding="utf-8")
+        except OSError as exc:
+            # One locked file must not abort the other 11,464. This loop rewrites every company
+            # file every half hour, so a scanner or an editor holding one open is routine -
+            # and an unhandled OSError on CARE.json threw away the whole run's remaining work,
+            # including the screener write that had not happened yet.
+            failed_files += 1
+            log.warning("price refresh: could not write %s (%s)", cf.name, exc)
+            continue
         patched_files += 1
 
     # Apply the freshly-computed P/E (TTM) onto the screener rows, then persist.
@@ -266,10 +380,46 @@ def refresh_prices(
     screener_path.write_text(json.dumps(rows), encoding="utf-8")
 
     result = {"targets": len(targets), "quoted": len(quotes), "rows_updated": updated,
-              "company_files": patched_files,
+              "company_files": patched_files, "write_failures": failed_files,
               "pe_computed": sum(1 for v in pe_by_sym.values() if v)}
+    result.update(report_staleness(rows))
     log.info("refresh-prices: %s", result)
     return result
+
+
+def report_staleness(rows: list[dict]) -> dict[str, int]:
+    """Count how many rows carry a price older than the freshest one in their own market.
+
+    Logged every run so a coverage gap is a number somebody can see. A cap that silently
+    excluded 6,069 symbols looked exactly like a full refresh from the outside; the only
+    evidence was one company on one screen showing a price from eight days earlier.
+    """
+    # Grouped by asset class as well as market, because they keep different calendars. Crypto
+    # trades on a Saturday and the FTSE does not, so measuring both against "the newest date in
+    # global" reported all 51 indices, currencies and commodities as stale every weekend.
+    def group(r: dict) -> tuple[str, str]:
+        return (r.get("region") or "", r.get("asset_class") or "equity")
+
+    newest: dict[tuple[str, str], str] = {}
+    for r in rows:
+        day = r.get("price_as_of")
+        if day and r.get("region") and day > newest.get(group(r), ""):
+            newest[group(r)] = day
+
+    stale, undated = Counter(), 0
+    for r in rows:
+        key = group(r)
+        if not key[0] or key not in newest:
+            continue
+        day = r.get("price_as_of")
+        if not day:
+            undated += 1
+        elif day < newest[key]:
+            stale[key[0]] += 1
+    if stale or undated:
+        log.warning("price staleness: %d rows behind their market (%s), %d with no price date",
+                    sum(stale.values()), dict(stale), undated)
+    return {"stale_rows": sum(stale.values()), "undated_rows": undated}
 
 
 def fill_missing_prices(out: Path) -> dict[str, int]:

@@ -4,7 +4,10 @@ import { Link } from "react-router-dom";
 import { api, type LedgerMarket, type LedgerQuarter, type RebalanceLedger } from "@/lib/api";
 import { fmtNumber } from "@/lib/format";
 
-const MARKETS = ["psx", "us", "india", "australia", "gcc"];
+// Display order only. The list of markets comes from the ledger itself - a hardcoded array is
+// how Dubai built eighteen quarters of history that no page ever showed. Anything the backend
+// publishes and this array has not heard of still appears, at the end.
+const ORDER = ["psx", "us", "india", "australia", "gcc", "dfm"];
 
 function pctColor(v: number | null | undefined): string {
   if (v == null) return "#94a3b8";
@@ -213,7 +216,11 @@ export default function BuySellPage() {
     return () => ctrl.abort();
   }, []);
 
-  const markets = MARKETS.filter((m) => led?.markets?.[m]);
+  const markets = Object.keys(led?.markets ?? {}).sort((a, b) => {
+    const ia = ORDER.indexOf(a);
+    const ib = ORDER.indexOf(b);
+    return (ia < 0 ? ORDER.length : ia) - (ib < 0 ? ORDER.length : ib) || a.localeCompare(b);
+  });
   const base = led?.markets?.[market] ?? (markets[0] ? led?.markets?.[markets[0]] : null);
   // Newest first in the picker; the record now runs back to 2021 rather than the last four.
   const quarters = (base?.quarters ?? []).map((q) => q.quarter).reverse();

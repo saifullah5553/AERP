@@ -39,9 +39,12 @@ jobs:
       - name: Refresh prices + recompute technicals (all markets, chart-v8)
         working-directory: backend
         run: |
-          # Cap to the top names by composite (screener is composite-sorted) so the ~11k
-          # universe stays within CI budget / Yahoo rate limits; the tail keeps its values.
-          python -m app.cli refresh-prices --limit 5000 || true
+          # No cap. The cap was supposed to protect the CI budget, but the whole 11k universe
+          # measures ~4 minutes at 8 workers in a 120-minute job - and because the screener is
+          # composite-sorted it always refreshed the same head of the list, so 6,069 symbols
+          # were never repriced at all. FCUV showed its 31 July close for eight days while the
+          # real price fell 11.60 -> 5.20. Two minutes saved was not worth a stale price.
+          python -m app.cli refresh-prices || true
           # No limit: patterns and the strategy's entry timing need an OHLC pass over the WHOLE
           # universe, otherwise most names never get a candlestick/chart pattern at all.
           python -m app.cli refresh-technicals || true

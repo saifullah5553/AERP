@@ -73,6 +73,10 @@ jobs:
           # Cap to the top names by composite (screener is composite-sorted) so the ~11k
           # universe doesn't blow the 30-min budget / trip Yahoo rate limits. PSX prices come
           # from one market-watch request regardless of the cap.
+          # Runs every 30 minutes, so it stays capped - but refresh-prices now takes the
+          # STALEST rows first, which makes the cap a rotation instead of a permanent
+          # exclusion. Whatever misses this cycle is at the front of the next one, and the
+          # uncapped daily run guarantees every symbol is repriced at least once a day.
           python -m app.cli refresh-prices --limit 3000 || true
 
       - name: Detect new alerts (for email)
