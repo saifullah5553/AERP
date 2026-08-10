@@ -40,9 +40,6 @@ class EntryResult:
     metrics: dict[str, float | None] = field(default_factory=dict)
 
 
-def _sma(a: np.ndarray, n: int) -> float | None:
-    return float(a[-n:].mean()) if len(a) >= n else None
-
 
 def _ema(a: np.ndarray, n: int) -> float | None:
     """Exponential moving average — reacts faster than the SMA, which is what you want when
@@ -74,17 +71,6 @@ def _trendline_break(high: np.ndarray, close: np.ndarray, lookback: int = 60) ->
     return float(close[-1]) > projected
 
 
-def _rsi(close: np.ndarray, n: int = 14) -> float | None:
-    if len(close) < n + 1:
-        return None
-    d = np.diff(close[-(n + 1):])
-    gain = float(d[d > 0].sum()) / n
-    loss = float(-d[d < 0].sum()) / n
-    if loss == 0:
-        return 100.0
-    rs = gain / loss
-    return 100.0 - 100.0 / (1.0 + rs)
-
 
 def assess_entry(
     high: np.ndarray, low: np.ndarray, close: np.ndarray, volume: np.ndarray,
@@ -96,10 +82,17 @@ def assess_entry(
         return EntryResult(triggered=False, score=None, vetoes=["insufficient_history"])
 
     px = float(close[-1])
-    sma50 = _sma(close, 50)
-    sma200 = _sma(close, 200)
-    rsi = _rsi(close)
-    metrics: dict[str, float | None] = {"price": px, "sma50": sma50, "sma200": sma200, "rsi": rsi}
+    # Measurements, not indicators: the highest and lowest close over a window, and how far
+    # price sits from each. The brief allows these explicitly - they are things you can read off
+    # a chart with a ruler - where a moving average or an RSI reading is a constructed series.
+    high_52w = float(close[-250:].max()) if n >= 250 else float(close.max())
+    low_60 = float(close[-60:].min())
+    pct_from_high = (px / high_52w - 1) * 100 if high_52w else None
+    pct_above_low = (px / low_60 - 1) * 100 if low_60 else None
+    metrics: dict[str, float | None] = {
+        "price": px, "high_52w": high_52w, "low_60": low_60,
+        "pct_from_52w_high": pct_from_high, "pct_above_60d_low": pct_above_low,
+    }
 
     triggers: list[str] = []
     vetoes: list[str] = []
@@ -116,12 +109,16 @@ def assess_entry(
         if tight and px > base_high * (1 + breakout_buffer):
             triggers.append("base_breakout")
 
-    # --- Trigger 2: reclaiming the 50-day from below ---------------------------------
-    if sma50 is not None and len(close) >= 55:
-        prior = close[-10:-1]
-        prior_sma50 = _sma(close[:-1], 50)
-        if prior_sma50 is not None and px > sma50 and float(prior.min()) < prior_sma50:
-            triggers.append("reclaimed_sma50")
+    # --- Trigger 2: reclaiming a level price had lost ---------------------------------
+    # Was "reclaimed the 50-day". Same idea without the average: price spent recent sessions
+    # below a level it had been holding, and has now closed back above it. The level is the
+    # prior month's floor, which is a price the market actually traded at rather than a
+    # rolling mean of prices it did not.
+    if n >= 60:
+        floor_before = float(close[-60:-20].min())
+        dipped = float(close[-10:-1].min()) < floor_before
+        if dipped and px > floor_before:
+            triggers.append("reclaimed_prior_floor")
 
     # --- Trigger 3: higher lows (accumulation structure) -----------------------------
     if n >= 60:
@@ -161,19 +158,17 @@ def assess_entry(
     # SOFT cautions only mark the score down - being mildly extended or briefly overbought is
     # normal early in a strong advance, and blocking on it would filter out the best entries.
     cautions: list[str] = []
+    # Extension measured against a PRICE the market traded - the 60-day low - instead of
+    # against a moving average or an RSI band. The veto is doing the same job it always did
+    # (do not chase a move that has already run) using a number you can point at on the chart.
     ext = None
-    if sma50:
-        ext = (px - sma50) / sma50
-        metrics["pct_above_sma50"] = ext
-        if ext > 0.35:
-            vetoes.append("far_extended_above_sma50")   # hard: chasing
-        elif ext > 0.20:
-            cautions.append("extended_above_sma50")     # soft
-    if rsi is not None:
-        if rsi > 85:
-            vetoes.append("extremely_overbought")       # hard
-        elif rsi > 72:
-            cautions.append("overbought_rsi")           # soft
+    if pct_above_low is not None:
+        ext = pct_above_low / 100.0
+        metrics["pct_above_60d_low"] = pct_above_low
+        if ext > 0.60:
+            vetoes.append("far_extended_above_60d_low")   # hard: chasing
+        elif ext > 0.35:
+            cautions.append("extended_above_60d_low")     # soft
     if n >= 250:
         high_52w = float(high[-250:].max())
         metrics["pct_from_52w_high"] = (px - high_52w) / high_52w if high_52w else None
@@ -183,23 +178,26 @@ def assess_entry(
         elif high_52w and px >= high_52w * 0.995 and run > 1.0:
             cautions.append("at_52w_high_after_long_run")     # soft
 
-    # Long-term trend: a decisive break below the 200-day is a hard stop, but a stock basing
-    # just under it can still be an early entry, so only a clear break blocks.
-    if sma200 is not None and px < sma200 * 0.90:
-        vetoes.append("well_below_200dma")
+    # Long-term trend, without the 200-day. A stock deep under its own yearly high is in a
+    # downtrend whatever an average says, and "30% off the 52-week high" is a measurement of
+    # where price has actually been rather than a constructed line.
+    if pct_from_high is not None and pct_from_high < -30.0:
+        vetoes.append("far_below_52w_high")
 
     metrics["cautions"] = float(len(cautions))
     triggered = bool(triggers) and not vetoes
 
     # Timing quality: reward early, well-participated entries close to the base.
     score = None
-    if sma50:
+    if pct_above_low is not None:
         s = 40.0 + 20.0 * len(triggers)
         if vol_ratio is not None:
             s += 15.0 if vol_ratio >= 1.3 else (7.0 if vol_ratio >= 1.0 else 0.0)
         if ext is not None:
             s += 15.0 if ext <= 0.08 else (7.0 if ext <= 0.15 else 0.0)
-        if sma200 is not None and px > sma200:
+        # In the upper half of its yearly range: a positional tailwind, measured off real
+        # highs and lows rather than an average.
+        if pct_from_high is not None and pct_from_high > -25.0:
             s += 10.0
         s -= 25.0 * len(vetoes)
         s -= 8.0 * len(cautions)  # soft: marks the entry down without blocking it

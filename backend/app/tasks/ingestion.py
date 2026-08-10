@@ -109,13 +109,9 @@ def compute_fundamentals_task(limit: int | None = None) -> dict:
         return compute_all(db, limit=limit)
 
 
-@celery_app.task(name="aerp.engine.compute_technical")
-def compute_technical_task(limit: int | None = None) -> dict:
-    """Compute indicators + technical scores from already-ingested prices."""
-    from app.engines.technical.engine import compute_all
-
-    with session_scope() as db:
-        return compute_all(db, limit=limit)
+# compute_technical_task is gone with the indicator engine it drove. The technical score is
+# produced by ingestion/tech_refresh.py from the price-action engine, against the daily OHLCV
+# it already fetches - there is no separate indicator pass to schedule.
 
 
 @celery_app.task(name="aerp.engine.detect_patterns")

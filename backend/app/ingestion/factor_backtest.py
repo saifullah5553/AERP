@@ -28,8 +28,7 @@ from typing import Any
 import httpx
 
 from app.core.logging import get_logger
-from app.engines.technical.engine import _scoring_metrics
-from app.engines.technical.indicators import compute_indicators
+from app.engines.price_action.engine import analyse as analyse_price_action
 from app.ingestion.tech_refresh import _f, fetch_history
 
 log = get_logger(__name__)
@@ -105,7 +104,7 @@ def factor_backtest(
     for h in fetched:
         if h is None:
             continue
-        _dates, _open, high, low, close, vol = h
+        dates, open_, high, low, close, vol = h
         k = len(close) - horizon
         if k < 60:
             continue
@@ -113,8 +112,17 @@ def factor_backtest(
         if start <= 0:
             continue
         fwd = (end - start) / start * 100.0
-        # Point-in-time: indicators from the pre-cut window only.
-        metrics = _scoring_metrics(compute_indicators(high[:k], low[:k], close[:k], vol[:k]))
+        # Point-in-time: the price-action read from the pre-cut window only.
+        #
+        # This backtest existed to measure whether each INDICATOR predicted forward returns,
+        # and its answer was that they did not - momentum scored an IC of -0.094, every
+        # technical input a negative predictor over sixty days. Those inputs are gone, so it
+        # now measures the components that replaced them. The question is the same and it is
+        # still worth asking of the new engine rather than assuming an improvement.
+        read = analyse_price_action(dates[:k], open_[:k], high[:k], low[:k], close[:k], vol[:k])
+        metrics = dict(read.components)
+        metrics["technical_score"] = read.score
+        metrics["relative_volume"] = read.volume.get("relative")
         for name, val in metrics.items():
             v = _f(val)
             if v is not None:

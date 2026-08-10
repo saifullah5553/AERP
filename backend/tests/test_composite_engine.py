@@ -50,11 +50,11 @@ def test_composite_blends_and_signals(db: Session) -> None:
 
     score = db.scalar(select(Score).where(Score.security_id == sec.id))
     assert score.composite is not None
-    # `quality` is gone - it was a second opinion on the fundamental question, at 0.0 weight.
-    assert score.momentum is not None and score.risk is not None
-    assert score.quality is None
+    # momentum, quality and risk are all gone with the indicator engine that fed them. The
+    # composite is two legs now: the six-category fundamental score and the price-action one.
+    assert score.momentum is None and score.risk is None and score.quality is None
     comp_bd = score.breakdown["composite"]
-    assert set(comp_bd["components"]) >= {"fundamental", "technical", "momentum", "risk"}
+    assert set(comp_bd["components"]) == {"fundamental", "technical"}
 
     signal = db.scalar(select(Signal).where(Signal.security_id == sec.id))
     assert signal is not None
@@ -86,7 +86,8 @@ def test_no_anchor_no_composite(db: Session) -> None:
     assert outcome.composite is None
     score = db.scalar(select(Score).where(Score.security_id == sec.id))
     assert score.composite is None
-    assert score.momentum is not None  # component still persisted
+    # No momentum component any more - it was built from RSI and the other banned indicators.
+    assert score.momentum is None
 
 
 def test_screener_surfaces_composite_and_signal(db: Session) -> None:

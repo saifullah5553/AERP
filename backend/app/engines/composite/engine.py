@@ -20,7 +20,6 @@ from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
 from app.engines.common import f
-from app.engines.composite.dimensions import momentum_score, risk_score
 from app.engines.composite.regime_modifier import apply_regime_modifier
 from app.engines.composite.signals import derive_signal
 from app.models.fundamentals import FinancialRatios
@@ -41,10 +40,13 @@ log = get_logger(__name__)
 # So fundamentals carry the ranking and technicals are demoted to a small timing contribution
 # rather than a driver. They are not zeroed: the entry engine's price-action VETOES (don't
 # chase an extended move) did add value, so some price awareness is retained.
+# Two legs, because there are now only two scores: the six-category fundamental engine and the
+# price-action technical engine. The 0.10 that momentum carried moved to technical rather than
+# to fundamental - it was measuring price, and the price-action read is what measures price now.
 WEIGHTS = {
     "fundamental": 0.75,
-    "technical": 0.15,
-    "momentum": 0.10,
+    "technical": 0.25,
+    "momentum": 0.0,
     "quality": 0.0,
     "risk": 0.0,
 }
@@ -88,15 +90,19 @@ def compute_for_security(
         return CompositeOutcome(security.id, None, None, computed=False)
 
     ratios = _latest_ratios(db, security.id)
-    indicator = _latest_indicator(db, security.id)
 
-    mom, mom_bd = momentum_score(indicator)
+    # momentum, quality and risk are gone. All three were built from the banned indicators
+    # (RSI zones, ATR bands, moving-average distance), all three were displayed as if they were
+    # independent opinions, and two of them already carried 0.0 weight. What they attempted to
+    # measure - is price advancing, how violently - the price-action engine reads off structure
+    # and volume directly.
+    mom, mom_bd = None, {}
     # The `quality` DIMENSION is gone. It scored a handful of ratios out of 100 and was shown
     # beside the fundamental score as a second opinion on the same question - 73 next to 86 on
     # Atlas Honda, neither of them the six-category score of 69.5. It carried 0.0 weight, so
     # nothing it said ever reached the composite; it only ever confused the page.
     qual, qual_bd = None, {}
-    rsk, rsk_bd = risk_score(indicator, ratios)
+    rsk, rsk_bd = None, {}
 
     components: dict[str, float | None] = {
         "fundamental": f(score.fundamental),

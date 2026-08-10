@@ -684,12 +684,10 @@ def cmd_compute(args: argparse.Namespace) -> None:
     from app.engines.insider.engine import compute_all as insider_all
     from app.engines.pabrai.engine import compute_all as pabrai_all
     from app.engines.patterns.engine import compute_all as patterns_all
-    from app.engines.technical.engine import compute_all as technical_all
 
     with session_scope() as db:
         log.info("fundamentals: %s", fundamental_all(db, limit=args.limit))
         log.info("forex: %s", forex_all(db, limit=args.limit))
-        log.info("technical: %s", technical_all(db, limit=args.limit))
         log.info("patterns: %s", patterns_all(db, limit=args.limit))
         log.info("insider: %s", insider_all(db, limit=args.limit))
         log.info("composite: %s", composite_all(db, limit=args.limit))

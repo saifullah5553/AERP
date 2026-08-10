@@ -26,9 +26,7 @@ from app.core.logging import get_logger
 from app.core.safe_path import safe_file
 from app.engines.composite.engine import WEIGHTS
 from app.engines.composite.signals import derive_signal
-from app.engines.technical.engine import _scoring_metrics
-from app.engines.technical.indicators import compute_indicators
-from app.engines.technical.scoring import score_technical
+from app.engines.price_action.engine import analyse as analyse_price_action
 from app.ingestion.tech_refresh import fetch_history
 
 log = get_logger(__name__)
@@ -240,7 +238,7 @@ def expand_universe(
         if h is None:
             continue
         dates, _open, high, low, close, vol = h
-        tech = score_technical(_scoring_metrics(compute_indicators(high, low, close, vol))).score
+        tech = analyse_price_action(dates, _open, high, low, close, vol).score
         if tech is None:
             continue
         comp = _tech_only_composite(tech)

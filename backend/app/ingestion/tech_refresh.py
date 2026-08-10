@@ -21,15 +21,12 @@ import numpy as np
 
 from app.core.logging import get_logger
 from app.core.safe_path import safe_file
-from app.engines.composite.dimensions import momentum_score
 from app.engines.composite.engine import WEIGHTS
 from app.engines.composite.regime_modifier import apply_regime_modifier
 from app.engines.composite.signals import derive_signal
 from app.engines.patterns.engine import detect_all
+from app.engines.price_action.engine import analyse as analyse_price_action
 from app.engines.strategy.signal import evaluate as strategy_evaluate
-from app.engines.technical.engine import _scoring_metrics
-from app.engines.technical.indicators import compute_indicators
-from app.engines.technical.scoring import score_technical
 
 log = get_logger(__name__)
 
@@ -93,10 +90,16 @@ def _reblend(fund, tech, mom, qual, risk) -> tuple[float | None, float, dict]:
     return base, round(total_w, 4), present
 
 
-def _composite_at(high, low, close, vol, k, legs, regime, de):
-    """Recomputed (composite, coverage, present) using only the first k bars, or None."""
-    ind = compute_indicators(high[:k], low[:k], close[:k], vol[:k])
-    tech = score_technical(_scoring_metrics(ind)).score
+def _composite_at(dates, open_, high, low, close, vol, k, legs, regime, de):
+    """Recomputed (composite, coverage, present) using only the first k bars, or None.
+
+    Takes dates and opens now because the price-action engine reads candles, not a close
+    series: the shape of a bar is half of what it judges. The PSX portal path has neither, and
+    passes close for all four - the engine degrades to structure and volume, which is the
+    honest result for close-only data rather than a fabricated candle.
+    """
+    read = analyse_price_action(dates[:k], open_[:k], high[:k], low[:k], close[:k], vol[:k])
+    tech = read.score
     if tech is None:
         return None
     fund, mom, qual, risk = legs
@@ -107,7 +110,8 @@ def _composite_at(high, low, close, vol, k, legs, regime, de):
     return comp, cov, present
 
 
-def _signal_value_at(high, low, close, vol, k, legs, regime, de, comp_offset=0.0) -> str | None:
+def _signal_value_at(dates, open_, high, low, close, vol, k, legs, regime, de,
+                     comp_offset=0.0) -> str | None:
     """The derived signal value using only the first k bars (for inception backtesting).
 
     ``comp_offset`` is a constant added to the recomputed composite so the series can be
@@ -116,14 +120,14 @@ def _signal_value_at(high, low, close, vol, k, legs, regime, de, comp_offset=0.0
     in today's real OHLC bar), so we anchor the recompute to the shown score and let the
     real price trajectory decide only *when* the signal changed.
     """
-    c = _composite_at(high, low, close, vol, k, legs, regime, de)
+    c = _composite_at(dates, open_, high, low, close, vol, k, legs, regime, de)
     if c is None:
         return None
     comp, cov, present = c
     return derive_signal(comp + comp_offset, cov, present).signal.value
 
 
-def _signal_since(dates, high, low, close, vol, legs, regime, de, current,
+def _signal_since(dates, open_, high, low, close, vol, legs, regime, de, current,
                   lookback=250, comp_offset=0.0):
     """Walk back over history to the earliest day the current signal has held → (date, close).
     Real inception, not fabricated — capped at `lookback` trading days."""
@@ -131,7 +135,8 @@ def _signal_since(dates, high, low, close, vol, legs, regime, de, current,
     floor = max(MIN_BARS - 1, n - 1 - lookback)
     inception = floor
     for j in range(n - 1, floor - 1, -1):
-        s = _signal_value_at(high, low, close, vol, j + 1, legs, regime, de, comp_offset)
+        s = _signal_value_at(dates, open_, high, low, close, vol, j + 1, legs,
+                             regime, de, comp_offset)
         if s != current:  # includes None → treat as boundary
             inception = j + 1
             break
@@ -216,7 +221,8 @@ def _backtest_psx(rows, company, regime_map, today, limit):
         # so "today" reproduces the shown score, then let the real price trajectory decide
         # WHEN the signal last changed. Skip only when even the anchored signal can't match
         # the shown one (coverage/legs genuinely diverged) or the shift is implausibly large.
-        cur = _composite_at(close, close, close, vol, len(close), legs, regime, de)
+        cur = _composite_at(dates, close, close, close, close, vol, len(close),
+                            legs, regime, de)
         committed_comp = _f(r.get("composite_score"))
         if cur is None or committed_comp is None:
             continue
@@ -224,12 +230,13 @@ def _backtest_psx(rows, company, regime_map, today, limit):
         if abs(offset) > 40:
             continue
         anchored = _signal_value_at(
-            close, close, close, vol, len(close), legs, regime, de, offset
+            dates, close, close, close, close, vol, len(close), legs, regime, de, offset
         )
         if anchored != committed:
             continue
         since, price_at = _signal_since(
-            dates, close, close, close, vol, legs, regime, de, committed, comp_offset=offset
+            dates, close, close, close, close, vol, legs, regime, de, committed,
+            comp_offset=offset
         )
         cur_price = _f(r.get("price")) or float(close[-1])
         ret = round((cur_price - price_at) / price_at * 100.0, 2) if price_at else None
@@ -314,8 +321,8 @@ def refresh_technicals(
         if h is None:
             continue
         dates, open_, high, low, close, vol = h
-        ind = compute_indicators(high, low, close, vol)
-        tech = score_technical(_scoring_metrics(ind)).score
+        read = analyse_price_action(dates, open_, high, low, close, vol)
+        tech = read.score
         if tech is None:
             continue
         # Committed non-technical legs + statements from the company file (fall back to the
@@ -349,12 +356,12 @@ def refresh_technicals(
         fund = _f(sc.get("fundamental"))
         if fund is None:
             fund = _f(r.get("fundamental_score"))
-        mom, qual, risk = _f(sc.get("momentum")), _f(sc.get("quality")), _f(sc.get("risk"))
-        # Momentum is purely price-derived, so recompute it here from the fresh indicators —
-        # this also fills the leg for expanded names the DB pipeline never scored.
-        fresh_mom, _mbd = momentum_score(ind)
-        if fresh_mom is not None:
-            mom = _f(fresh_mom)
+        # No momentum leg any more. It was computed from the indicator object this pass no
+        # longer builds, and its inputs were the banned ones. Anything momentum was measuring -
+        # whether price is advancing, and with what force - the price-action engine now reads
+        # directly off structure and volume, so a second smoothed opinion added nothing.
+        mom = None
+        qual, risk = _f(sc.get("quality")), _f(sc.get("risk"))
         regime = regime_map.get(r.get("region"))
         de = _f(r.get("debt_to_equity"))
         if fund is None and mom is None and qual is None and risk is None:
@@ -372,7 +379,7 @@ def refresh_technicals(
         # Backtest the real signal-inception date + return-since (fixes "all show today").
         legs = (fund, _f(sc.get("momentum")), _f(sc.get("quality")), _f(sc.get("risk")))
         since, price_at = _signal_since(
-            dates, high, low, close, vol, legs, regime, de, sig.signal.value
+            dates, open_, high, low, close, vol, legs, regime, de, sig.signal.value
         )
         cur_price = _f(r.get("price")) or float(close[-1])
         ret = round((cur_price - price_at) / price_at * 100.0, 2) if price_at else None
@@ -413,6 +420,14 @@ def refresh_technicals(
         new_sig = sig.signal.value
         _record_signal_move(smoves, r, old_sig, new_sig, sig.label, composite, cur_price, today)
         r["technical_score"] = round(tech, 2)
+        # Screener columns: enough of the read to sort and filter on without opening the page.
+        r["pa_bias"] = read.bias
+        r["pa_phase"] = read.phase
+        r["pa_structure"] = read.structure_daily
+        r["pa_breakout"] = read.breakout_status
+        r["pa_setup"] = read.setup.kind
+        r["pa_quality"] = read.quality
+        r["rel_volume"] = read.volume.get("relative")
         r["composite_score"] = composite
         r["signal"] = new_sig
         r["signal_label"] = sig.label
@@ -433,8 +448,33 @@ def refresh_technicals(
                 d = json.loads(cf.read_text(encoding="utf-8"))
                 if isinstance(d.get("scores"), dict):
                     d["scores"]["technical"] = round(tech, 2)
-                    if mom is not None:
-                        d["scores"]["momentum"] = round(mom, 2)
+                    # The momentum leg is retired along with the indicators it came from.
+                    d["scores"].pop("momentum", None)
+                # The whole read, not just the number. A technical score with no chart
+                # reasoning behind it is the thing the brief is written against: the page can
+                # now show the structure, the levels and their evidence, the volume verdict and
+                # the setup - or NO TRADE and what would change it.
+                d["price_action"] = {
+                    "score": read.score, "bias": read.bias, "quality": read.quality,
+                    "phase": read.phase, "phase_confidence": read.phase_confidence,
+                    "structure_daily": read.structure_daily,
+                    "structure_weekly": read.structure_weekly,
+                    "breakout_status": read.breakout_status,
+                    "components": read.components, "zones": read.zones,
+                    "volume": read.volume, "candles": read.candle_notes,
+                    "summary": read.summary, "what_changes_it": read.what_changes_it,
+                    "notes": read.notes,
+                    "setup": {
+                        "kind": read.setup.kind,
+                        "aggressive_entry": read.setup.aggressive_entry,
+                        "conservative_entry": read.setup.conservative_entry,
+                        "stop": read.setup.stop, "target_1": read.setup.target_1,
+                        "target_2": read.setup.target_2,
+                        "major_target": read.setup.major_target,
+                        "risk_reward": read.setup.risk_reward,
+                        "rationale": read.setup.rationale,
+                    },
+                }
                 if pat_rows:
                     d["patterns"] = pat_rows
                 if strategy:
