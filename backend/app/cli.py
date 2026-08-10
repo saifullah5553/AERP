@@ -58,6 +58,15 @@ def refresh_derived_views(out) -> None:
         normalize_snapshot(out)
     except Exception as exc:  # noqa: BLE001
         log.warning("taxonomy normalise failed: %s", exc)
+    # One fundamental score before anything reads one. ATLH showed 86 on its company page, 73
+    # on the tile beside it and 69.5 in the portfolio - three engines' answers to one question.
+    # This runs before the ledger and the portfolio so they rank on the same number the pages
+    # display.
+    try:
+        from app.ingestion.score_unify import unify
+        unify(out)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("score-unify failed: %s", exc)
     # Price first: an unpriced row is invisible to every portfolio, because a name that cannot
     # be bought is filtered out of the ranking. Filling those before the views are built is the
     # difference between UBL being ranked and UBL not existing.
@@ -617,22 +626,6 @@ def cmd_refresh_sectors(args: argparse.Namespace) -> None:
 
     out = args.out or "../frontend/public/data"
     log.info("refresh-sectors: %s", refresh_sectors(out, limit=args.limit))
-
-
-def cmd_refresh_fundamentals_web(args: argparse.Namespace) -> None:
-    """Backfill real fundamentals for the expanded technical-only universe via yfinance
-    (residential IP only). Reuses the fundamental engine; patches the snapshot. Resumable."""
-    from app.ingestion.fundamentals_web import refresh_fundamentals_web
-
-    out = args.out or "../frontend/public/data"
-    syms = [s for s in (args.symbols or "").split(",") if s.strip()] or None
-    log.info(
-        "refresh-fundamentals-web: %s",
-        refresh_fundamentals_web(
-            out, region=args.region, limit=args.limit, symbols=syms, force=args.force,
-            cached_only=args.cached_only,
-        ),
-    )
 
 
 def cmd_ingest_profiles(args: argparse.Namespace) -> None:
@@ -1273,15 +1266,6 @@ def build_parser() -> argparse.ArgumentParser:
     fb.add_argument("--out", default=None)
     rs = add("refresh-sectors", cmd_refresh_sectors, limit=True)
     rs.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
-    fw = add("refresh-fundamentals-web", cmd_refresh_fundamentals_web, limit=True)
-    fw.add_argument("--region", required=True, choices=["us", "india", "australia", "all"])
-    fw.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
-    fw.add_argument("--symbols", default=None,
-                    help="comma-separated tickers to refresh (e.g. after results); ignores region")
-    fw.add_argument("--force", action="store_true",
-                    help="bypass the statement cache (use after a company reports)")
-    fw.add_argument("--cached-only", action="store_true",
-                    help="score only names already in the cache - no yfinance calls")
     add("all", cmd_all)
     return parser
 

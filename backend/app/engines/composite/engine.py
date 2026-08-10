@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
 from app.engines.common import f
-from app.engines.composite.dimensions import momentum_score, quality_score, risk_score
+from app.engines.composite.dimensions import momentum_score, risk_score
 from app.engines.composite.regime_modifier import apply_regime_modifier
 from app.engines.composite.signals import derive_signal
 from app.models.fundamentals import FinancialRatios
@@ -91,7 +91,11 @@ def compute_for_security(
     indicator = _latest_indicator(db, security.id)
 
     mom, mom_bd = momentum_score(indicator)
-    qual, qual_bd = quality_score(ratios)
+    # The `quality` DIMENSION is gone. It scored a handful of ratios out of 100 and was shown
+    # beside the fundamental score as a second opinion on the same question - 73 next to 86 on
+    # Atlas Honda, neither of them the six-category score of 69.5. It carried 0.0 weight, so
+    # nothing it said ever reached the composite; it only ever confused the page.
+    qual, qual_bd = None, {}
     rsk, rsk_bd = risk_score(indicator, ratios)
 
     components: dict[str, float | None] = {

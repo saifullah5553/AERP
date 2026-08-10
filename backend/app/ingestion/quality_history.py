@@ -34,7 +34,6 @@ from app.core.safe_path import safe_file
 from app.core.snapshot_lock import snapshot_lock
 from app.engines.strategy.fundamental_quality import grade_for
 from app.engines.strategy.quality import assess_quality
-from app.ingestion.fundamentals_web import _cache_to_dtos, _roll_ttm
 from app.ingestion.ohlc_store import load_bars
 from app.ingestion.quality_refresh import _peer_margins, _peers_for
 
@@ -114,51 +113,6 @@ def _statements_at(inc: list, bal: list, cf: list, upto: int) -> dict[str, list[
         "cashflow": [{**c._v, "fiscal_date": c.fiscal_date.isoformat()}
                      for c in reversed([x for x in cf if cut is None or x.fiscal_date <= cut])],
     }
-
-
-def _series_from_cache(sym: str, peers: dict | None = None,
-                       sector: str | None = None) -> list[dict] | None:
-    """Quarterly-spaced TTM quality points from the cached raw quarters."""
-    cf = CACHE / f"{sym}.json"
-    if not cf.exists():
-        return None
-    try:
-        raw = json.loads(cf.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    q = _cache_to_dtos(raw.get("q", []))
-    if not q:
-        return None
-    inc, bal, cfl = _roll_ttm(q)
-    if len(inc) < 2:
-        return None
-
-    out: list[dict] = []
-    last_res = None
-    for i in range(len(inc)):
-        res = assess_quality(_statements_at(inc, bal, cfl, i), peers=peers,
-                             sector=sector)
-        if res.score is not None:
-            last_res = res
-            out.append({
-                "date": inc[i].fiscal_date.isoformat(),
-                "score": res.score, "passed": res.passed, "period": "ttm",
-                # The six category marks for THIS period. The whole point of scoring each TTM
-                # separately is to be able to see which part of the business moved, and a bare
-                # total cannot answer that: 62 -> 71 could be cash flow recovering or leverage
-                # coming down, and those are different companies.
-                "cats": _cat_points(res),
-                "cats_max": _cat_budget(res),
-            })
-    out = out[-MAX_POINTS:]
-    if out:
-        # Only the newest point carries the full category detail: it is what the scorecard
-        # renders, and repeating every sub-metric for all twenty periods would multiply the
-        # company file for a table nobody reads twenty times over.
-        out[-1]["full_cats"] = getattr(last_res, "categories", None) or None
-        out[-1]["flags"] = list(getattr(last_res, "flags", None) or [])
-        out[-1]["fund_metrics"] = getattr(last_res, "fundamental_metrics", None) or None
-    return out or None
 
 
 def _cat_points(res) -> dict[str, float]:

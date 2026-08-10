@@ -338,7 +338,9 @@ export default function CompanyPage() {
           <ScoreChip label="Overall" value={scores.overall} />
           <ScoreChip label="Fundamental" value={scores.fundamental} />
           <ScoreChip label="Technical" value={scores.technical} />
-          <ScoreChip label="Quality" value={scores.quality} />
+          {/* No "Quality" chip. It used to sit here showing a DIFFERENT number for the same
+              question - 73 beside a Fundamental of 86, when the six-category score was 69.5.
+              There is one fundamental score now and it is the chip above. */}
           <ScoreChip label="Risk" value={scores.risk} />
         </div>
       </header>

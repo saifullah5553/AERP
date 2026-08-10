@@ -101,4 +101,6 @@ def test_end_to_end_psx_fundamental_score(db: Session) -> None:
 
     outcome = compute_for_security(db, sec)  # the SAME engine as US equities
     assert outcome.computed is True
-    assert outcome.score is not None
+    # Ratios yes, score no: the fundamental score comes from the six-category TTM engine now,
+    # not from this annual pass. PSX statements still flow through it for the ratios.
+    assert outcome.score is None

@@ -41,8 +41,10 @@ def test_compute_for_security_persists_everything(
     outcome = compute_for_security(db, sec)
 
     assert outcome.computed is True
-    assert outcome.score is not None and outcome.score > 70  # strong fundamentals
-    assert outcome.coverage == 1.0
+    # No score. This engine ran on ANNUAL statements and its number competed with the
+    # six-category TTM score on every page - 85.5 beside 69.5 on Atlas Honda. It now persists
+    # ratios and health metrics only; the fundamental score has one source.
+    assert outcome.score is None
 
     ratios = db.scalar(select(FinancialRatios).where(FinancialRatios.security_id == sec.id))
     assert ratios is not None
@@ -53,12 +55,12 @@ def test_compute_for_security_persists_everything(
     assert snap is not None
     assert float(snap.pe_ttm) == pytest.approx(5000 / 236, rel=1e-3)
 
+    # No Score row is created by this engine any more - it writes ratios and the snapshot.
     score = db.scalar(select(Score).where(Score.security_id == sec.id, Score.as_of == date.today()))
-    assert score is not None
-    assert float(score.fundamental) == pytest.approx(outcome.score)
-    # Breakdown is stored and explainable.
-    assert "metrics" in score.breakdown["fundamental"]
-    assert score.breakdown["fundamental"]["piotroski_criteria"]["positive_ocf"] is True
+    assert score is None
+    # Piotroski is still computed - it is a diagnostic, not a rival score - and lands on the
+    # ratios row rather than in a Score breakdown.
+    assert ratios.piotroski_f == 9
 
 
 def test_compute_score_preserves_prior_breakdown(
@@ -74,15 +76,15 @@ def test_compute_score_preserves_prior_breakdown(
     compute_for_security(db, sec)
     score = db.scalar(select(Score).where(Score.security_id == sec.id, Score.as_of == date.today()))
     assert float(score.technical) == 55.0  # preserved
-    assert score.fundamental is not None    # added
-    assert "technical" in score.breakdown and "fundamental" in score.breakdown
+    assert score.fundamental is None        # this engine no longer scores
+    assert "technical" in score.breakdown
 
 
 def test_compute_all_counts(security_with_statements: tuple[Session, Security]) -> None:
     db, _ = security_with_statements
     result = compute_all(db)
     assert result["securities"] == 1
-    assert result["scored"] == 1
+    assert result["scored"] == 0    # ratios computed, no score produced
 
 
 def test_security_without_statements_not_computed(db: Session) -> None:

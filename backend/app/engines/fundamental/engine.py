@@ -22,7 +22,6 @@ from app.core.logging import get_logger
 from app.engines.common import f
 from app.engines.fundamental.health import altman_z_score, piotroski_f_score
 from app.engines.fundamental.ratios import MarketInputs, RatioSet, compute_ratios
-from app.engines.fundamental.scoring import score_fundamentals
 from app.models.enums import StatementPeriod
 from app.models.fundamentals import (
     BalanceSheet,
@@ -86,29 +85,20 @@ def compute_for_security(db: Session, security: Security) -> FundamentalOutcome:
     ratios.piotroski_f = piotroski.score
     ratios.altman_z = altman_z_score(incomes[-1], balances[-1], market.resolved_market_cap())
 
-    metrics = {
-        "roe": ratios.roe,
-        "net_margin": ratios.net_margin,
-        "roa": ratios.roa,
-        "gross_margin": ratios.gross_margin,
-        "revenue_growth": ratios.revenue_growth,
-        "eps_growth": ratios.eps_growth,
-        "debt_to_equity": ratios.debt_to_equity,
-        "current_ratio": ratios.current_ratio,
-        "interest_coverage": ratios.interest_coverage,
-        "fcf_margin": ratios.fcf_margin,
-        "piotroski_f": float(ratios.piotroski_f) if ratios.piotroski_f is not None else None,
-        "altman_z": ratios.altman_z,
-    }
-    result = score_fundamentals(metrics)
+    # NO SCORE IS PRODUCED HERE ANY MORE. This engine ran on ANNUAL statements and wrote
+    # Score.fundamental, which is where the 85.5 on Atlas Honda's page came from while the
+    # six-category engine said 69.5. Two fundamental scores, one of them built from the annual
+    # data the user ruled out. The ratios and the health metrics below are still computed and
+    # displayed - they are inputs and diagnostics, not a competing verdict - but the fundamental
+    # score now has exactly one source: engines/strategy/fundamental_quality.py, quarterly TTM
+    # only, applied to the snapshot by ingestion/quality_refresh.py.
     fiscal_date = incomes[-1].fiscal_date
 
     _persist_ratios(db, security.id, fiscal_date, ratios)
     _persist_snapshot(db, security.id, fiscal_date, ratios, market)
-    _persist_score(db, security.id, result.score, result.breakdown, piotroski.criteria)
     db.commit()
 
-    return FundamentalOutcome(security.id, result.score, result.coverage, computed=True)
+    return FundamentalOutcome(security.id, None, 0.0, computed=True)
 
 
 def compute_all(db: Session, limit: int | None = None) -> dict[str, int]:

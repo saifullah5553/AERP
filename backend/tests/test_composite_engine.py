@@ -50,9 +50,11 @@ def test_composite_blends_and_signals(db: Session) -> None:
 
     score = db.scalar(select(Score).where(Score.security_id == sec.id))
     assert score.composite is not None
-    assert score.momentum is not None and score.quality is not None and score.risk is not None
+    # `quality` is gone - it was a second opinion on the fundamental question, at 0.0 weight.
+    assert score.momentum is not None and score.risk is not None
+    assert score.quality is None
     comp_bd = score.breakdown["composite"]
-    assert set(comp_bd["components"]) >= {"fundamental", "technical", "momentum", "quality", "risk"}
+    assert set(comp_bd["components"]) >= {"fundamental", "technical", "momentum", "risk"}
 
     signal = db.scalar(select(Signal).where(Signal.security_id == sec.id))
     assert signal is not None
