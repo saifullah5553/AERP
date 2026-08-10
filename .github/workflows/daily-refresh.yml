@@ -44,6 +44,9 @@ jobs:
           # composite-sorted it always refreshed the same head of the list, so 6,069 symbols
           # were never repriced at all. FCUV showed its 31 July close for eight days while the
           # real price fell 11.60 -> 5.20. Two minutes saved was not worth a stale price.
+          # Benchmarks first: the quarterly history compares every market against its index,
+          # and a stale index makes the comparison quietly wrong rather than visibly missing.
+          python -m app.cli refresh-indices || true
           python -m app.cli refresh-prices || true
           # No limit: patterns and the strategy's entry timing need an OHLC pass over the WHOLE
           # universe, otherwise most names never get a candlestick/chart pattern at all.

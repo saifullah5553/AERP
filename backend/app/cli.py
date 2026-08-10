@@ -141,6 +141,13 @@ def cmd_prune_universe(args: argparse.Namespace) -> None:
     refresh_derived_views(out)
 
 
+def cmd_refresh_indices(args: argparse.Namespace) -> None:
+    """Fetch every market's benchmark index into the global price pack."""
+    from app.ingestion.index_history import refresh_indices
+
+    log.info("refresh-indices: %s", refresh_indices())
+
+
 def cmd_pack_prices(args: argparse.Namespace) -> None:
     """Pack the local daily closes into data/prices/<region>.json.gz for CI to read."""
     from app.ingestion.price_pack import pack_region
@@ -1226,6 +1233,7 @@ def build_parser() -> argparse.ArgumentParser:
     rq.add_argument("--out", default=None)
     qh = add("refresh-quality-history", cmd_quality_history, limit=True)
 
+    add("refresh-indices", cmd_refresh_indices)
     pp = add("pack-prices", cmd_pack_prices)
     pp.add_argument("--regions", default=None, help="comma list, default every market")
     pu = add("prune-universe", cmd_prune_universe)

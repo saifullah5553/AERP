@@ -346,15 +346,17 @@ def build_region(rows: list[dict], region: str, prices: Prices,
 # The index each market is judged against. Same mapping the regime card uses, so the two pages
 # cannot name different benchmarks for the same market.
 #
-# PSX and DFM are None on purpose. Yahoo serves no KSE-100 (^KSE100 is a 404 and ^KSE died in
-# 2021) and no DFM General Index, and the honest answer to "did we beat the index" is "we do not
-# have the index" - not a number built from our own universe and quietly labelled a benchmark.
+# Every market has one. Pakistan and Dubai briefly showed "no index available" here, which was
+# wrong: both indices exist and both are published. `^DFMGI` does not resolve but DFMGI.AE does,
+# and Yahoo carries no KSE-100 at all - the exchange publishes its own EOD series. Absence from
+# one vendor is not absence. See ingestion/index_history.py for where each is fetched.
 INDEX_FOR_REGION: dict[str, str | None] = {
     "us": "^GSPC", "india": "^NSEI", "australia": "^AXJO", "gcc": "^TASI.SR",
-    "psx": None, "dfm": None,
+    "psx": "^KSE100", "dfm": "DFMGI.AE",
 }
 INDEX_NAMES = {"^GSPC": "S&P 500", "^NSEI": "NIFTY 50", "^AXJO": "S&P/ASX 200",
-               "^TASI.SR": "Tadawul All Share"}
+               "^TASI.SR": "Tadawul All Share", "^KSE100": "KSE-100",
+               "DFMGI.AE": "DFM General Index"}
 
 
 def _index_closes(region: str) -> dict[str, float]:
