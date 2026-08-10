@@ -89,6 +89,10 @@ export interface LedgerQuarter {
   closed_avg_return_pct: number | null;
   closed_winners: number;
   closed_count: number;
+  /** The portfolio's own move over this quarter - the number that gets compounded. */
+  portfolio_return_pct?: number | null;
+  /** The benchmark over the SAME two trading dates, or null where we hold no index. */
+  index_return_pct?: number | null;
 }
 export interface LedgerMarket {
   region: string;
@@ -102,6 +106,13 @@ export interface LedgerMarket {
   realised_winners: number;
   /** Each quarter's equal-weight return, compounded across the whole record. */
   compounded_return_pct?: number | null;
+  /** The benchmark, compounded over exactly the quarters above. Null: no index for this market. */
+  index_symbol?: string | null;
+  index_label?: string | null;
+  index_compounded_return_pct?: number | null;
+  index_quarters?: number;
+  /** Rule minus index, in percentage POINTS. Negative means the index won. */
+  excess_return_pct?: number | null;
   first_quarter?: string | null;
   last_quarter?: string | null;
   note?: string;

@@ -116,6 +116,7 @@ def _quarter_label(iso: str) -> str:
 def build_region(rows: list[dict], region: str, prices: Prices,
                  top_n: int = TOP_N, quarters: int = QUARTERS) -> dict[str, Any]:
     """The ledger for one market: the last `quarters` rebalances, with entries and exits."""
+    index_series = _index_closes(region)
     scored = [r for r in rows if r.get("region") == region and r.get("score_history")]
     by_quarter = _scores_by_quarter(scored)
     usable = sorted(q for q, names in by_quarter.items() if len(names) >= MIN_UNIVERSE)
@@ -265,6 +266,14 @@ def build_region(rows: list[dict], region: str, prices: Prices,
             "portfolio_return_pct": (round(sum(period_returns) / len(period_returns), 2)
                                      if period_returns else None),
             "held_through": len(period_returns),
+            # The index over the SAME two dates. Measured on the trading days the rule actually
+            # bought and sold on, not on quarter ends - comparing a portfolio priced at end-May
+            # against an index priced at end-March would flatter or damn it by two months of
+            # market that the rule was never exposed to.
+            "index_return_pct": _index_move(
+                index_series,
+                out_quarters[-1]["traded_on"] if (i > 0 and out_quarters) else None,
+                traded_on),
         })
 
     # Whatever is still held at the end is an OPEN position, marked to the newest close. Shown
@@ -291,9 +300,17 @@ def build_region(rows: list[dict], region: str, prices: Prices,
     # Compounded quarter on quarter, equal-weight within each - what the rule would have
     # returned held continuously, rather than an average of unrelated trades.
     compounded = 1.0
+    index_compounded = 1.0
+    index_quarters = 0
     for q in out_quarters[1:]:
         if q["portfolio_return_pct"] is not None:
             compounded *= 1 + q["portfolio_return_pct"] / 100
+        # Compounded over the SAME quarters the portfolio was compounded over, so the two
+        # numbers answer one question. A quarter the portfolio could not be measured in is not
+        # one the index gets credit for either.
+        if q["portfolio_return_pct"] is not None and q.get("index_return_pct") is not None:
+            index_compounded *= 1 + q["index_return_pct"] / 100
+            index_quarters += 1
     return {
         "region": region,
         "label": REGION_LABELS.get(region, region.upper()),
@@ -309,9 +326,73 @@ def build_region(rows: list[dict], region: str, prices: Prices,
         "realised_winners": sum(1 for r in realised if r > 0),
         "compounded_return_pct": round((compounded - 1) * 100, 2) if len(out_quarters) > 1
         else None,
+        # The benchmark, over the same quarters, compounded the same way. `excess` is the whole
+        # point of showing it: a market that rose 300% while the rule made 318% is a very
+        # different result from the same 318% in a flat market, and the compounded figure on
+        # its own cannot tell those apart.
+        "index_symbol": INDEX_FOR_REGION.get(region),
+        "index_label": INDEX_NAMES.get(INDEX_FOR_REGION.get(region) or ""),
+        "index_compounded_return_pct": (round((index_compounded - 1) * 100, 2)
+                                        if index_quarters else None),
+        "index_quarters": index_quarters,
+        "excess_return_pct": (
+            round((compounded - index_compounded) * 100, 2)
+            if index_quarters and len(out_quarters) > 1 else None),
         "first_quarter": out_quarters[1]["quarter"] if len(out_quarters) > 1 else None,
         "last_quarter": out_quarters[-1]["quarter"] if out_quarters else None,
     }
+
+
+# The index each market is judged against. Same mapping the regime card uses, so the two pages
+# cannot name different benchmarks for the same market.
+#
+# PSX and DFM are None on purpose. Yahoo serves no KSE-100 (^KSE100 is a 404 and ^KSE died in
+# 2021) and no DFM General Index, and the honest answer to "did we beat the index" is "we do not
+# have the index" - not a number built from our own universe and quietly labelled a benchmark.
+INDEX_FOR_REGION: dict[str, str | None] = {
+    "us": "^GSPC", "india": "^NSEI", "australia": "^AXJO", "gcc": "^TASI.SR",
+    "psx": None, "dfm": None,
+}
+INDEX_NAMES = {"^GSPC": "S&P 500", "^NSEI": "NIFTY 50", "^AXJO": "S&P/ASX 200",
+               "^TASI.SR": "Tadawul All Share"}
+
+
+def _index_closes(region: str) -> dict[str, float]:
+    """The benchmark's daily closes, or {} when this market has no index we can price."""
+    symbol = INDEX_FOR_REGION.get(region)
+    if not symbol:
+        return {}
+    from app.ingestion.ohlc_store import load_bars
+
+    out: dict[str, float] = {}
+    for day, row in load_bars("global", symbol).items():
+        try:
+            value = float(row[4])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if value > 0:
+            out[day] = value
+    return out
+
+
+def _index_move(series: dict[str, float], start: str | None, end: str | None) -> float | None:
+    """Index return between two dates, using the last close on or before each.
+
+    On or BEFORE, not on or after: an index does not trade on a market holiday, and the level a
+    portfolio was marked against on such a day is the previous session's close.
+    """
+    if not series or not start or not end or start >= end:
+        return None
+    days = sorted(series)
+
+    def _at(target: str) -> float | None:
+        prior = [d for d in days if d <= target]
+        return series[prior[-1]] if prior else None
+
+    first, last = _at(start), _at(end)
+    if not first or not last:
+        return None
+    return round((last / first - 1) * 100, 2)
 
 
 def _has_bars(region: str) -> bool:

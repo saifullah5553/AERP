@@ -44,6 +44,29 @@ function Quarter({ q }: { q: LedgerQuarter }) {
             <span className="text-slate-500"> avg · {q.closed_winners}/{q.closed_count} up</span>
           </span>
         )}
+        {/* This quarter's own scoreboard: what the book did against what the market did over
+            the same two trading days. */}
+        {q.portfolio_return_pct != null && (
+          <span className="text-xs" title="The held book over this quarter, equal weight">
+            <span className="text-slate-500">book </span>
+            <Pct v={q.portfolio_return_pct} />
+            {q.index_return_pct != null && (
+              <>
+                <span className="text-slate-500"> vs index </span>
+                <Pct v={q.index_return_pct} />
+                <span
+                  className="ml-1 font-semibold"
+                  style={{
+                    color: q.portfolio_return_pct >= q.index_return_pct ? "#22c55e" : "#ef4444",
+                  }}
+                >
+                  ({q.portfolio_return_pct >= q.index_return_pct ? "+" : ""}
+                  {(q.portfolio_return_pct - q.index_return_pct).toFixed(2)}pp)
+                </span>
+              </>
+            )}
+          </span>
+        )}
       </div>
       <div className="overflow-x-auto rounded-lg border border-base-600">
         <table className="w-full text-sm">
@@ -141,6 +164,35 @@ function Market({ m }: { m: LedgerMarket }) {
             {m.first_quarter && (
               <span className="text-slate-500"> · {m.first_quarter} to {m.last_quarter}</span>
             )}
+          </span>
+        )}
+        {/* The benchmark over the SAME quarters. Without it "compounded +88%" reads as a win
+            even when the index made 152% over the same stretch, which is what the US actually
+            did. The excess is the number that answers "did we beat it". */}
+        {m.index_compounded_return_pct != null && (
+          <span
+            className="text-xs"
+            title={`${m.index_label ?? "Index"} over the same ${m.index_quarters} quarters, compounded the same way`}
+          >
+            <span className="text-slate-500">{m.index_label ?? "index"} </span>
+            <Pct v={m.index_compounded_return_pct} />
+            {m.excess_return_pct != null && (
+              <>
+                <span className="text-slate-500"> · </span>
+                <span
+                  className="font-semibold"
+                  style={{ color: m.excess_return_pct >= 0 ? "#22c55e" : "#ef4444" }}
+                >
+                  {m.excess_return_pct >= 0 ? "beat by " : "lagged by "}
+                  {Math.abs(m.excess_return_pct).toFixed(2)}pp
+                </span>
+              </>
+            )}
+          </span>
+        )}
+        {m.index_compounded_return_pct == null && m.compounded_return_pct != null && (
+          <span className="text-xs text-slate-600" title="No index history is available for this market, so no comparison is shown rather than one built from our own universe">
+            no index available
           </span>
         )}
         {m.open_positions?.length > 0 && (
@@ -269,7 +321,7 @@ export default function BuySellPage() {
           own daily history, bought {current?.lag_months ?? 2} months after the quarter end,
           since results are not knowable the day a quarter closes. These are trades the rule
           <i> would</i> have made. The universe is today's listings, so companies that delisted
-          are missing and their absence flatters the record. No costs, spread or slippage.
+          are missing and their absence flatters the record. No costs, spread or slippage. The index is measured on the same trading days the rule bought and sold on, and compounded over the same quarters; markets with no index history show none rather than a substitute.
         </div>
       </div>
 
