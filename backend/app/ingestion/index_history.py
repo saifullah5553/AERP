@@ -28,7 +28,12 @@ from app.core.logging import get_logger
 log = get_logger(__name__)
 
 _UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)"
-_YAHOO = "https://query1.finance.yahoo.com/v8/finance/chart/{sym}?range={range_}&interval=1d"
+# period1=0, NOT range=max. `range=max` looks like the greedy choice and silently returns
+# MONTHLY bars - 168 closes for forty-two years of the S&P, which would have been stored as a
+# daily series and quietly wrecked every comparison drawn from it. An explicit epoch window
+# keeps interval=1d honest: the same request returns 14,271 daily closes back to 1970.
+_YAHOO = ("https://query1.finance.yahoo.com/v8/finance/chart/{sym}"
+          "?period1=0&period2={until}&interval=1d")
 # The exchange's own end-of-day series. dps.psx.com.pk is already the source of PSX quotes, so
 # this adds a route, not a dependency.
 _PSX_EOD = "https://dps.psx.com.pk/timeseries/eod/KSE100"
@@ -38,11 +43,12 @@ YAHOO_INDICES = ("^GSPC", "^NSEI", "^AXJO", "^TASI.SR", "DFMGI.AE")
 PSX_INDEX = "^KSE100"
 
 
-def _from_yahoo(symbol: str, client: httpx.Client, range_: str = "5y") -> dict[str, float]:
-    """{date: close} for an index Yahoo carries."""
+def _from_yahoo(symbol: str, client: httpx.Client) -> dict[str, float]:
+    """{date: close} for an index Yahoo carries - the whole series it has, not a window."""
+    until = int(datetime.now(tz=UTC).timestamp()) + 86400
     try:
-        resp = client.get(_YAHOO.format(sym=symbol, range_=range_),
-                          headers={"User-Agent": _UA}, timeout=30)
+        resp = client.get(_YAHOO.format(sym=symbol, until=until),
+                          headers={"User-Agent": _UA}, timeout=60)
         resp.raise_for_status()
         result = (resp.json().get("chart") or {}).get("result")
         if not result:
