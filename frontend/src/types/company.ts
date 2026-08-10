@@ -17,6 +17,54 @@ export interface Peer {
   price: number | null;
 }
 
+/** The price-action read: the whole technical analysis, not just its score.
+ *
+ * Replaces the indicator block. There is no RSI, MACD or moving average here because the
+ * engine that produced them is gone - what a chart shows is structure, levels, volume and
+ * what the last bars did, so that is what the page shows.
+ */
+export interface PriceActionZone {
+  low: number;
+  high: number;
+  kind: "support" | "resistance";
+  touches: number;
+  last_touch: string;
+  strength: "major" | "minor";
+  evidence: string;
+}
+export interface PriceActionSetup {
+  kind: string;
+  aggressive_entry: number | null;
+  conservative_entry: number | null;
+  stop: number | null;
+  target_1: number | null;
+  target_2: number | null;
+  major_target: number | null;
+  risk_reward: number | null;
+  rationale: string;
+}
+export interface PriceAction {
+  score: number | null;
+  bias: "bullish" | "neutral" | "bearish";
+  quality: string;
+  phase: string;
+  phase_confidence: string;
+  structure_daily: string;
+  structure_weekly: string;
+  breakout_status: string;
+  components: Record<string, number>;
+  zones: PriceActionZone[];
+  volume: {
+    relative: number | null; label: string; average: number | null;
+    trend: string; note: string; verdict: string;
+  };
+  candles: string[];
+  summary: string;
+  what_changes_it: { bullish?: string; bearish?: string; wait?: string };
+  notes: string[];
+  setup: PriceActionSetup;
+}
+
 // Statement/ratio/quote rows are dynamic column bags from the backend.
 export type Row = Record<string, number | string | null>;
 
@@ -29,6 +77,7 @@ export interface CompanyDetail {
   fundamentals: Row | null;
   ratios: Row | null;
   technical: Row | null;
+  price_action: PriceAction | null;
   statements: { income: Row[]; balance: Row[]; cashflow: Row[] };
   patterns: Row[];
   score_history: ScorePoint[];

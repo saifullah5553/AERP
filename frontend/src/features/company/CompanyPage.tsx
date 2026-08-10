@@ -32,7 +32,6 @@ import {
   scoreSet,
   strengthLabel,
   technicalRead,
-  wyckoffPhase,
 } from "@/lib/research";
 import {
   commoditySummary,
@@ -50,7 +49,7 @@ import type {
   SectorStatsData,
   SnapshotMeta,
 } from "@/types/api";
-import type { CompanyDetail, QualityTrend, Row } from "@/types/company";
+import type { CompanyDetail, PriceAction, QualityTrend, Row } from "@/types/company";
 import PabraiRadar from "./PabraiRadar";
 import PeersTable from "./PeersTable";
 import QualityHistoryTable from "./QualityHistoryTable";
@@ -276,7 +275,6 @@ export default function CompanyPage() {
       netProfitGrowth: growthOf(data.statements.income, "net_income"),
       macroFactors: macroSensitivity((sec.sector as string) ?? null, (sec.industry as string) ?? null, regionRegime),
       cycle: businessCycle(data),
-      wyckoff: wyckoffPhase(data),
     };
   }, [data, pulse, rawMaterials, regime]);
 
@@ -365,7 +363,7 @@ export default function CompanyPage() {
           <FundamentalSection detail={data} derived={derived} />
           <ValuationSection detail={data} />
           <SectorComparison detail={data} sectorStats={sectorStats} />
-          <TechnicalSection tech={derived.tech} patternSignal={derived.patternSignal} wyckoff={derived.wyckoff} />
+          <PriceActionSection pa={data.price_action ?? null} patternSignal={derived.patternSignal} />
           <MacroSensitivitySection factors={derived.macroFactors} cycle={derived.cycle} />
           <RawMaterialSection materials={derived.materials} outlook={rawMaterials?.outlook ?? null} />
           <CatalystSection sec={data.security as Row} catalysts={catalysts} materials={derived.materials} />
@@ -627,40 +625,135 @@ function FundamentalSection({
   );
 }
 
-// ── Technical analysis (chart-free) ──────────────────────────────────────────
-function TechnicalSection({
-  tech,
-  patternSignal,
-  wyckoff,
-}: {
-  tech: ReturnType<typeof technicalRead>;
-  patternSignal: string | null;
-  wyckoff: { phase: string; note: string } | null;
-}) {
-  const trendTone = tech.trend === "Bullish" ? "#22c55e" : tech.trend === "Bearish" ? "#ef4444" : "#94a3b8";
-  const rsiTone = tech.rsiCondition === "Overbought" ? "#ef4444" : tech.rsiCondition === "Oversold" ? "#22c55e" : "#94a3b8";
-  const yesNo = (b: boolean | null) => (b == null ? "—" : b ? "Yes" : "No");
-  const yesTone = (b: boolean | null) => (b == null ? "#94a3b8" : b ? "#22c55e" : "#ef4444");
+// ── Price action + volume (the whole technical read) ─────────────────────────
+// Was a grid of SMA50 / SMA200 / RSI / MACD. Those are gone with the engine that produced
+// them; this shows what a person reading the chart would look at, and - crucially - the
+// EVIDENCE for each claim rather than a number on its own.
+function titleCase(v: string): string {
+  // Split/join rather than a regex: an escape in this line was mangled into a literal
+  // backspace byte once already, and word-boundary matching is not worth that risk.
+  return v.split("_").map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w)).join(" ");
+}
+
+function PriceActionSection({ pa, patternSignal }: { pa: PriceAction | null; patternSignal: string | null }) {
+  if (!pa) {
+    return (
+      <Card title="Price Action & Volume">
+        <div className="px-4 py-4 text-sm text-slate-500">
+          No price-action read yet — this company has not been through a technical refresh.
+        </div>
+      </Card>
+    );
+  }
+  const biasTone = pa.bias === "bullish" ? "#22c55e" : pa.bias === "bearish" ? "#ef4444" : "#94a3b8";
+  const setup = pa.setup;
+  const noTrade = setup.kind === "no_trade";
+  const money = (v: number | null | undefined) => (v == null ? "—" : fmtNumber(v));
+
   return (
-    <Card title="Technical Analysis">
+    <Card
+      title="Price Action & Volume"
+      right={
+        <span className="text-[10px] uppercase tracking-wide" style={{ color: biasTone }}>
+          {pa.bias} · {pa.quality}
+        </span>
+      }
+    >
       <div className="grid grid-cols-1 gap-x-8 px-4 py-2 md:grid-cols-2">
-        <StatRow label="Trend" value={tech.trend} tone={trendTone} />
-        <StatRow label="Momentum" value={tech.momentum} tone={tech.momentum === "Strong" ? "#22c55e" : "#f59e0b"} />
-        <StatRow label="Above 50 DMA" value={yesNo(tech.aboveSma50)} tone={yesTone(tech.aboveSma50)} />
-        <StatRow label="Above 200 DMA" value={yesNo(tech.aboveSma200)} tone={yesTone(tech.aboveSma200)} />
+        <StatRow label="Structure (daily)" value={titleCase(pa.structure_daily)} tone={biasTone} />
+        <StatRow label="Structure (weekly)" value={titleCase(pa.structure_weekly)} />
+        <StatRow label="Phase" value={`${titleCase(pa.phase)} (${pa.phase_confidence} confidence)`} />
+        <StatRow label="Breakout status" value={titleCase(pa.breakout_status)} />
         <StatRow
-          label="RSI Condition"
-          value={tech.rsi != null ? `${tech.rsiCondition} (${tech.rsi.toFixed(0)})` : tech.rsiCondition}
-          tone={rsiTone}
+          label="Relative volume"
+          value={pa.volume.relative != null ? `${pa.volume.relative.toFixed(2)}x (${titleCase(pa.volume.label)})` : "—"}
         />
-        <StatRow label="Volume" value={tech.volume} />
-        <StatRow label="Pattern Read" value={patternSignal ?? "—"} />
-        <StatRow label="Detected Pattern" value={tech.pattern ? titleize(tech.pattern) : "—"} />
-        <StatRow label="Wyckoff Phase" value={wyckoff?.phase ?? "—"} />
+        <StatRow label="Volume trend" value={titleCase(pa.volume.trend)} />
+        <StatRow label="Pattern read" value={patternSignal ?? "—"} />
+        <StatRow label="Technical score" value={pa.score != null ? `${pa.score.toFixed(1)}/100` : "—"} />
       </div>
-      {wyckoff && (
-        <div className="border-t border-base-700/50 px-4 py-2 text-[11px] text-slate-500">{wyckoff.note}</div>
+
+      <div className="border-t border-base-700/50 px-4 py-2 text-[11px] text-slate-400">
+        {pa.volume.verdict}
+        {pa.notes.map((n) => (
+          <div key={n} className="mt-1 text-amber-400/80">{n}</div>
+        ))}
+        {pa.candles.length > 0 && (
+          <div className="mt-1 text-slate-500">Last bar: {pa.candles.join("; ")}</div>
+        )}
+      </div>
+
+      {/* The levels, with what earns each its place. */}
+      {pa.zones.length > 0 && (
+        <div className="border-t border-base-700/50 px-4 py-2">
+          <div className="mb-1 text-[10px] uppercase tracking-wide text-slate-500">
+            Support &amp; resistance
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <tbody>
+                {pa.zones.map((z) => (
+                  <tr key={`${z.kind}-${z.low}`} className="border-b border-base-700/30">
+                    <td className="py-1 pr-3 font-semibold"
+                        style={{ color: z.kind === "support" ? "#22c55e" : "#ef4444" }}>
+                      {fmtNumber(z.low)}–{fmtNumber(z.high)}
+                    </td>
+                    <td className="py-1 pr-3 text-slate-400">
+                      {z.strength === "major" ? "Major" : "Minor"} {z.kind}
+                    </td>
+                    <td className="py-1 pr-3 text-slate-500">{z.touches} tests</td>
+                    <td className="py-1 text-slate-500">{z.evidence}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
+
+      {/* The setup, or an explicit refusal with the trigger that would change it. */}
+      <div className="border-t border-base-700/50 px-4 py-2">
+        <div className="mb-1 text-[10px] uppercase tracking-wide text-slate-500">Trade setup</div>
+        {noTrade ? (
+          <div className="text-xs">
+            <span className="font-bold text-amber-400">NO TRADE — WAIT.</span>{" "}
+            <span className="text-slate-400">{setup.rationale.replace("NO TRADE - WAIT. ", "")}</span>
+          </div>
+        ) : (
+          <>
+            <div className="mb-1 text-xs font-semibold text-slate-200">{titleCase(setup.kind)}</div>
+            <div className="grid grid-cols-2 gap-x-6 text-xs md:grid-cols-4">
+              <StatRow label="Aggressive entry" value={money(setup.aggressive_entry)} />
+              <StatRow label="Conservative entry" value={money(setup.conservative_entry)} />
+              <StatRow label="Stop / invalidation" value={money(setup.stop)} tone="#ef4444" />
+              <StatRow label="Target 1" value={money(setup.target_1)} tone="#22c55e" />
+              <StatRow label="Target 2" value={money(setup.target_2)} />
+              <StatRow label="Major target" value={money(setup.major_target)} />
+              <StatRow
+                label="Risk / reward"
+                value={setup.risk_reward != null ? `${setup.risk_reward.toFixed(2)}:1` : "—"}
+                tone={setup.risk_reward != null && setup.risk_reward >= 2 ? "#22c55e" : "#f59e0b"}
+              />
+            </div>
+            <div className="mt-1 text-[11px] text-slate-500">{setup.rationale}</div>
+          </>
+        )}
+      </div>
+
+      <div className="border-t border-base-700/50 px-4 py-2 text-[11px]">
+        <div className="mb-0.5 text-[10px] uppercase tracking-wide text-slate-500">
+          What would change this view
+        </div>
+        {pa.what_changes_it.bullish && (
+          <div className="text-green-400/80">Bullish: {pa.what_changes_it.bullish}</div>
+        )}
+        {pa.what_changes_it.bearish && (
+          <div className="text-red-400/80">Bearish: {pa.what_changes_it.bearish}</div>
+        )}
+        {pa.what_changes_it.wait && (
+          <div className="text-slate-500">Wait: {pa.what_changes_it.wait}</div>
+        )}
+      </div>
     </Card>
   );
 }

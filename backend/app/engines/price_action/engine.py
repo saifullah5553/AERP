@@ -113,6 +113,12 @@ def _breakout(bars: list[C.Bar], zones: list[S.Zone], vol: V.VolumeRead,
     last = bars[-1]
     price = last.close
     recent = bars[-lookback:]
+    # A break has to CLEAR the level, not graze it. Without a margin, price oscillating around
+    # a zone edge - which is what price does at a level, by definition - registered as a break
+    # and then a failure of it: 54% of the universe came back flagged as a failed break and
+    # 2,478 names were handed a "bear trap" setup. A quarter of the market is not a bear trap.
+    # The margin is proportional so it means the same thing on a 5 rupee share and a 500 one.
+    margin = 0.015
 
     res = [z for z in zones if z.kind == "resistance"]
     sup = [z for z in zones if z.kind == "support"]
@@ -120,7 +126,8 @@ def _breakout(bars: list[C.Bar], zones: list[S.Zone], vol: V.VolumeRead,
     # A level is "broken" when the latest close is beyond it but recent bars traded below/above,
     # i.e. the break happened inside the window we can still see the consequences of.
     for zone in sorted(res, key=lambda z: -z.mid):
-        if price > zone.high and any(b.close <= zone.high for b in recent[:-1]):
+        if price > zone.high * (1 + margin) and any(b.close <= zone.high
+                                                     for b in recent[:-1]):
             through = (price / zone.high - 1) * 100
             after = [b for b in recent if b.close > zone.high]
             held = len(after) >= 2
@@ -139,15 +146,10 @@ def _breakout(bars: list[C.Bar], zones: list[S.Zone], vol: V.VolumeRead,
                         "no weight behind it")
             return ("breakout_forming", 13.0,
                     f"closed {through:.1f}% above {zone.high:,.2f} on ordinary volume")
-        # Failed: traded through during the window but closed back under it.
-        if price <= zone.high and any(b.high > zone.high for b in recent) and \
-                any(b.close > zone.high for b in recent[:-1]):
-            return ("failed_breakout", 4.0,
-                    f"traded above {zone.high:,.2f} and closed back below "
-                    "- a trap unless reclaimed")
 
     for zone in sorted(sup, key=lambda z: z.mid):
-        if price < zone.low and any(b.close >= zone.low for b in recent[:-1]):
+        if price < zone.low * (1 - margin) and any(b.close >= zone.low
+                                                   for b in recent[:-1]):
             through = (1 - price / zone.low) * 100
             if vol.relative is not None and vol.relative >= 1.5:
                 return ("confirmed_breakdown", 3.0,
@@ -155,11 +157,24 @@ def _breakout(bars: list[C.Bar], zones: list[S.Zone], vol: V.VolumeRead,
                         "volume - real selling")
             return ("breakdown_forming", 6.0,
                     f"closed below {zone.low:,.2f} on unremarkable volume - unconfirmed")
-        if price >= zone.low and any(b.low < zone.low for b in recent) and \
-                any(b.close < zone.low for b in recent[:-1]):
+
+    # FAILURES are checked against every zone, whatever it is currently labelled, and require a
+    # full round trip ACROSS the band. Splitting by label made these near-tautological: a zone
+    # is called resistance precisely because it sits above price, so "price is below the
+    # resistance it broke" was true by construction and 26% of the universe came back as a
+    # failed breakout. Price must have closed clear of one side and then closed clear of the
+    # other - which is what a trap actually looks like, and is genuinely uncommon.
+    for zone in zones:
+        cleared_above = [b for b in recent[:-1] if b.close > zone.high * (1 + margin)]
+        cleared_below = [b for b in recent[:-1] if b.close < zone.low * (1 - margin)]
+        if cleared_above and price < zone.low * (1 - margin):
+            return ("failed_breakout", 4.0,
+                    f"closed clear above {zone.high:,.2f} and is now back below "
+                    f"{zone.low:,.2f} - a trap unless it is reclaimed")
+        if cleared_below and price > zone.high * (1 + margin):
             return ("failed_breakdown", 16.0,
-                    f"lost {zone.low:,.2f} intraday and closed back above it - a bear trap, "
-                    "which is a bullish tell")
+                    f"lost {zone.low:,.2f} on a closing basis and has reclaimed "
+                    f"{zone.high:,.2f} - a bear trap, which is a bullish tell")
 
     return "no_breakout", 10.0, "price is inside its range; no level has been broken"
 
