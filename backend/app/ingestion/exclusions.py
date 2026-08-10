@@ -71,14 +71,34 @@ def save_excluded(region: str, symbols: set[str], note: str = "") -> int:
     return len(merged)
 
 
+# The asset classes this platform carries. Everything here is either something we can score on
+# its own fundamentals (equity) or something we track as a market input (currencies, crypto,
+# commodities). ETFs are deliberately absent: a fund files no statements of its own, so it can
+# never be scored, ranked or reasoned about here - it is a wrapper around holdings we would
+# rather look at directly.
+#
+# `index` is kept and is NOT browsable filler: the regime engine reads ^GSPC, ^NSEI, ^AXJO and
+# ^TASI.SR straight off these rows for each market's Index Trend, and the screener's indices
+# bar renders them. Dropping them would blank a signal on every market's regime card.
+KEEP_ASSET_CLASSES = frozenset({"equity", "forex", "crypto", "commodity", "index"})
+
+
 def apply_to_rows(rows: list[dict]) -> tuple[list[dict], int]:
-    """Drop excluded rows from a screener list. Returns (kept, dropped)."""
+    """Drop excluded rows from a screener list. Returns (kept, dropped).
+
+    Two rules, one pass. The per-symbol lists are EVIDENCE - a symbol earns its place by
+    returning nothing on every statement page it was asked for. The asset-class rule is a
+    DECISION about what the platform is for, and it is expressed as a class rather than as a
+    list of tickers on purpose: a list of fourteen ETFs would not catch the fifteenth the next
+    universe refresh adds.
+    """
     lists = load_all()
-    if not lists:
-        return rows, 0
     kept = []
     dropped = 0
     for r in rows:
+        if (r.get("asset_class") or "equity") not in KEEP_ASSET_CLASSES:
+            dropped += 1
+            continue
         banned = lists.get(str(r.get("region") or ""), set())
         if banned and str(r.get("symbol") or "").upper() in banned:
             dropped += 1

@@ -958,3 +958,13 @@ ZKP
 ZKPU
 ZSL
 ZTR
+
+# --- 2026-08-10: no financials page on any statement, every attempt (8 symbols) ---
+GRDX
+IBAC
+QETA
+RDAC
+RFAI
+RIBB
+VRXA
+YHNA

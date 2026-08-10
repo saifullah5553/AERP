@@ -87,6 +87,51 @@ def refresh_derived_views(out) -> None:
         log.warning("model-portfolio mark failed: %s", exc)
 
 
+def cmd_prune_universe(args: argparse.Namespace) -> None:
+    """Apply the exclusions and the asset-class rule to the EXISTING snapshot.
+
+    export-static already does this, but a full export re-runs the whole pipeline. When the
+    rule changes - a new exclusion, or dropping a whole asset class - the published snapshot
+    should not have to wait for that. Same function does the filtering, so the two cannot
+    disagree about what belongs.
+    """
+    import json as _json
+    from pathlib import Path
+
+    from app.core.safe_path import safe_file
+    from app.ingestion.exclusions import KEEP_ASSET_CLASSES, apply_to_rows
+
+    out = Path(args.out or "../frontend/public/data")
+    rows = _json.loads((out / "screener.json").read_text(encoding="utf-8"))
+    kept, dropped = apply_to_rows(rows)
+    if not dropped:
+        log.info("prune-universe: nothing to drop (%d rows)", len(rows))
+        return
+
+    gone = {str(r.get("symbol") or "").upper() for r in rows} - {
+        str(r.get("symbol") or "").upper() for r in kept}
+    log.info("prune-universe: dropping %d of %d rows; keeping asset classes %s",
+             dropped, len(rows), ", ".join(sorted(KEEP_ASSET_CLASSES)))
+    if args.dry_run:
+        log.info("prune-universe: --dry-run, nothing written. Would drop: %s",
+                 ", ".join(sorted(gone)[:40]) + (" ..." if len(gone) > 40 else ""))
+        return
+
+    (out / "screener.json").write_text(_json.dumps(kept), encoding="utf-8")
+    # The company file goes too. Leaving it behind keeps a page reachable by URL for a symbol
+    # the platform no longer carries, which reads as data rather than as a leftover.
+    removed = 0
+    for sym in gone:
+        for name in (f"{sym}.json", f"{sym.replace('/', '_')}.json"):
+            cf = safe_file(out / "company", name)
+            if cf is not None and cf.exists():
+                cf.unlink()
+                removed += 1
+                break
+    log.info("prune-universe: %d rows kept, %d company files removed", len(kept), removed)
+    refresh_derived_views(out)
+
+
 def cmd_pack_prices(args: argparse.Namespace) -> None:
     """Pack the local daily closes into data/prices/<region>.json.gz for CI to read."""
     from app.ingestion.price_pack import pack_region
@@ -1190,6 +1235,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     pp = add("pack-prices", cmd_pack_prices)
     pp.add_argument("--regions", default=None, help="comma list, default every market")
+    pu = add("prune-universe", cmd_prune_universe)
+    pu.add_argument("--dry-run", action="store_true", help="report what would be dropped")
+    pu.add_argument("--out", default=None, help="snapshot dir")
     pend = sub.add_parser("pending-results")
     pend.add_argument("--region", default="psx")
     pend.add_argument("--days", type=int, default=5)

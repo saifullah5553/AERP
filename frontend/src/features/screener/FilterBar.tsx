@@ -22,7 +22,9 @@ const ASSET_CLASSES: { value: AssetClass | ""; label: string }[] = [
   { value: "crypto", label: "Crypto" },
   { value: "forex", label: "Forex" },
   { value: "commodity", label: "Commodity" },
-  { value: "etf", label: "ETF" },
+  // No ETF option: the platform no longer carries them. A fund files no statements of its own,
+  // so every ETF row was a permanent blank in the fundamental score. Leaving the filter would
+  // offer a choice that can only ever return nothing.
   { value: "index", label: "Index" },
 ];
 

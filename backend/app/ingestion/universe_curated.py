@@ -189,16 +189,16 @@ INDICES: tuple[tuple[str, str], ...] = (
     ("^HSI", "Hang Seng"), ("^GDAXI", "DAX"), ("^TASI.SR", "Tadawul All Share (TASI)"),
 )
 
-# ── ETFs (Yahoo plain symbols; technical-only) ──────────────────────────────
-ETFS: tuple[tuple[str, str, str], ...] = (
-    ("SPY", "SPDR S&P 500 ETF", "US Equity"), ("QQQ", "Invesco QQQ (Nasdaq 100)", "US Equity"),
-    ("DIA", "SPDR Dow Jones ETF", "US Equity"), ("IWM", "iShares Russell 2000", "US Equity"),
-    ("VTI", "Vanguard Total Market", "US Equity"), ("VOO", "Vanguard S&P 500", "US Equity"),
-    ("ARKK", "ARK Innovation", "Thematic"), ("XLK", "Technology Select SPDR", "Sector"),
-    ("XLF", "Financial Select SPDR", "Sector"), ("XLE", "Energy Select SPDR", "Sector"),
-    ("GLD", "SPDR Gold Shares", "Commodity"), ("SLV", "iShares Silver Trust", "Commodity"),
-    ("EEM", "iShares Emerging Markets", "Global Equity"), ("EFA", "iShares EAFE", "Global Equity"),
-)
+# ── ETFs: none, deliberately ────────────────────────────────────────────────
+# We used to carry fourteen (SPY, QQQ, GLD, ARKK...). A fund files no statements of its own, so
+# every one of them was a permanent blank in the fundamental score - technical-only rows in a
+# platform whose whole point is the fundamentals. The exposure they stood for is better read
+# from the index rows we already keep, or from the holdings themselves.
+#
+# Kept as an empty tuple rather than deleted so the loop below still has something to name, and
+# so this note sits where the next person looks for the list. `exclusions.KEEP_ASSET_CLASSES`
+# is the enforcement - it drops any ETF row at export however it got in.
+ETFS: tuple[tuple[str, str, str], ...] = ()
 
 # ── Crypto (Yahoo ``-USD``) ─────────────────────────────────────────────────
 CRYPTO: tuple[tuple[str, str], ...] = (
