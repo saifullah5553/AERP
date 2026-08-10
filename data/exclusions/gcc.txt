@@ -1,0 +1,10 @@
+
+# --- 2026-08-10: retried explicitly after never being in the scrape list; still no financials page on any statement (8 symbols) ---
+CBQK
+IQCD
+MARK
+ORDS
+QEWS
+QFLS
+QIBK
+QNBK

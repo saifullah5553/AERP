@@ -16,3 +16,12 @@ OCCLLTD
 PRUDMOULI
 SABEVENTS
 TECILCHEM
+
+# --- 2026-08-10: retried explicitly after never being in the scrape list; still no financials page on any statement (7 symbols) ---
+3PLAND
+BOSCH-HCIL
+HCL-INSYS
+KLBRENG-B
+MCCHRLS-B
+NAM-INDIA
+UMIYA-MRO
