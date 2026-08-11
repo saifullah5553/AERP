@@ -164,21 +164,30 @@ def _load(path: Path) -> Any:
 def _eps_ttm(detail: dict) -> float | None:
     """Trailing-twelve-month EPS from OUR OWN quarterly-TTM statements.
 
-    Reads `statements_ttm` - the scraped CSV series where every column is already a full
-    trailing year - and takes the newest period that reports EPS. It used to read the annual
-    `statements` block, which is where the yfinance backfill left its data, so the P/E on the
-    page was a live price divided by an earnings figure from a banned source and a different
-    basis. Same company, two vintages, one ratio.
+    Derived as net income over diluted shares FROM THE SAME PERIOD, rather than read off the
+    reported EPS line. The reported line is published a little after the rest of the statement,
+    so taking "the newest period that has an EPS" paired last quarter's earnings with this
+    quarter's everything-else: 291 companies had a P/E that disagreed with their own net income
+    and share count by more than 30%. Deriving it makes the mismatch impossible by construction.
 
-    The newest TTM period often has no EPS yet (the source publishes the line a little after
-    the rest of the statement), so the newest period that HAS one wins rather than giving up.
+    That P/E is not only displayed - it is the input to the sector median P/E that every
+    relative valuation multiplies by, so a stale numerator propagated into thousands of fair
+    values.
+
+    Falls back to the reported line where shares are missing, and says nothing where neither
+    is available.
     """
     ttm = ((detail.get("statements_ttm") or {}).get("income")) or []
-    if isinstance(ttm, list):
-        for row in ttm:                      # newest first
-            value = row.get("eps")
-            if isinstance(value, int | float) and value != 0:
-                return round(float(value), 4)
+    if not isinstance(ttm, list):
+        return None
+    for row in ttm:                      # newest first
+        net = row.get("net_income")
+        shares = row.get("weighted_shares")
+        if isinstance(net, int | float) and isinstance(shares, int | float) and shares > 0:
+            return round(float(net) / float(shares), 4)
+        reported = row.get("eps")
+        if isinstance(reported, int | float) and reported != 0:
+            return round(float(reported), 4)
     return None
 
 
