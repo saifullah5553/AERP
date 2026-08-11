@@ -23,6 +23,8 @@ from app.engines.strategy.quality import assess_quality
 
 log = get_logger(__name__)
 
+_MULTIPLES: dict = {}
+
 
 def refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
     with snapshot_lock("refresh-quality", data_dir) as ok:
@@ -101,6 +103,16 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
         targets = targets[:limit]
 
     medians = _peer_margins(targets, cdir)
+    # Sector multiples once for the whole run - each one is a median over the entire market,
+    # so computing it per company would be the same scan ten thousand times.
+    global _MULTIPLES
+    try:
+        from app.engines.valuation.multi import sector_multiples
+        _MULTIPLES = sector_multiples(rows, cdir)
+        log.info("sector multiples: %d sectors", len(_MULTIPLES))
+    except Exception as exc:  # noqa: BLE001
+        log.warning("sector multiples failed: %s", exc)
+        _MULTIPLES = {}
 
     scored = passed = improving = no_data = 0
     for r in targets:
@@ -186,6 +198,22 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
             r["dcf_fair_value"] = dcf.fair_value
             r["dcf_upside_pct"] = dcf.upside_pct
             r["dcf_verdict"] = dcf.verdict
+            # Several methods, routed by sector, averaged. The published fair value prefers the
+            # BLEND wherever it managed more than one method - one model's answer is a view,
+            # two agreeing is evidence - and falls back to the DCF alone otherwise.
+            from app.engines.valuation.multi import blend as blend_value
+
+            mv = blend_value(statements, r.get("price"), r.get("region") or "",
+                             r.get("sector"), r.get("symbol"), _MULTIPLES)
+            if mv.used >= 2 and mv.fair_value:
+                r["dcf_fair_value"] = mv.fair_value
+                r["dcf_upside_pct"] = mv.upside_pct
+                r["dcf_verdict"] = mv.verdict
+            doc["valuation"] = {
+                "fair_value": mv.fair_value, "upside_pct": mv.upside_pct,
+                "verdict": mv.verdict, "methods": mv.methods, "used": mv.used,
+                "spread_pct": mv.spread_pct, "bucket": mv.bucket, "reason": mv.reason,
+            }
             r["beta"] = (dcf.assumptions or {}).get("beta")
             # Market cap at last: shares x the live price. It was absent from every
             # row in the platform, which is what forced book-weighted WACC.

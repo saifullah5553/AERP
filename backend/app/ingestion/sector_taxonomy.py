@@ -160,6 +160,14 @@ def normalize_rows(rows: list[dict]) -> dict[str, int]:
         if not current:
             continue
         if " ".join(str(current).split()).lower() in MEANINGLESS:
+            # Clearing the sector is right - "Miscellaneous" is not a peer group, and grading a
+            # company against everything the exchange could not classify is worse than not
+            # grading it. But the LABEL is still the exchange's own answer and it was being
+            # destroyed: sixteen PSX companies came out of a sector refresh with nothing at
+            # all, having had "Miscellaneous" going in. Demote it to industry instead, so the
+            # row keeps what the exchange said while staying out of the peer medians.
+            if not r.get("industry"):
+                r["industry"] = " ".join(str(current).split()).title()
             r["sector"] = None
             cleared += 1
             continue
