@@ -77,7 +77,9 @@ export interface CompanyDetail {
   fundamentals: Row | null;
   ratios: Row | null;
   technical: Row | null;
-  price_action: PriceAction | null;
+  /** Optional: company files written before the price-action engine have no such
+   *  key, and a required field would be a lie about the data on disk. */
+  price_action?: PriceAction | null;
   statements: { income: Row[]; balance: Row[]; cashflow: Row[] };
   patterns: Row[];
   score_history: ScorePoint[];
