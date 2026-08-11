@@ -59,6 +59,15 @@ TERMINAL_GROWTH: dict[str, float] = {
 }
 
 FORECAST_YEARS = 5
+# Terminal value may not be more than this share of enterprise value. Past it the "valuation"
+# is a statement about the perpetuity assumption and almost nothing about the five years of
+# cash flow anyone can actually reason about, so it is refused rather than published.
+MAX_TERMINAL_SHARE = 0.85
+# A fair value this far from the traded price means the MODEL is wrong, not the market. At
+# 8,000 listings something will always divide badly - one such name came out at eleven MILLION
+# times its price - and publishing that discredits the 4,000 sane ones beside it.
+MAX_PRICE_MULTIPLE = 5.0
+MIN_PRICE_MULTIPLE = 0.1
 # A fitted growth rate above this is not a forecast, it is an extrapolation of a good run.
 GROWTH_CAP = 0.20
 GROWTH_FLOOR = -0.10
@@ -213,14 +222,28 @@ def value(statements: dict[str, list[dict]], price: float | None, region: str,
                          assumptions=assumptions)
 
     # Five years explicit, then a Gordon terminal on the fifth year's cash flow.
+    # GROWTH FADES to the terminal rate across the forecast rather than holding flat. Holding
+    # a fitted 20% for five years and then capitalising the inflated fifth year is what valued
+    # Emaar Development at eight times its own market capitalisation: the terminal value is
+    # computed on a cash flow that compounding has already doubled. A linear fade is the
+    # textbook treatment and it is what a competitive economy actually does to growth rates.
     pv = 0.0
     flow = base
     for year in range(1, FORECAST_YEARS + 1):
-        flow = flow * (1 + growth)
+        step = growth + (g_terminal - growth) * (year / FORECAST_YEARS)
+        flow = flow * (1 + step)
         pv += flow / (1 + wacc) ** year
     terminal = flow * (1 + g_terminal) / (wacc - g_terminal)
     pv_terminal = terminal / (1 + wacc) ** FORECAST_YEARS
     enterprise = pv + pv_terminal
+
+    if enterprise > 0 and pv_terminal / enterprise > MAX_TERMINAL_SHARE:
+        return DCFResult(verdict="no value", wacc=round(wacc, 4), growth=round(growth, 4),
+                         terminal_growth=g_terminal, base_fcf=round(base, 2),
+                         quarters_used=len(fcf_series),
+                         reason=(f"{pv_terminal / enterprise:.0%} of the value is the terminal "
+                                 "assumption - that is a view on perpetuity, not a valuation"),
+                         assumptions=assumptions)
 
     net_debt = debt - cash_now
     equity_value = enterprise - net_debt
@@ -238,6 +261,16 @@ def value(statements: dict[str, list[dict]], price: float | None, region: str,
                          assumptions=assumptions)
 
     fair = equity_value / shares
+    if price and price > 0:
+        multiple = fair / price
+        if multiple > MAX_PRICE_MULTIPLE or multiple < MIN_PRICE_MULTIPLE:
+            return DCFResult(verdict="no value", wacc=round(wacc, 4), growth=round(growth, 4),
+                             base_fcf=round(base, 2), quarters_used=len(fcf_series),
+                             equity_value=round(equity_value, 2), shares=shares,
+                             reason=(f"fair value is {multiple:,.1f}x the traded price - the "
+                                     "inputs disagree with the market by more than this model "
+                                     "can justify, so no value is published"),
+                             assumptions=assumptions)
     upside = ((fair / price - 1) * 100) if price and price > 0 else None
     verdict = "no value"
     if upside is not None:
