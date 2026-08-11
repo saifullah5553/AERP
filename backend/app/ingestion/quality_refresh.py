@@ -174,6 +174,29 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
                 else ["passes the quality gate - awaiting price-action timing"],
             }
 
+        # DCF fair value. Kept OUT of the fundamental score deliberately: the six categories
+        # measure business quality, and what a share is worth depends on its price, which is not
+        # a quality. Mixing them would mean a great company got marked down for being expensive
+        # inside a number that claims to describe the business.
+        try:
+            from app.engines.valuation.dcf import value as dcf_value
+
+            dcf = dcf_value(statements, r.get("price"), r.get("region") or "")
+            r["dcf_fair_value"] = dcf.fair_value
+            r["dcf_upside_pct"] = dcf.upside_pct
+            r["dcf_verdict"] = dcf.verdict
+            doc["dcf"] = {
+                "fair_value": dcf.fair_value, "upside_pct": dcf.upside_pct,
+                "verdict": dcf.verdict, "wacc": dcf.wacc,
+                "cost_of_equity": dcf.cost_of_equity, "growth": dcf.growth,
+                "terminal_growth": dcf.terminal_growth, "base_fcf": dcf.base_fcf,
+                "quarters_used": dcf.quarters_used, "net_debt": dcf.net_debt,
+                "equity_value": dcf.equity_value, "shares": dcf.shares,
+                "assumptions": dcf.assumptions, "reason": dcf.reason,
+            }
+        except Exception as exc:  # noqa: BLE001 - a valuation must not fail the scoring pass
+            log.debug("dcf failed for %s: %s", r.get("symbol"), exc)
+
         # The full scorecard, for the company page: category-by-category, the current TTM
         # figures behind it, and any earnings-quality red flags.
         doc["fundamental_scorecard"] = {

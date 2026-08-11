@@ -162,31 +162,23 @@ def _load(path: Path) -> Any:
 
 
 def _eps_ttm(detail: dict) -> float | None:
-    """Trailing-twelve-month EPS from a company file's income statements.
+    """Trailing-twelve-month EPS from OUR OWN quarterly-TTM statements.
 
-    Prefers the sum of the last 4 *quarterly* EPS (a true TTM); falls back to the most
-    recent *annual* EPS (itself a full trailing year) when no quarterly data exists — the
-    case for every PSX name, whose only filings here are annual.
+    Reads `statements_ttm` - the scraped CSV series where every column is already a full
+    trailing year - and takes the newest period that reports EPS. It used to read the annual
+    `statements` block, which is where the yfinance backfill left its data, so the P/E on the
+    page was a live price divided by an earnings figure from a banned source and a different
+    basis. Same company, two vintages, one ratio.
+
+    The newest TTM period often has no EPS yet (the source publishes the line a little after
+    the rest of the statement), so the newest period that HAS one wins rather than giving up.
     """
-    inc = ((detail.get("statements") or {}).get("income")) or []
-    if not isinstance(inc, list):
-        return None
-
-    def _fd(x: dict) -> str:
-        return x.get("fiscal_date") or x.get("period_end") or ""
-
-    q = sorted(
-        [x for x in inc if x.get("period") == "quarterly" and x.get("eps") is not None],
-        key=_fd, reverse=True,
-    )
-    if len(q) >= 4:
-        return round(sum(float(x["eps"]) for x in q[:4]), 4)
-    a = sorted(
-        [x for x in inc if x.get("period") == "annual" and x.get("eps") is not None],
-        key=_fd, reverse=True,
-    )
-    if a:
-        return round(float(a[0]["eps"]), 4)
+    ttm = ((detail.get("statements_ttm") or {}).get("income")) or []
+    if isinstance(ttm, list):
+        for row in ttm:                      # newest first
+            value = row.get("eps")
+            if isinstance(value, int | float) and value != 0:
+                return round(float(value), 4)
     return None
 
 
