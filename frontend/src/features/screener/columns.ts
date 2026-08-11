@@ -153,10 +153,11 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
       headerName: "DCF View",
       width: 125,
       sortable: SERVER_SORTABLE.has("dcf_verdict"),
-      // `{ value: unknown }` and a typeof narrow, matching `heat` above. A narrower annotation
-      // (`string | null | undefined`) is the obvious way to write this and it is the kind of
-      // thing the grid's own parameter types reject; the pattern that already compiles is the
-      // one to copy, since this cannot be typechecked without Node on the authoring machine.
+      // Two things this had to get right, and I got each wrong once. The PARAMETER is
+      // `{ value: unknown }` with a typeof narrow, matching `heat` above. The RETURN must be
+      // ONE shape: branches returning `{color, fontWeight}` and `{color}` infer a union with
+      // `fontWeight?: undefined`, which is not a CellStyle - so every branch carries a
+      // fontWeight even where it is the default.
       valueFormatter: (p: { value: unknown }) => {
         const v = typeof p.value === "string" ? p.value : "";
         return !v || v === "no value" ? "—" : v.charAt(0).toUpperCase() + v.slice(1);
@@ -166,7 +167,7 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
           ? { color: "#22c55e", fontWeight: 600 }
           : p.value === "overvalued"
             ? { color: "#ef4444", fontWeight: 600 }
-            : { color: "#94a3b8" },
+            : { color: "#94a3b8", fontWeight: 400 },
     },
     {
       field: "change_pct",
