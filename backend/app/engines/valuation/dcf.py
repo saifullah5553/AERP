@@ -10,14 +10,14 @@ THE DISCOUNT RATE IS BUILT PER COUNTRY, which is the point of the exercise for a
 spans Karachi and New York. A 12% required return is punitive in the US and far too generous in
 Pakistan; using one rate for both would make every PSX name look cheap and every US name dear:
 
-    cost of equity = risk-free + equity risk premium          (CAPM, beta held at 1.0)
+    cost of equity = risk-free + beta x equity risk premium              (CAPM)
     WACC           = E/V x cost of equity + D/V x after-tax cost of debt
 
-Beta is deliberately 1.0. Estimating it needs a regression of the stock on its index, and a
-noisy beta from a thin listing moves the fair value more than the cash flows do - a false
-precision that would be indefensible on 10,000 names. The consequence is stated rather than
-hidden: this values every company as if it carried average market risk, so genuinely defensive
-and genuinely speculative names are both pulled toward the middle.
+Beta is MEASURED, from our own weekly price history against the market's own index - see
+engines/valuation/beta.py. It was held at 1.0 at first on the argument that a regression beta
+from a thin listing is noisier than it is useful. That argument was half right: the fix for a
+noisy estimate is the Blume shrink and a clamp, not throwing the estimate away. Where the
+history is too short to measure, beta still falls back to 1.0 and says so.
 
 THE CASH FLOWS COME FROM THE TREND, NOT THE LAST PRINT. One quarter is noise; the growth rate
 here is a least-squares fit through up to twenty quarters of trailing-twelve-month FCF, which is
@@ -125,13 +125,25 @@ def _series(rows: list[dict], key: str) -> list[float]:
     return _clean(out)
 
 
-def value(statements: dict[str, list[dict]], price: float | None, region: str) -> DCFResult:
+def value(statements: dict[str, list[dict]], price: float | None, region: str,
+          symbol: str | None = None) -> DCFResult:
     """Fair value per share for one company, or a stated refusal."""
     rates = COUNTRY_RATES.get(region, _FALLBACK)
     rf, erp, tax = rates["rf"], rates["erp"], rates["tax"]
     g_terminal = TERMINAL_GROWTH.get(region, 0.03)
+    # Beta from our own prices where the history allows it, 1.0 where it does not.
+    beta_note, beta = "assumed - not measured", 1.0
+    if symbol:
+        try:
+            from app.engines.valuation.beta import compute as compute_beta
+
+            got = compute_beta(region, symbol)
+            beta, beta_note = got.beta, got.note
+        except Exception:  # noqa: BLE001 - an unmeasurable beta must not fail the valuation
+            pass
     assumptions = {"risk_free": rf, "equity_risk_premium": erp, "tax_rate": tax,
-                   "terminal_growth": g_terminal, "beta": 1.0, "forecast_years": FORECAST_YEARS}
+                   "terminal_growth": g_terminal, "beta": beta, "beta_basis": beta_note,
+                   "forecast_years": FORECAST_YEARS}
 
     income = (statements or {}).get("income") or []
     balance = (statements or {}).get("balance") or []
@@ -159,10 +171,12 @@ def value(statements: dict[str, list[dict]], price: float | None, region: str) -
     fitted = _fit_growth(fcf_series)
     growth = g_terminal if fitted is None else max(GROWTH_FLOOR, min(fitted, GROWTH_CAP))
 
-    # Cost of equity, then WACC weighted on BOOK debt and equity. Market weights would be
-    # better and market cap is exactly what we do not have for these listings; book weights are
-    # the standard fallback and the substitution is recorded in the assumptions.
-    cost_equity = rf + erp
+    # CAPM, then WACC weighted on MARKET equity where we can price it. Market cap is
+    # shares x the live price - we hold the diluted share count in the same statements this
+    # model already reads, so the "we do not have market cap" that forced book weights was
+    # never true, only unjoined. Book equity remains the fallback for an unpriced listing, and
+    # which one was used is recorded rather than left to inference.
+    cost_equity = rf + beta * erp
     debt = next((r.get("total_debt") for r in balance
                  if isinstance(r.get("total_debt"), int | float)), 0.0) or 0.0
     equity_book = next((r.get("total_equity") for r in balance
@@ -170,14 +184,23 @@ def value(statements: dict[str, list[dict]], price: float | None, region: str) -
     cash_now = next((r.get("cash_and_equivalents") for r in balance
                      if isinstance(r.get("cash_and_equivalents"), int | float)), 0.0) or 0.0
 
-    total_cap = debt + equity_book
-    if total_cap <= 0 or equity_book <= 0:
-        return DCFResult(verdict="no value", reason="no positive book equity to weight on",
+    shares_now = next((r.get("weighted_shares") for r in income
+                       if isinstance(r.get("weighted_shares"), int | float)
+                       and r.get("weighted_shares")), None)
+    market_cap = (shares_now * price) if (shares_now and price and price > 0) else None
+    equity_weight = market_cap if market_cap else equity_book
+    assumptions["equity_weight_basis"] = "market cap" if market_cap else "book equity"
+    assumptions["market_cap"] = round(market_cap, 2) if market_cap else None
+
+    total_cap = debt + equity_weight
+    if total_cap <= 0 or equity_weight <= 0:
+        return DCFResult(verdict="no value",
+                         reason="no positive equity value to weight the cost of capital on",
                          assumptions=assumptions)
     # Cost of debt from the risk-free plus a spread, not from interest expense over debt: that
     # ratio is wild for companies whose debt moved during the year.
     cost_debt_after_tax = (rf + 0.02) * (1 - tax)
-    wacc = (equity_book / total_cap) * cost_equity + (debt / total_cap) * cost_debt_after_tax
+    wacc = (equity_weight / total_cap) * cost_equity + (debt / total_cap) * cost_debt_after_tax
 
     if wacc - g_terminal < MIN_SPREAD:
         # Gordon's denominator goes to zero and the value goes to infinity. Refusing is the only
@@ -207,9 +230,7 @@ def value(statements: dict[str, list[dict]], price: float | None, region: str) -
                          reason="net debt exceeds the discounted value of the business",
                          assumptions=assumptions)
 
-    shares = next((r.get("weighted_shares") for r in income
-                   if isinstance(r.get("weighted_shares"), int | float)
-                   and r.get("weighted_shares")), None)
+    shares = shares_now
     if not shares or shares <= 0:
         return DCFResult(verdict="no value", wacc=round(wacc, 4), growth=round(growth, 4),
                          enterprise_value=round(enterprise, 2), equity_value=round(equity_value, 2),

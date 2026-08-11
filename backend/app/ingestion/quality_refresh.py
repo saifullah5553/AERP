@@ -181,10 +181,15 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
         try:
             from app.engines.valuation.dcf import value as dcf_value
 
-            dcf = dcf_value(statements, r.get("price"), r.get("region") or "")
+            dcf = dcf_value(statements, r.get("price"), r.get("region") or "",
+                            symbol=r.get("symbol"))
             r["dcf_fair_value"] = dcf.fair_value
             r["dcf_upside_pct"] = dcf.upside_pct
             r["dcf_verdict"] = dcf.verdict
+            r["beta"] = (dcf.assumptions or {}).get("beta")
+            # Market cap at last: shares x the live price. It was absent from every
+            # row in the platform, which is what forced book-weighted WACC.
+            r["market_cap"] = (dcf.assumptions or {}).get("market_cap")
             doc["dcf"] = {
                 "fair_value": dcf.fair_value, "upside_pct": dcf.upside_pct,
                 "verdict": dcf.verdict, "wacc": dcf.wacc,
