@@ -44,8 +44,20 @@ _REAL_ESTATE = ("real estate", "reit", "property", "developer", "construction & 
 _UTILITY = ("utilit", "power", "electric", "gas distribution", "water")
 
 
-def sector_bucket(sector: str | None) -> str:
+# Financials that are NOT balance-sheet businesses. An exchange, an index provider or an asset
+# manager earns fees on other people's capital: book value is small and beside the point, so
+# residual income - which anchors on book - undervalues them badly. MCX came out at 398 against
+# a price of 2,766 for exactly this reason. They belong with general companies, on cash flow
+# and earnings multiples.
+_FEE_FINANCIAL = ("exchange", "financial data", "capital markets", "asset manage",
+                  "shell compan", "financial conglomerate", "fintech")
+
+
+def sector_bucket(sector: str | None, industry: str | None = None) -> str:
     s = (sector or "").lower()
+    ind = (industry or "").lower()
+    if any(k in ind for k in _FEE_FINANCIAL):
+        return "general"
     if any(k in s for k in _FINANCIAL):
         return "financial"
     if any(k in s for k in _REAL_ESTATE):
@@ -200,12 +212,13 @@ def sector_multiples(rows: list[dict], company_dir: Any) -> dict[str, dict[str, 
 
 def blend(statements: dict[str, list[dict]], price: float | None, region: str,
           sector: str | None, symbol: str | None,
-          sector_multiples: dict[str, dict[str, Any]] | None = None) -> Blend:
+          sector_multiples: dict[str, dict[str, Any]] | None = None,
+          industry: str | None = None) -> Blend:
     """Run the methods this company's sector calls for, and average what survives."""
     from app.engines.valuation.dcf import _FALLBACK, COUNTRY_RATES, TERMINAL_GROWTH
     from app.engines.valuation.dcf import value as dcf_value
 
-    bucket = sector_bucket(sector)
+    bucket = sector_bucket(sector, industry)
     rates = COUNTRY_RATES.get(region, _FALLBACK)
     g_term = TERMINAL_GROWTH.get(region, 0.03)
 

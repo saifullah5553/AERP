@@ -204,7 +204,8 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
             from app.engines.valuation.multi import blend as blend_value
 
             mv = blend_value(statements, r.get("price"), r.get("region") or "",
-                             r.get("sector"), r.get("symbol"), _MULTIPLES)
+                             r.get("sector"), r.get("symbol"), _MULTIPLES,
+                             industry=r.get("industry"))
             if mv.used >= 2 and mv.fair_value:
                 r["dcf_fair_value"] = mv.fair_value
                 r["dcf_upside_pct"] = mv.upside_pct
