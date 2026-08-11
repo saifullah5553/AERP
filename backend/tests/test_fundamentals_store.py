@@ -133,8 +133,19 @@ def test_apply_to_snapshot_writes_annual_and_ttm(tmp_path: Path) -> None:
     assert doc["statements"]["income"][0]["revenue"] == 1_000_000_000.0
 
 
-def test_apply_never_replaces_richer_history(tmp_path: Path) -> None:
-    # A partial scrape must not cost a company the years it already had.
+def test_apply_makes_our_own_annual_authoritative(tmp_path: Path) -> None:
+    """Our annual sampling replaces whatever is there, however many rows the incumbent has.
+
+    This test used to assert the opposite - that a richer existing block survived - to stop a
+    partial scrape costing a company the years it already had. That protection has moved
+    upstream and is stronger there: `consolidate` MERGES into the store, so the store's history
+    only ever grows, and the annual projection is taken from the store. Our own annual can
+    therefore never be poorer than a previous write of ours.
+
+    Which means a "richer" incumbent could only have come from somewhere else - and the only
+    other writer was the yfinance backfill. 971 company files were keeping its data on exactly
+    this comparison. More rows from a banned source is not richer.
+    """
     store = tmp_path / "store"
     raw = tmp_path / "csv" / "us"
     raw.mkdir(parents=True)
@@ -151,8 +162,8 @@ def test_apply_never_replaces_richer_history(tmp_path: Path) -> None:
     apply_to_snapshot(tmp_path / "data", store, regions=["us"])
     doc = json.loads((cdir / "AAA.json").read_text(encoding="utf-8"))
 
-    # The guarantee this test is named for: the five annual years survive a one-period scrape.
-    assert len(doc["statements"]["income"]) == 5
+    # Ours wins: the five-row incumbent is replaced by our single scraped period.
+    assert len(doc["statements"]["income"]) == 1
 
     # ...but the TTM series IS written, because it is a DIFFERENT series and the only one
     # scoring reads. Skipping the whole company to protect the annual history cost 785

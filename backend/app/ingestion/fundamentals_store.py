@@ -419,8 +419,13 @@ def apply_to_snapshot(data_dir: Path, store_dir: Path,
             if ttm.get("income"):
                 doc["statements_ttm"] = ttm
                 wrote_something = True
-            have = len((doc.get("statements") or {}).get("income") or [])
-            if have <= len(annual.get("income") or []):
+            # OUR annual sampling always wins, however many rows the incumbent has. The
+            # row-count comparison that used to guard this was protecting the yfinance
+            # backfill's data: that source published more annual periods than our CSVs sample,
+            # so "richer" meant "from the banned source" and 971 company files kept it. It fed
+            # the statements on the page and, until the P/E was moved to statements_ttm, the
+            # valuation too. More rows from the wrong source is not richer.
+            if annual.get("income"):
                 doc["statements"] = annual
                 wrote_something = True
             else:
