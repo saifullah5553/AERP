@@ -33,7 +33,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-MIN_PEERS = 8              # below this a "sector median" is an anecdote
+# Five, not eight. Keying multiples by COUNTRY and sector is right, but it shrinks every peer
+# group - Dubai has 51 listings in total, so its real-estate sector fell below an eight-peer
+# floor and Emaar lost its P/B method entirely. Five is thin and it is still a real peer
+# group; the alternative was borrowing another country's multiple, which is the error this
+# keying exists to prevent.
+MIN_PEERS = 5
 # A method whose answer is this far from the traded price is discarded from the blend. Same
 # reasoning as the DCF's own bound: at that distance the input is wrong, not the market.
 MAX_MULTIPLE, MIN_MULTIPLE = 5.0, 0.1
@@ -300,10 +305,20 @@ def blend(statements: dict[str, list[dict]], price: float | None, region: str,
     fair = sum(values) / len(values)
     spread = ((max(values) - min(values)) / fair * 100) if len(values) > 1 and fair else None
     upside = ((fair / price - 1) * 100) if price and price > 0 else None
+    # The VERDICT carries the confidence, because the screener shows two columns and a
+    # judgement presented as firm when it rests on one method is the kind of thing someone
+    # trades on. A single method is a view, not evidence; methods disagreeing by more than
+    # 100% have no midpoint worth calling a valuation. Both cases publish the fair value and
+    # withhold the verdict rather than dressing a guess as a conclusion.
     verdict = "no value"
     if upside is not None:
-        verdict = ("undervalued" if upside > 20 else
-                   "overvalued" if upside < -20 else "fairly valued")
+        if len(methods) < 2:
+            verdict = "unrated - single method"
+        elif spread is not None and spread > 100:
+            verdict = "unrated - methods disagree"
+        else:
+            verdict = ("undervalued" if upside > 20 else
+                       "overvalued" if upside < -20 else "fairly valued")
 
     return Blend(
         fair_value=round(fair, 4),

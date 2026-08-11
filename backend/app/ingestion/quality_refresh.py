@@ -206,7 +206,12 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
             mv = blend_value(statements, r.get("price"), r.get("region") or "",
                              r.get("sector"), r.get("symbol"), _MULTIPLES,
                              industry=r.get("industry"))
-            if mv.used >= 2 and mv.fair_value:
+            # Prefer the blend on two methods - or on ONE, where the DCF is not a method this
+            # sector should be using at all. Falling back to the DCF for a bank or a property
+            # developer reinstates exactly the mismatch the routing exists to remove: Emaar
+            # reverted to 50.18 against a price of 11.30 the moment its peer group thinned.
+            dcf_is_wrong_tool = mv.bucket in ("financial", "real_estate")
+            if mv.fair_value and (mv.used >= 2 or dcf_is_wrong_tool):
                 r["dcf_fair_value"] = mv.fair_value
                 r["dcf_upside_pct"] = mv.upside_pct
                 r["dcf_verdict"] = mv.verdict
