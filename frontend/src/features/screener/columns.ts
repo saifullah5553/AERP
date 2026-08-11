@@ -19,6 +19,7 @@ const heat = (p: { value: unknown }) => ({
 // Fields the backend can sort on (app/services/screener.py SORT_FIELDS).
 const SERVER_SORTABLE = new Set([
   "symbol", "name", "market_cap", "price", "change_pct", "volume",
+  "dcf_fair_value", "dcf_verdict",
   "pe_ttm", "roe", "debt_to_equity", "revenue_growth", "eps_growth",
   "dividend_yield", "fundamental_score", "technical_score", "composite_score",
 ]);
@@ -135,6 +136,34 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
     { field: "sector", headerName: "Sector", width: 150, sortable: false },
 
     num("price", "Price", { width: 110, valueFormatter: (p) => fmtNumber(p.value) }),
+    // Beside the price, because a fair value only means something next to what you would pay
+    // for it. Only these two of the DCF's outputs are here - the WACC, beta, growth and the
+    // rest of the workings live on the company page, where there is room to argue with them.
+    num("dcf_fair_value", "DCF Fair Value", {
+      width: 130,
+      valueFormatter: (p) => (p.value == null ? "—" : fmtNumber(p.value)),
+    }),
+    {
+      // The VERDICT, not the upside percentage. Upside is a gap to the live price, so it is
+      // stale the moment the price ticks and would have to be rewritten every minute to stay
+      // truthful. The verdict only moves when the gap crosses +/-20%, which happens rarely -
+      // a label that is right all day beats a number that is right at the moment it was
+      // computed. The exact percentage is on the company page, next to the workings.
+      field: "dcf_verdict",
+      headerName: "DCF View",
+      width: 125,
+      sortable: SERVER_SORTABLE.has("dcf_verdict"),
+      valueFormatter: (p: { value: string | null | undefined }) =>
+        !p.value || p.value === "no value"
+          ? "—"
+          : p.value.charAt(0).toUpperCase() + p.value.slice(1),
+      cellStyle: (p: { value: string | null | undefined }) =>
+        p.value === "undervalued"
+          ? { color: "#22c55e", fontWeight: 600 }
+          : p.value === "overvalued"
+            ? { color: "#ef4444", fontWeight: 600 }
+            : { color: "#94a3b8" },
+    },
     {
       field: "change_pct",
       headerName: "Chg %",

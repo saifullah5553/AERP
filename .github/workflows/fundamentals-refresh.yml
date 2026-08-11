@@ -130,6 +130,13 @@ jobs:
           # dashboard kept showing last quarter. That is exactly what happened: FFC has carried
           # Q2 2026 at the source for days and every PSX company still scored to Mar-26.
           python -m app.cli apply-fundamentals --data-dir ../frontend/public/data
+          # Applying the statements is not the end of it. The fundamental score and the DCF
+          # fair value are both computed FROM statements_ttm, so without these two the new
+          # quarter lands in the company files and every published score still describes the
+          # old one. refresh-quality recomputes the score and the valuation; the history pass
+          # adds the new quarter to the per-quarter series the ledger ranks on.
+          python -m app.cli refresh-quality --out ../frontend/public/data || true
+          python -m app.cli refresh-quality-history --out ../frontend/public/data || true
 
       - name: Commit if anything changed
         run: |

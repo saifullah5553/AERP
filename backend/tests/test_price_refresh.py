@@ -138,25 +138,33 @@ def _detail(income: list[dict]) -> dict:
     return {"statements": {"income": income}}
 
 
-def test_eps_ttm_uses_latest_annual_when_no_quarterly() -> None:
-    # PSX case: only annual filings → newest full-year EPS (itself a trailing year).
-    d = _detail([
-        {"period": "annual", "fiscal_date": "2026-03-31", "eps": 56.88},
-        {"period": "annual", "fiscal_date": "2025-03-31", "eps": 49.11},
-    ])
+def test_eps_ttm_reads_our_own_ttm_statements() -> None:
+    """Not the annual `statements` block - that is where the deleted yfinance data lived."""
+    d = {"statements_ttm": {"income": [
+        {"fiscal_date": "2026-06-30", "eps": 56.88},
+        {"fiscal_date": "2026-03-31", "eps": 49.11},
+    ]},
+        "statements": {"income": [{"period": "annual", "fiscal_date": "2025-12-31", "eps": 9.99}]}}
     assert _eps_ttm(d) == 56.88
 
 
-def test_eps_ttm_sums_last_four_quarters_when_present() -> None:
-    d = _detail([
-        {"period": "quarterly", "fiscal_date": "2026-03-31", "eps": 3.0},
-        {"period": "quarterly", "fiscal_date": "2025-12-31", "eps": 2.5},
-        {"period": "quarterly", "fiscal_date": "2025-09-30", "eps": 2.0},
-        {"period": "quarterly", "fiscal_date": "2025-06-30", "eps": 1.5},
-        {"period": "quarterly", "fiscal_date": "2025-03-31", "eps": 9.0},  # ignored (5th)
-        {"period": "annual", "fiscal_date": "2025-03-31", "eps": 99.0},    # ignored
-    ])
-    assert _eps_ttm(d) == 9.0  # 3.0+2.5+2.0+1.5, NOT the stray annual/5th-quarter
+def test_eps_ttm_skips_a_newest_period_with_no_eps() -> None:
+    """The source publishes EPS a little after the rest of the statement.
+
+    Giving up on the newest row would blank the P/E for a whole quarter every quarter.
+    """
+    d = {"statements_ttm": {"income": [
+        {"fiscal_date": "2026-06-30"},                 # reported, EPS not yet filled
+        {"fiscal_date": "2026-03-31", "eps": 170.21},
+    ]}}
+    assert _eps_ttm(d) == 170.21
+
+
+def test_eps_ttm_ignores_the_annual_block_entirely() -> None:
+    """No TTM EPS means no P/E, rather than quietly falling back to a banned source."""
+    d = {"statements": {"income": [{"period": "annual", "fiscal_date": "2026-03-31",
+                                    "eps": 56.88}]}}
+    assert _eps_ttm(d) is None
 
 
 def test_eps_ttm_none_when_no_eps() -> None:

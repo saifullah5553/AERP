@@ -303,6 +303,16 @@ def refresh_prices(
             r["volume"] = q["volume"]
         if q.get("sector"):  # PSX sector from /symbols
             r["sector"] = q["sector"]
+        # The DCF's upside is a gap between a fair value and a PRICE, so it goes stale the
+        # moment the price moves. Recomputing it here - arithmetic on a value the quarterly
+        # pass already worked out - is what keeps the two columns beside each other honest.
+        # Without it the screener would show today's price against an upside computed off
+        # last quarter's, and the pair would silently disagree.
+        fair = r.get("dcf_fair_value")
+        if isinstance(fair, int | float) and fair > 0 and q["price"]:
+            r["dcf_upside_pct"] = round((fair / q["price"] - 1) * 100, 2)
+            r["dcf_verdict"] = ("undervalued" if r["dcf_upside_pct"] > 20 else
+                                "overvalued" if r["dcf_upside_pct"] < -20 else "fairly valued")
         # Keep return-since-signal in step with the fresh price (factual, not a forecast).
         pas = r.get("price_at_signal")
         if pas:

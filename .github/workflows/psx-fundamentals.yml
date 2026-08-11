@@ -83,6 +83,13 @@ jobs:
           pip install -r requirements.txt
           python -m app.cli consolidate-fundamentals --csv-dir ../data --regions psx || true
           python -m app.cli apply-fundamentals --regions psx --data-dir ../frontend/public/data || true
+          # Applying the statements is not the end of it. The fundamental score and the DCF
+          # fair value are both computed FROM statements_ttm, so without these two the new
+          # quarter lands in the company files and every published score still describes the
+          # old one. refresh-quality recomputes the score and the valuation; the history pass
+          # adds the new quarter to the per-quarter series the ledger ranks on.
+          python -m app.cli refresh-quality --out ../frontend/public/data || true
+          python -m app.cli refresh-quality-history --out ../frontend/public/data || true
 
       - name: Re-pack and commit if changed
         if: ${{ env.SYMS != '' }}

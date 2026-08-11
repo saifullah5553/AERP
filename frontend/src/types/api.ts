@@ -113,6 +113,13 @@ export interface ScreenerRow {
   market_cap: number | null;
 
   pe_ttm: number | null;
+
+  /** DCF fair value per share, and its gap to the live price. The verdict rather than the
+   * percentage, because upside restates itself every time the price moves. */
+
+  dcf_fair_value?: number | null;
+
+  dcf_verdict?: string | null;
   roe: number | null;
   debt_to_equity: number | null;
   revenue_growth: number | null;

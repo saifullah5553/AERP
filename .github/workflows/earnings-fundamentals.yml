@@ -62,8 +62,15 @@ jobs:
         if: ${{ env.SYMS != '' }}
         working-directory: backend
         run: |
-          python -m app.cli refresh-fundamentals-web \
-            --region all --symbols "$SYMS" --force || true
+          # refresh-fundamentals-web is DELETED - it pulled quarterly AND annual statements
+          # from yfinance, a banned source for fundamentals. This step would have failed on a
+          # missing command at the next earnings date. Fundamentals come from our own scraped
+          # CSVs, so a newly-reporting company needs the consolidate/apply pair and then a
+          # rescore - the same path fundamentals-refresh.yml takes.
+          python -m app.cli consolidate-fundamentals || true
+          python -m app.cli apply-fundamentals --data-dir ../frontend/public/data || true
+          python -m app.cli refresh-quality --out ../frontend/public/data || true
+          python -m app.cli refresh-quality-history --out ../frontend/public/data || true
 
       - name: Commit if anything changed
         run: |
