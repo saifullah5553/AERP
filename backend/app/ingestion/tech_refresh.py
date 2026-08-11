@@ -420,6 +420,18 @@ def refresh_technicals(
         new_sig = sig.signal.value
         _record_signal_move(smoves, r, old_sig, new_sig, sig.label, composite, cur_price, today)
         r["technical_score"] = round(tech, 2)
+        # RSI and EFI divergences, for the technical filter page. Computed from the SAME daily
+        # bars this pass already downloaded, so the filter costs no extra request and refreshes
+        # every day the refresh runs. Kept out of the technical score deliberately - see
+        # engines/divergence.
+        from app.engines.divergence.engine import summarise as divergences
+
+        _div = divergences(dates, high, low, close, vol)
+        r["div_rsi_bullish"] = _div["rsi_bullish"]
+        r["div_rsi_bearish"] = _div["rsi_bearish"]
+        r["div_efi_bullish"] = _div["efi_bullish"]
+        r["div_efi_bearish"] = _div["efi_bearish"]
+        r["div_latest"] = _div["latest"]
         # Screener columns: enough of the read to sort and filter on without opening the page.
         r["pa_bias"] = read.bias
         r["pa_phase"] = read.phase
@@ -454,6 +466,7 @@ def refresh_technicals(
                 # reasoning behind it is the thing the brief is written against: the page can
                 # now show the structure, the levels and their evidence, the volume verdict and
                 # the setup - or NO TRADE and what would change it.
+                d["divergences"] = _div["items"]
                 d["price_action"] = {
                     "score": read.score, "bias": read.bias, "quality": read.quality,
                     "phase": read.phase, "phase_confidence": read.phase_confidence,

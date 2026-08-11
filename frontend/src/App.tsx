@@ -2,6 +2,7 @@ import { HashRouter, Route, Routes } from "react-router-dom";
 
 import AlertsPage from "@/features/screener/AlertsPage";
 import MoversPage from "@/features/screener/MoversPage";
+import TechnicalFilterPage from "@/features/screener/TechnicalFilterPage";
 import CompanyPage from "@/features/company/CompanyPage";
 import ScreenerPage from "@/features/screener/ScreenerPage";
 import SectorsPage from "@/features/sectors/SectorsPage";
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="/portfolio" element={<ModelPortfolioPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/movers" element={<MoversPage />} />
+          <Route path="/technical" element={<TechnicalFilterPage />} />
           <Route path="/company/:symbol" element={<CompanyPage />} />
         </Routes>
       </HashRouter>

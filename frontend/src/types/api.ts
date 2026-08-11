@@ -120,6 +120,12 @@ export interface ScreenerRow {
   dcf_fair_value?: number | null;
 
   dcf_verdict?: string | null;
+  /** RSI / Elder Force Index divergences, for the Technical Filter page. */
+  div_rsi_bullish?: boolean;
+  div_rsi_bearish?: boolean;
+  div_efi_bullish?: boolean;
+  div_efi_bearish?: boolean;
+  div_latest?: string | null;
   roe: number | null;
   debt_to_equity: number | null;
   revenue_growth: number | null;
