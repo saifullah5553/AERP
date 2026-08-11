@@ -150,9 +150,16 @@ def sector_multiples(rows: list[dict], company_dir: Any) -> dict[str, dict[str, 
     for r in rows:
         sector = r.get("sector")
         price = r.get("price")
-        if not sector or not isinstance(price, int | float) or price <= 0:
+        region = r.get("region")
+        if not sector or not region or not isinstance(price, int | float) or price <= 0:
             continue
-        slot = buckets.setdefault(sector, {"pe": [], "pb": [], "ev_ebitda": []})
+        # Keyed by MARKET AND SECTOR. Keying on sector alone valued a Karachi auto assembler on
+        # a 20.9x median drawn from 1,065 "peers" - the whole world's autos, when PSX has 453
+        # listings in total and trades nearer 7x. It made every Pakistani industrial look 2-3x
+        # undervalued, which is the error you spotted in the autos and the pharma names. This
+        # module's own docstring said a Karachi cement company is not valued on a Houston
+        # cement multiple, and then the code did exactly that.
+        slot = buckets.setdefault(f"{region}|{sector}", {"pe": [], "pb": [], "ev_ebitda": []})
         pe = r.get("pe_ttm")
         if isinstance(pe, int | float) and 0 < pe < 100:      # a 300x P/E is not a comparable
             slot["pe"].append(float(pe))
@@ -229,7 +236,7 @@ def blend(statements: dict[str, list[dict]], price: float | None, region: str,
         pass
     coe = rates["rf"] + beta * rates["erp"]
 
-    sm = (sector_multiples or {}).get(sector or "", {})
+    sm = (sector_multiples or {}).get(f"{region}|{sector or ''}", {})
     peers = int(sm.get("count") or 0)
 
     methods: list[Method] = []
