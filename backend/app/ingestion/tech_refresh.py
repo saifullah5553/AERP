@@ -178,6 +178,56 @@ def _fetch_psx_history(sym: str):
     return dates, close, vol
 
 
+def _psx_divergences(rows) -> int:
+    """Divergences for PSX, from OUR OWN stored bars.
+
+    The portal path this used to piggyback on is dead for individual stocks - the endpoint
+    serves the KSE-100 index happily and then disconnects without a response for LUCK, ATLH and
+    every other symbol - so PSX showed ZERO divergences on a page whose main audience trades
+    Pakistan. We do not need the portal: ohlc_store holds the full OHLCV locally and falls back
+    to the versioned close-only pack in CI, where the swing finder still works on closing highs
+    and lows and only EFI (which needs volume) drops out.
+    """
+    from app.engines.divergence.engine import summarise as summarise_div
+    from app.ingestion.ohlc_store import load_bars
+
+    done = 0
+    for r in rows:
+        if r.get("region") != "psx" or not r.get("symbol"):
+            continue
+        bars = load_bars("psx", str(r["symbol"]))
+        if len(bars) < MIN_BARS:
+            continue
+        days = sorted(bars)
+
+        def _col(i: int, default=None, _bars=bars, _days=days):
+            # Defaults bind the loop variables: a closure over `bars` would read whichever
+            # company the loop had reached by the time it was called.
+            out = []
+            for d in _days:
+                v = _bars[d][i]
+                try:
+                    out.append(float(v) if v not in (None, "") else default)
+                except (TypeError, ValueError):
+                    out.append(default)
+            return out
+
+        close = _col(4)
+        if any(c is None for c in close):
+            continue
+        high = [h if h is not None else c for h, c in zip(_col(2), close, strict=True)]
+        low = [x if x is not None else c for x, c in zip(_col(3), close, strict=True)]
+        vol = [v if v is not None else 0.0 for v in _col(5, 0.0)]
+        d = summarise_div(days, high, low, close, vol)
+        r["div_rsi_bullish"] = d["rsi_bullish"]
+        r["div_rsi_bearish"] = d["rsi_bearish"]
+        r["div_efi_bullish"] = d["efi_bullish"]
+        r["div_efi_bearish"] = d["efi_bearish"]
+        r["div_latest"] = d["latest"]
+        done += 1
+    return done
+
+
 def _backtest_psx(rows, company, regime_map, today, limit):
     """Backfill signal_since / return-since for PSX from portal EOD history, keeping the
     DB-computed composite/signal (we only DATE the shown signal, using the same raw scale)."""
@@ -200,6 +250,23 @@ def _backtest_psx(rows, company, regime_map, today, limit):
         if not h or not committed:
             continue
         dates, close, vol = h
+        # Divergences for PSX too. This market never touches the Yahoo pass - it is not on
+        # Yahoo - so the divergence code above never ran for it and the page showed ZERO
+        # Pakistani names, which is the one market that matters most here. The portal serves
+        # close and volume only, so close stands in for high and low: the swing finder then
+        # works on closing highs and lows, which is a stricter definition than intraday and a
+        # perfectly standard way to read a chart.
+        try:
+            from app.engines.divergence.engine import summarise as _divergences
+
+            _d = _divergences(dates, close, close, close, vol)
+            r["div_rsi_bullish"] = _d["rsi_bullish"]
+            r["div_rsi_bearish"] = _d["rsi_bearish"]
+            r["div_efi_bullish"] = _d["efi_bullish"]
+            r["div_efi_bearish"] = _d["efi_bearish"]
+            r["div_latest"] = _d["latest"]
+        except Exception:  # noqa: BLE001 - a filter must never break the PSX pass
+            pass
         sc: dict = {}
         cf = safe_file(company, f"{r['provider_symbol']}.json")
         if cf is None:

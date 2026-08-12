@@ -21,11 +21,25 @@ const FILTERS = [
 
 type FilterKey = (typeof FILTERS)[number]["key"];
 
-const MARKETS = ["psx", "us", "india", "australia", "gcc", "dfm"];
+// Display order and the label each market is known by. Grouping the results BY MARKET is the
+// point of the page: the question is "which Pakistani stocks have diverged", not "which stocks
+// have diverged, and by the way here is a country column you can squint at".
+const MARKETS: { key: string; label: string }[] = [
+  { key: "psx", label: "Pakistan (PSX)" },
+  { key: "us", label: "US" },
+  { key: "india", label: "India (NSE)" },
+  { key: "australia", label: "Australia (ASX)" },
+  { key: "gcc", label: "Saudi (Tadawul)" },
+  { key: "dfm", label: "Dubai (DFM)" },
+];
 
 export default function TechnicalFilterPage() {
   const [rows, setRows] = useState<ScreenerRow[] | null>(null);
-  const [active, setActive] = useState<Set<FilterKey>>(new Set());
+  // Every filter ON at first load. The page's job is to show what has diverged; making the
+  // trader tick four boxes before it shows anything is a blank screen pretending to be a tool.
+  const [active, setActive] = useState<Set<FilterKey>>(
+    () => new Set(FILTERS.map((f) => f.key)),
+  );
   const [market, setMarket] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +72,25 @@ export default function TechnicalFilterPage() {
     return out;
   }, [rows, active, market]);
 
+  // Grouped by market, in display order, empty markets dropped.
+  const grouped = useMemo(() => {
+    const by = new Map<string, ScreenerRow[]>();
+    for (const r of matched) {
+      const key = String(r.region ?? "other");
+      if (!by.has(key)) by.set(key, []);
+      by.get(key)!.push(r);
+    }
+    const known = MARKETS.filter((m) => by.has(m.key)).map((m) => ({
+      key: m.key, label: m.label, rows: by.get(m.key)!,
+    }));
+    // Anything the list above has not heard of still appears, at the end - the same rule the
+    // quarterly history learned when Dubai went missing for want of a hardcoded entry.
+    const extra = [...by.keys()]
+      .filter((k) => !MARKETS.some((m) => m.key === k))
+      .map((k) => ({ key: k, label: k.toUpperCase(), rows: by.get(k)! }));
+    return [...known, ...extra];
+  }, [matched]);
+
   const toggle = (k: FilterKey) => {
     const next = new Set(active);
     if (next.has(k)) next.delete(k);
@@ -69,7 +102,7 @@ export default function TechnicalFilterPage() {
     <div className="flex h-full flex-col bg-base-900 text-slate-200">
       <header className="flex flex-wrap items-center gap-3 border-b border-base-600 bg-base-900 px-5 py-3">
         <Link to="/" className="text-sm text-slate-400 hover:text-accent">← Dashboard</Link>
-        <span className="text-lg font-bold text-slate-100">Technical Filter</span>
+        <span className="text-lg font-bold text-slate-100">Divergence Stocks</span>
         <span className="text-xs text-slate-500">RSI &amp; Elder Force Index divergences</span>
         <select
           value={market}
@@ -77,7 +110,7 @@ export default function TechnicalFilterPage() {
           className="ml-auto rounded border border-base-500 bg-base-700 px-2 py-1 text-xs text-slate-200"
         >
           <option value="all">All markets</option>
-          {MARKETS.map((m) => <option key={m} value={m}>{m.toUpperCase()}</option>)}
+          {MARKETS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
         </select>
       </header>
 
@@ -134,46 +167,60 @@ export default function TechnicalFilterPage() {
             Nothing matches in this market right now — which is a real answer, not an error.
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-base-600">
-            <table className="w-full text-sm">
-              <thead className="bg-base-800 text-[10px] uppercase tracking-wide text-slate-400">
-                <tr>
-                  <th className="px-3 py-2 text-left">Ticker</th>
-                  <th className="px-3 py-2 text-left">Company</th>
-                  <th className="px-3 py-2 text-left">Market</th>
-                  <th className="px-3 py-2 text-right">Price</th>
-                  <th className="px-3 py-2 text-left">Divergences</th>
-                  <th className="px-3 py-2 text-right">Confirmed</th>
-                </tr>
-              </thead>
-              <tbody>
-                {matched.map((r) => (
-                  <tr key={r.provider_symbol ?? r.symbol}
-                      className="border-t border-base-700/40 hover:bg-base-700/40">
-                    <td className="px-3 py-1.5 font-semibold text-accent">
-                      <Link to={`/company/${r.provider_symbol ?? r.symbol}`}>{r.symbol}</Link>
-                    </td>
-                    <td className="max-w-[240px] truncate px-3 py-1.5 text-xs text-slate-400"
-                        title={r.name ?? ""}>{r.name ?? "—"}</td>
-                    <td className="px-3 py-1.5 text-[11px] uppercase text-slate-500">{r.region}</td>
-                    <td className="num px-3 py-1.5 text-right">{fmtNumber(r.price)}</td>
-                    <td className="px-3 py-1.5">
-                      {FILTERS.filter((f) =>
-                        Boolean((r as unknown as Record<string, unknown>)[f.key]),
-                      ).map((f) => (
-                        <span key={f.key} className="mr-1 rounded px-1.5 py-0.5 text-[10px] font-bold"
-                              style={{ background: `${f.tone}22`, color: f.tone }}>
-                          {f.label}
-                        </span>
+          <div className="space-y-5">
+            {grouped.map((g) => (
+              <section key={g.key}>
+                <div className="mb-1.5 flex items-baseline gap-3 px-1">
+                  <h3 className="text-sm font-bold text-slate-100">{g.label}</h3>
+                  <span className="text-xs text-slate-500">
+                    {g.rows.length} {g.rows.length === 1 ? "stock" : "stocks"}
+                  </span>
+                </div>
+                <div className="overflow-x-auto rounded-lg border border-base-600">
+                  <table className="w-full text-sm">
+                    <thead className="bg-base-800 text-[10px] uppercase tracking-wide text-slate-400">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Ticker</th>
+                        <th className="px-3 py-2 text-left">Company</th>
+                        <th className="px-3 py-2 text-left">Sector</th>
+                        <th className="px-3 py-2 text-right">Price</th>
+                        <th className="px-3 py-2 text-left">Divergences</th>
+                        <th className="px-3 py-2 text-right">Confirmed</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {g.rows.map((r) => (
+                        <tr key={r.provider_symbol ?? r.symbol}
+                            className="border-t border-base-700/40 hover:bg-base-700/40">
+                          <td className="px-3 py-1.5 font-semibold text-accent">
+                            <Link to={`/company/${r.provider_symbol ?? r.symbol}`}>{r.symbol}</Link>
+                          </td>
+                          <td className="max-w-[240px] truncate px-3 py-1.5 text-xs text-slate-400"
+                              title={r.name ?? ""}>{r.name ?? "—"}</td>
+                          <td className="max-w-[170px] truncate px-3 py-1.5 text-xs text-slate-500"
+                              title={r.sector ?? ""}>{r.sector ?? "—"}</td>
+                          <td className="num px-3 py-1.5 text-right">{fmtNumber(r.price)}</td>
+                          <td className="px-3 py-1.5">
+                            {FILTERS.filter((f) =>
+                              Boolean((r as unknown as Record<string, unknown>)[f.key]),
+                            ).map((f) => (
+                              <span key={f.key}
+                                    className="mr-1 rounded px-1.5 py-0.5 text-[10px] font-bold"
+                                    style={{ background: `${f.tone}22`, color: f.tone }}>
+                                {f.label}
+                              </span>
+                            ))}
+                          </td>
+                          <td className="num px-3 py-1.5 text-right text-[11px] text-slate-500">
+                            {r.div_latest ?? "—"}
+                          </td>
+                        </tr>
                       ))}
-                    </td>
-                    <td className="num px-3 py-1.5 text-right text-[11px] text-slate-500">
-                      {r.div_latest ?? "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            ))}
           </div>
         )}
       </div>
