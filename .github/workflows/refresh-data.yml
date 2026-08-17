@@ -59,6 +59,15 @@ jobs:
         run: |
           python -m app.cli init-db
           python -m app.cli seed
+          # The curated universe - indices, forex, commodities, crypto. `seed` creates the
+          # MARKETS; only this loads the SYMBOLS into them, and it was never being called
+          # here. The index rows in the snapshot were survivors, carried forward run after
+          # run by the export merge from whenever someone last ran this by hand, so the list
+          # had quietly become append-only-by-accident: adding ^KSE100 and DFMGI.AE to
+          # universe_curated.INDICES changed nothing at all, and Pakistan's regime kept
+          # publishing a three-week-old index reading while Dubai had no index signal.
+          # Idempotent - it upserts, so re-running it every 30 minutes adds nothing new.
+          python -m app.cli load-markets || true
           python -m app.cli ingest-psx || true
           python -m app.cli ingest-psx-market || true
           python -m app.cli ingest-macro || true
