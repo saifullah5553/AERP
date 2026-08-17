@@ -113,15 +113,25 @@ jobs:
             echo "No fundamentals changed."
           else
             git commit -m "chore: refresh PSX fundamentals CSVs (recent results)"
+            # MERGE, not rebase. The first attempt at this used `git pull --rebase` and it
+            # failed all five times: replaying a commit that rewrites thousands of generated
+            # JSON files onto another job's version of the same files conflicts immediately,
+            # and `|| break` then abandoned the remaining attempts. `-X ours` on a MERGE
+            # resolves those conflicts in favour of this run's output, which is what we want -
+            # these are generated artefacts, and the job that just recomputed them holds the
+            # newer answer. (Note the inversion: during a rebase `ours` means the UPSTREAM
+            # side, so the same intent would need `-X theirs` there. Merge is the unambiguous
+            # one, which is another reason to use it.)
             pushed=""
             for attempt in 1 2 3 4 5; do
               if git push; then pushed=yes; break; fi
-              echo "push rejected (attempt $attempt) - rebasing onto origin/main"
-              git pull --rebase --autostash origin main || break
-              sleep $((attempt * 10))
+              echo "push rejected (attempt $attempt) - merging origin/main and retrying"
+              git fetch -q origin main || true
+              git merge origin/main --no-edit -X ours -m "merge origin/main into psx fundamentals"                 || git merge --abort || true
+              sleep $((attempt * 5))
             done
             if [ -z "$pushed" ]; then
-              echo "::error::could not push after 5 attempts - this run's work was computed and then lost"
+              echo "::error::psx fundamentals refresh could not push after 5 attempts - this run's work was computed and then lost"
               exit 1
             fi
           fi

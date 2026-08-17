@@ -4,9 +4,10 @@ name: Daily Technical Refresh
 # Yahoo chart-v8 daily history (reachable from CI, unlike yfinance) and reblend with the
 # committed fundamental/momentum/quality/risk. This is what makes signals + Movers update
 # daily across all markets. Patches the snapshot directly (no DB), commits, and deploys.
-# refresh-technicals also backfills real PSX signal-inception dates from the PSX portal EOD
-# history (dps.psx.com.pk), anchored to the committed composite — reachable from CI's IP
-# (~122/451 dated; the rest lack enough portal history and fall back to first-observed).
+# refresh-technicals also backfills real PSX signal-inception dates, anchored to the committed
+# composite. These used to come from the PSX portal's EOD endpoint, which turned out to serve
+# the KSE-100 index and then disconnect for every individual company — so the backfill silently
+# produced nothing for all 453 names. It now reads our own bar store instead: 453/453 dated.
 on:
   schedule:
     - cron: "15 22 * * *" # 22:15 UTC (after US close; offset from the 30-min refresh)
@@ -110,19 +111,30 @@ jobs:
             echo "No changes."
           else
             git commit -m "chore: daily technical/score refresh"
-            # Rebase and retry rather than "|| echo skipped". A bare push that loses a race to
-            # the half-hourly refresh threw away the entire day's technicals, divergences and
+            # Retry rather than "|| echo skipped". A bare push that lost a race to the
+            # half-hourly refresh threw away the entire day's technicals, divergences and
             # scores WITHOUT failing the job - the log said success and nothing had changed.
-            # These are generated files: a rebase can only replay our writes on top of theirs.
+            #
+            # MERGE, not rebase. The first attempt at this used `git pull --rebase` and it
+            # failed all five times: replaying a commit that rewrites thousands of generated
+            # JSON files onto another job's version of the same files conflicts immediately,
+            # and `|| break` then abandoned the remaining attempts. `-X ours` on a MERGE
+            # resolves those conflicts in favour of this run's output, which is what we want -
+            # these are generated artefacts and the job that just recomputed them holds the
+            # newer answer. (Note the inversion: during a rebase `ours` means the UPSTREAM
+            # side, so the same intent would need `-X theirs` there. Merge is the unambiguous
+            # one, which is another reason to use it.)
             pushed=""
             for attempt in 1 2 3 4 5; do
               if git push; then pushed=yes; break; fi
-              echo "push rejected (attempt $attempt) - rebasing onto origin/main"
-              git pull --rebase --autostash origin main || break
-              sleep $((attempt * 10))
+              echo "push rejected (attempt $attempt) - merging origin/main and retrying"
+              git fetch -q origin main || true
+              git merge origin/main --no-edit -X ours -m "merge origin/main into daily refresh" \
+                || git merge --abort || true
+              sleep $((attempt * 5))
             done
             if [ -z "$pushed" ]; then
-              echo "::error::daily refresh could not push after 5 attempts - the day's technicals were computed and then lost"
+              echo "::error::daily refresh could not push after 5 attempts - this run's work was computed and then lost"
               exit 1
             fi
           fi
