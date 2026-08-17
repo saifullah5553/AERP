@@ -77,7 +77,10 @@ jobs:
           # And prove the outcome rather than assuming it: these two are the reason the step
           # exists, and a silent zero here is the thing to catch. (No heredoc - the YAML
           # indentation would arrive in Python as leading whitespace.)
-          python -c "from app.db.session import session_scope; from app.models.market import Security; db=session_scope().__enter__(); [print('universe check', s, ':', (lambda r: f'id={r.id} provider={r.provider_symbol} active={r.is_active}' if r else 'ABSENT FROM THE DATABASE')(db.query(Security).filter(Security.symbol==s).one_or_none())) for s in ('^KSE100','DFMGI.AE')]"
+          # Emitted as a ::warning:: rather than a plain print, because job logs need an
+          # authenticated token to read and annotations do not - so this is visible without
+          # one, which is the whole point of a diagnostic.
+          python -c "from app.db.session import session_scope; from app.models.market import Security; db=session_scope().__enter__(); [print(('universe-check ok: %s id=%s provider=%s active=%s' % (s, r.id, r.provider_symbol, r.is_active)) if r else ('::warning::universe-check: %s IS ABSENT from the database after load-markets' % s)) for s in ('^KSE100','DFMGI.AE') for r in [db.query(Security).filter(Security.symbol==s).one_or_none()]]"
           python -m app.cli ingest-psx || true
           python -m app.cli ingest-psx-market || true
           python -m app.cli ingest-macro || true
