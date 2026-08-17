@@ -67,7 +67,17 @@ jobs:
           # universe_curated.INDICES changed nothing at all, and Pakistan's regime kept
           # publishing a three-week-old index reading while Dubai had no index signal.
           # Idempotent - it upserts, so re-running it every 30 minutes adds nothing new.
-          python -m app.cli load-markets || true
+          #
+          # Deliberately NOT `|| true`. The first version of this line had one, and after it
+          # shipped the two index rows still did not appear - leaving no way to tell whether
+          # the command had run and done nothing, or failed and been swallowed. That is the
+          # exact failure mode this whole day's work has been about, reintroduced by me in
+          # the fix for it. If loading the universe breaks, the run should say so.
+          python -m app.cli load-markets
+          # And prove the outcome rather than assuming it: these two are the reason the step
+          # exists, and a silent zero here is the thing to catch. (No heredoc - the YAML
+          # indentation would arrive in Python as leading whitespace.)
+          python -c "from app.db.session import session_scope; from app.models.market import Security; db=session_scope().__enter__(); [print('universe check', s, ':', (lambda r: f'id={r.id} provider={r.provider_symbol} active={r.is_active}' if r else 'ABSENT FROM THE DATABASE')(db.query(Security).filter(Security.symbol==s).one_or_none())) for s in ('^KSE100','DFMGI.AE')]"
           python -m app.cli ingest-psx || true
           python -m app.cli ingest-psx-market || true
           python -m app.cli ingest-macro || true
