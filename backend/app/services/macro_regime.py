@@ -43,6 +43,11 @@ REGIONS = {
     "india": ("IN", "^NSEI", True),
     "gcc": ("SA", "^TASI.SR", False),
     "australia": ("AU", "^AXJO", False),
+    # Dubai was absent from this table while the market itself was live, so it got no macro at
+    # all: its whole "regime" was the average composite score of 51 companies. AED is already
+    # in `macro.CURRENCY_COUNTRY`, so the AE series are ingested - nothing was missing but the
+    # row. Not a net importer: the UAE exports oil, so a rising crude price is a tailwind.
+    "dfm": ("AE", "DFMGI.AE", False),
 }
 REGION_LABEL = {"psx": "Pakistan", "us": "United States", "india": "India",
                 "gcc": "Saudi (Tadawul)", "australia": "Australia",
