@@ -79,3 +79,24 @@ def test_build_with_db_regions(db: Session) -> None:
     assert set(out["countries"]) >= {"psx", "us", "india", "gcc", "australia"}
     for c in out["countries"].values():
         assert c["regime"] in {"Bullish", "Neutral", "Bearish"}
+
+
+def test_every_regime_index_is_actually_in_the_universe():
+    """A market's index trend refreshes by looking its index ROW up in the snapshot. If the
+    symbol is not in the curated universe there is no row, the lookup returns nothing, and the
+    merge quietly keeps the last value written - no error, no blank, just a number that stops
+    moving. PSX published a 26 Jul index reading for three weeks this way, and Dubai ran on
+    breadth alone. The two lists have to agree, so assert it rather than hope."""
+    from app.ingestion.universe_curated import INDICES
+    from app.services.regime_snapshot import REGION_INDEX
+
+    known = {symbol for symbol, _name in INDICES}
+    missing = {
+        region: symbol
+        for region, symbol in REGION_INDEX.items()
+        if symbol and symbol not in known
+    }
+    assert not missing, (
+        f"regime indices absent from universe_curated.INDICES: {missing}. "
+        "Their markets will silently freeze on the last index trend written."
+    )

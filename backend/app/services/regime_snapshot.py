@@ -36,15 +36,17 @@ from app.services.macro_regime import REGION_LABEL
 
 log = get_logger(__name__)
 
-# The index whose trend represents each market. DFM has no index row in the snapshot, so that
-# market runs on breadth alone rather than borrowing another market's index.
+# The index whose trend represents each market. Every entry here must also appear in
+# `universe_curated.INDICES`, or the lookup below finds nothing and the market silently keeps
+# whatever index trend was last written - which is exactly how PSX came to publish a 26 Jul
+# reading in the middle of August, and Dubai came to have no index signal at all.
 REGION_INDEX = {
     "us": "^GSPC",
     "india": "^NSEI",
     "australia": "^AXJO",
     "gcc": "^TASI.SR",
     "psx": "^KSE100",
-    "dfm": None,
+    "dfm": "DFMGI.AE",
 }
 
 

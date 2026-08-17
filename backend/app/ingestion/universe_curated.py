@@ -187,6 +187,13 @@ INDICES: tuple[tuple[str, str], ...] = (
     ("^RUT", "Russell 2000"), ("^NSEI", "NIFTY 50"), ("^BSESN", "BSE SENSEX"),
     ("^AXJO", "S&P/ASX 200"), ("^FTSE", "FTSE 100"), ("^N225", "Nikkei 225"),
     ("^HSI", "Hang Seng"), ("^GDAXI", "DAX"), ("^TASI.SR", "Tadawul All Share (TASI)"),
+    # Pakistan and Dubai. Both were missing while their MARKETS were live, and the cost was not
+    # a blank tile: the regime engine refreshes a market's index trend by looking up its index
+    # ROW in this snapshot, so with no row the merge kept whatever was last written by hand.
+    # PSX's index trend sat at Portfolio360's 26 Jul reading for three weeks, and Dubai had no
+    # index signal at all - its "regime" was its average composite score and nothing else.
+    # Neither needs a new fetch: both are already in data/prices/global.json.gz.
+    ("^KSE100", "KSE-100"), ("DFMGI.AE", "DFM General Index"),
 )
 
 # ── ETFs: none, deliberately ────────────────────────────────────────────────
