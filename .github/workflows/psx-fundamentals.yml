@@ -113,7 +113,7 @@ jobs:
             echo "No fundamentals changed."
           else
             # Commit + push, replaying this run's files onto the current origin/main if
-            # another job wins the race. Merge and rebase both refuse on the depth-1
-            # clone actions/checkout makes, so the script uses neither.
+            # another job wins the race. The script needs no merge base and no history, and
+            # it leaves files only the remote has untouched.
             bash scripts/commit_snapshot.sh "chore: refresh PSX fundamentals CSVs (recent results)"
           fi

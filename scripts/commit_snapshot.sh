@@ -11,14 +11,15 @@
 #      reported as success.
 #   2. `git pull --rebase` - replaying a commit that rewrites thousands of generated JSON
 #      files onto another job's copy of the same files conflicts on every one of them.
-#   3. `git merge -X ours` - right intent, still broken: `actions/checkout` clones at depth 1,
-#      and with a single commit of history there is no merge base, so merge and rebase both
-#      refuse outright.
+#   3. `git merge -X ours` - right intent, and it did work for the daily refresh. But it
+#      depends on finding a merge base, and `actions/checkout` clones at depth 1, so whether
+#      it works at all turns on how much history a given fetch happens to bring back. A push
+#      path that works or not depending on that is not one to build on.
 #
-# So this uses no merge, no rebase and no history. It takes the current remote tip and lays
-# this run's files back on top. These are GENERATED artefacts - the job that just recomputed
-# them holds the newer answer - so file-level "ours wins" is the correct resolution and needs
-# no common ancestor to justify it.
+# So this uses no merge, no rebase and no history at all. It takes the current remote tip and
+# lays this run's files back on top. These are GENERATED artefacts - the job that just
+# recomputed them holds the newer answer - so file-level "ours wins" is the correct resolution
+# and needs no common ancestor to justify it.
 #
 # It replays exactly the files in THIS run's commit, rather than a directory list, for two
 # reasons: a file the remote added while we were working is left alone instead of being

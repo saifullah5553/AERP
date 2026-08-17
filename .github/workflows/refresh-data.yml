@@ -134,11 +134,13 @@ jobs:
           if git diff --cached --quiet; then
             echo "No data changes."
           else
-            # Rebase first: a chained run every 30 minutes will regularly race a human push.
-            git pull --rebase --autostash -q origin main || true
-            # Commit + push, replaying this run's files onto the current origin/main if
-            # another job wins the race. Merge and rebase both refuse on the depth-1
-            # clone actions/checkout makes, so the script uses neither.
+            # There used to be a `git pull --rebase --autostash -q origin main || true` here,
+            # before the commit, with this run's output already staged. It is what made THIS
+            # workflow fail while the daily refresh - which has no such line - succeeded on the
+            # same commit. Rebasing a 10,000-file generated snapshot conflicts, `|| true`
+            # swallowed the error, and the repo was left mid-rebase; after that nothing can
+            # commit, merge or push, so all five retries failed and the run died having done
+            # all its work. Racing is handled properly below, after the commit exists.
             bash scripts/commit_snapshot.sh "chore: refresh demo data snapshot"
           fi
 
