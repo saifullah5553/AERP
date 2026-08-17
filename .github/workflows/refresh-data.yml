@@ -137,7 +137,17 @@ jobs:
             git commit -m "chore: refresh demo data snapshot"
             # Rebase first: a chained run every 30 minutes will regularly race a human push.
             git pull --rebase --autostash -q origin main || true
-            git push || echo "push skipped"
+            pushed=""
+            for attempt in 1 2 3 4 5; do
+              if git push; then pushed=yes; break; fi
+              echo "push rejected (attempt $attempt) - rebasing onto origin/main"
+              git pull --rebase --autostash origin main || break
+              sleep $((attempt * 10))
+            done
+            if [ -z "$pushed" ]; then
+              echo "::error::could not push after 5 attempts - this run's work was computed and then lost"
+              exit 1
+            fi
           fi
 
       - uses: actions/setup-node@v4

@@ -81,5 +81,15 @@ jobs:
             echo "No fundamentals changed (yfinance may be rate-limited from CI — safe no-op)."
           else
             git commit -m "chore: refresh fundamentals for companies that just reported"
-            git push || echo "push skipped"
+            pushed=""
+            for attempt in 1 2 3 4 5; do
+              if git push; then pushed=yes; break; fi
+              echo "push rejected (attempt $attempt) - rebasing onto origin/main"
+              git pull --rebase --autostash origin main || break
+              sleep $((attempt * 10))
+            done
+            if [ -z "$pushed" ]; then
+              echo "::error::could not push after 5 attempts - this run's work was computed and then lost"
+              exit 1
+            fi
           fi

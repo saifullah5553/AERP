@@ -56,9 +56,18 @@ jobs:
             cd backend
             python -m app.cli pending-results --region psx --days 5               --data-dir ../frontend/public/data
             cd ..
-            SYMS=$(grep -v '^#' data/pending/psx.txt | paste -sd, -)
+            # `grep -v` exits 1 when it matches nothing, and a missing file exits 2. Either
+            # way `set -e` failed the job on the NORMAL outcome: no company filed today. This
+            # workflow is supposed to run often and do nothing most of the time, so "nothing
+            # pending" has to be a clean skip, not a red run. PSX Fundamentals failed this way
+            # on every scheduled run it made.
+            SYMS=$(grep -v '^#' data/pending/psx.txt 2>/dev/null | paste -sd, - || true)
             echo "SYMS=$SYMS" >> "$GITHUB_ENV"
-            echo "Pending: $SYMS"
+            if [ -z "$SYMS" ]; then
+              echo "No PSX company has filed a period we do not already hold. Nothing to do."
+            else
+              echo "Pending: $SYMS"
+            fi
           fi
 
       - name: Scrape refreshed fundamentals (targeted, forced)
@@ -104,5 +113,15 @@ jobs:
             echo "No fundamentals changed."
           else
             git commit -m "chore: refresh PSX fundamentals CSVs (recent results)"
-            git push || echo "push skipped"
+            pushed=""
+            for attempt in 1 2 3 4 5; do
+              if git push; then pushed=yes; break; fi
+              echo "push rejected (attempt $attempt) - rebasing onto origin/main"
+              git pull --rebase --autostash origin main || break
+              sleep $((attempt * 10))
+            done
+            if [ -z "$pushed" ]; then
+              echo "::error::could not push after 5 attempts - this run's work was computed and then lost"
+              exit 1
+            fi
           fi

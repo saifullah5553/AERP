@@ -20,7 +20,15 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  # Deliberately NOT the "pages" group. Sharing it with the half-hourly price refresh is what
+  # killed this job: GitHub keeps only the newest PENDING run per group, so when this queued
+  # behind a price run at 22:15 the next price run at 22:35 cancelled it. Over the last 100
+  # runs this workflow completed ONCE. Technicals are a once-a-day job after the last market
+  # closes; they must not be starved by a job that runs 48 times a day.
+  #
+  # Decoupling means two workflows can push in the same minute. That is handled at the push
+  # (rebase-and-retry) rather than by serialising a 40-minute job behind a 3-minute one.
+  group: technical-refresh
   cancel-in-progress: false
 
 jobs:
@@ -102,7 +110,21 @@ jobs:
             echo "No changes."
           else
             git commit -m "chore: daily technical/score refresh"
-            git push || echo "push skipped"
+            # Rebase and retry rather than "|| echo skipped". A bare push that loses a race to
+            # the half-hourly refresh threw away the entire day's technicals, divergences and
+            # scores WITHOUT failing the job - the log said success and nothing had changed.
+            # These are generated files: a rebase can only replay our writes on top of theirs.
+            pushed=""
+            for attempt in 1 2 3 4 5; do
+              if git push; then pushed=yes; break; fi
+              echo "push rejected (attempt $attempt) - rebasing onto origin/main"
+              git pull --rebase --autostash origin main || break
+              sleep $((attempt * 10))
+            done
+            if [ -z "$pushed" ]; then
+              echo "::error::daily refresh could not push after 5 attempts - the day's technicals were computed and then lost"
+              exit 1
+            fi
           fi
 
       - uses: actions/setup-node@v4
