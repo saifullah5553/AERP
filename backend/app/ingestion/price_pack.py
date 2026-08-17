@@ -26,6 +26,7 @@ from __future__ import annotations
 import csv
 import gzip
 import json
+from datetime import date
 from pathlib import Path
 
 from app.core.logging import get_logger
@@ -139,7 +140,48 @@ def _write(region: str, merged: dict[str, dict[str, float]], kept: int) -> dict[
     _CACHE.pop(region, None)
     log.info("price-pack[%s]: %d symbols (%d already stored), %d closes -> %.1f MB",
              region, len(out), kept, points, target.stat().st_size / 1024 / 1024)
+    _report_freshness(region, out)
     return {"symbols": len(out), "points": points}
+
+
+# How many calendar days behind the newest bar in a region before we call it a problem. Four
+# covers an ordinary weekend plus a public holiday on either side of it.
+STALE_AFTER_DAYS = 4
+
+
+def _report_freshness(region: str, out: dict[str, dict[str, list]]) -> None:
+    """Say out loud how old this region's newest bar is, and how much of it lags behind.
+
+    Quotes already had `price_refresh.report_staleness`; BARS had nothing, and the difference
+    mattered. When the daily refresh was being cancelled, the half-hourly job kept quoting
+    today's price while this pack sat at 3 Aug for Pakistan and 11 Aug for everywhere else -
+    so every technical score, divergence and index trend was computed on a fortnight-old chart
+    behind a price that said today. Nothing looked wrong on any screen.
+
+    A log line is not a fix, but it is the difference between a defect you can find and one
+    that has to be stumbled over.
+    """
+    newest: list[str] = []
+    for series in out.values():
+        days = series.get("d") or []
+        if days:
+            newest.append(days[-1])
+    if not newest:
+        log.warning("price-pack[%s]: no dated bars at all", region)
+        return
+
+    latest = max(newest)
+    try:
+        lag = (date.today() - date.fromisoformat(latest)).days
+    except ValueError:
+        lag = -1
+    behind = sum(1 for d in newest if d < latest)
+    msg = ("price-pack[%s]: newest bar %s (%d days old), %d of %d symbols behind it")
+    args = (region, latest, lag, behind, len(newest))
+    if lag > STALE_AFTER_DAYS:
+        log.warning(msg + " - THIS REGION'S CHARTS ARE STALE", *args)
+    else:
+        log.info(msg, *args)
 
 
 def load_packed(region: str) -> dict[str, dict[str, float]]:
