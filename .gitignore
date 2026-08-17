@@ -97,3 +97,16 @@ data/sector_cache.json
 # Held while a writer has the snapshot open. Runtime state, never versioned - a committed
 # lock makes every later run think another writer is active.
 /frontend/public/data/.snapshot.lock
+
+# The scraped CSVs now live in the REPO ROOT rather than the Windows user profile. Same rule as
+# always - ~270 MB of raw downloads stay local, only the distilled store is versioned - but the
+# existing pattern only covered scripts/market_scrapers/*_data, so a git add -A swept 37,996
+# files into a commit. Caught before it was pushed.
+/us_data/
+/india_data/
+/australia_data/
+/tadawul_data/
+/dfm_data/
+/psx_raw_data/
+/*_data/
+Stock Analysis CSV Data*.py

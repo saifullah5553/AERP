@@ -149,7 +149,7 @@ _DIR_ALIASES = {
     "australia": ("australia", "australia_data"),
     # psx_csv is the original PSX export - 20 quarterly TTM columns per statement, sitting
     # unused by the store because only the annual sampling was ever ingested.
-    "psx": ("psx", "psx_data", "psx_csv"),
+    "psx": ("psx", "psx_raw_data", "psx_data", "psx_csv"),
     "gcc": ("gcc", "gcc_data", "tadawul_data", "tadawul"),
     "dfm": ("dfm", "dfm_data"),
 }
