@@ -146,36 +146,47 @@ def _signal_since(dates, open_, high, low, close, vol, legs, regime, de, current
     return d, float(close[idx])
 
 
-# Browser-like headers for the PSX portal (it's picky about the default httpx UA).
-_PSX_HDRS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/120 Safari/537.36"
-    ),
-    "Referer": "https://dps.psx.com.pk/",
-    "Accept": "application/json, text/plain, */*",
-}
+def _psx_history(sym: str):
+    """PSX EOD history → (dates, close, volume) for the last ~300 bars, or None.
 
+    From OUR OWN store, not the portal. `dps.psx.com.pk/timeseries/eod/<sym>` serves the
+    KSE-100 index happily and then disconnects without a response for LUCK, ATLH and every
+    other individual stock. The old fetcher swallowed that in a bare `except` and returned
+    None, so `_backtest_psx` skipped every single company: `signal_since`, `price_at_signal`
+    and `signal_return_pct` were silently absent for all of Pakistan while the page showed no
+    error at all. The divergences were fixed this way already; this is the same repair.
 
-def _fetch_psx_history(sym: str):
-    """PSX portal EOD history → (dates, close, volume) for the last ~300 bars, or None."""
-    from app.ingestion.psx_market import parse_eod
+    ohlc_store falls back to the committed close-only pack in CI, so this works on a fresh
+    runner. Volume is zero-filled when only the pack is available - it feeds the composite's
+    volume leg, which degrades rather than breaks.
+    """
+    from app.ingestion.ohlc_store import load_bars
 
-    try:
-        resp = httpx.get(
-            f"https://dps.psx.com.pk/timeseries/eod/{sym}", headers=_PSX_HDRS, timeout=20
-        )
-        resp.raise_for_status()
-        bars = parse_eod(resp.text)
-    except Exception:  # noqa: BLE001 - one bad symbol shouldn't stop the batch
-        return None
+    bars = load_bars("psx", sym)
     if not bars or len(bars) < MIN_BARS:
         return None
-    bars = bars[-300:]
-    close = np.array([float(b.close) for b in bars], dtype=float)
-    vol = np.array([float(b.volume or 0) for b in bars], dtype=float)
-    dates = [b.date.date().isoformat() for b in bars]
-    return dates, close, vol
+    days = sorted(bars)[-300:]
+    dates: list[str] = []
+    closes: list[float] = []
+    vols: list[float] = []
+    for d in days:
+        row = bars[d]
+        try:
+            c = float(row[4]) if row[4] not in (None, "") else None
+        except (TypeError, ValueError):
+            c = None
+        if c is None:
+            continue  # a gap in closes would shift every later bar's date
+        try:
+            v = float(row[5]) if row[5] not in (None, "") else 0.0
+        except (TypeError, ValueError):
+            v = 0.0
+        dates.append(d)
+        closes.append(c)
+        vols.append(v)
+    if len(closes) < MIN_BARS:
+        return None
+    return dates, np.array(closes, dtype=float), np.array(vols, dtype=float)
 
 
 def _psx_divergences(rows) -> int:
@@ -237,11 +248,17 @@ def _backtest_psx(rows, company, regime_map, today, limit):
     if not psx_rows:
         return
     syms = [r.get("symbol") or r["provider_symbol"].replace(".KA", "") for r in psx_rows]
+    # Local reads now, so no thread pool and no network: the portal path this used was dead.
     hist: dict[str, Any] = {}
-    with ThreadPoolExecutor(max_workers=6) as pool:
-        for r, h in zip(psx_rows, pool.map(_fetch_psx_history, syms), strict=False):
-            if h is not None:
-                hist[r["provider_symbol"]] = h
+    for r, sym in zip(psx_rows, syms, strict=True):
+        h = _psx_history(sym)
+        if h is not None:
+            hist[r["provider_symbol"]] = h
+    if not hist:
+        log.warning(
+            "psx backtest: no local history for any of %d symbols - signal_since will be "
+            "today's date for the whole market", len(psx_rows)
+        )
     regime = regime_map.get("psx")
     updated = 0
     for r in psx_rows:
