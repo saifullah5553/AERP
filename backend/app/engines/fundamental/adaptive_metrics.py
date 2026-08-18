@@ -371,7 +371,11 @@ def piotroski_score(inc: list[dict], bal: list[dict], cf: list[dict]) -> int | N
 def accounting_flags(inc: list[dict], bal: list[dict], cf: list[dict]) -> list[str]:
     """Section 13. These do not move the mechanical score; they qualify the conclusion."""
     flags: list[str] = []
-    if len(inc) < 5:
+    # Guard EVERY statement, not just the income one. The three lists are independent and can
+    # each be empty or short - this function crashed the whole universe refresh twice, first on
+    # a company with a shorter cash-flow history and then on one with no cash-flow rows at all.
+    # Checking the list you are about to index is the fix; checking a different list is not.
+    if len(inc) < 5 or not bal or not cf:
         return flags
 
     def yoy(rows, key):
@@ -404,7 +408,7 @@ def accounting_flags(inc: list[dict], bal: list[dict], cf: list[dict]) -> list[s
     if debt_g is not None and debt_g > 0.35:
         flags.append("total debt up more than a third year on year")
 
-    cfo0, net0 = _f(cf[0].get("operating_cash_flow")), _f(inc[0].get("net_income"))
+    cfo0, net0 = _f(cf[0].get("operating_cash_flow")), _f(inc[0].get("net_income"))  # guarded above
     if cfo0 is not None and net0 is not None and net0 > 0 and cfo0 < net0 * 0.5:
         flags.append("operating cash flow below half of reported profit")
 
