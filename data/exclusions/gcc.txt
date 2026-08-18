@@ -8,3 +8,10 @@ QEWS
 QFLS
 QIBK
 QNBK
+# Extended 2026-08-18: 521 listings the six-category engine cannot score.
+# Not a scrape failure - we hold their statements, and 511 of the 521 carry no
+# revenue line AT ALL (dormant shells filing expenses and nothing else). Without a top line
+# the growth, margin and profitability categories cannot be computed, fewer than five checks
+# resolve, and the engine correctly declines to publish a score. User instruction: keep only
+# clean quarterly TTM data. Rescraping cannot fix these - the filings themselves are empty.
+2250

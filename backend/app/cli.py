@@ -163,12 +163,22 @@ def cmd_pending_results(args: argparse.Namespace) -> None:
     import json as _json
     from pathlib import Path
 
+    from app.ingestion.exclusions import load_excluded
     from app.ingestion.pending_results import build
 
     data_dir = Path(args.data_dir or "../frontend/public/data")
     rows = _json.loads((data_dir / "screener.json").read_text(encoding="utf-8"))
+    # Never ask the scrapers for a symbol we have decided not to carry. Excluded rows already
+    # disappear from screener.json at export, so this filter is usually a no-op - but that
+    # makes it a guarantee that depends on the snapshot being fresh, and this list is what
+    # actually spends the scrape budget. Belt and braces on the cheaper side of the trade.
+    excluded = load_excluded(args.region)
     symbols = sorted({str(r["symbol"]) for r in rows
-                      if r.get("region") == args.region and r.get("symbol")})
+                      if r.get("region") == args.region and r.get("symbol")
+                      and str(r["symbol"]) not in excluded})
+    if excluded:
+        log.info("pending-results: %s has %d excluded symbols; they will not be scraped",
+                 args.region, len(excluded))
     log.info("pending-results: %s", build(data_dir, Path(args.store_dir), args.region,
                                           symbols, days=args.days, probe=not args.no_probe))
 

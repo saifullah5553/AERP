@@ -390,10 +390,18 @@ def apply_to_snapshot(data_dir: Path, store_dir: Path,
             continue
         suffix = data.get("suffix", REGION_META.get(region, ("", ""))[0])
         currency = data.get("currency") or "USD"
-        written = skipped = 0
+        written = skipped = missing_file = 0
         for sym, rec in (data.get("companies") or {}).items():
             cfile = safe_file(cdir, f"{sym}{suffix}.json")
             if cfile is None or not cfile.exists():
+                # This writes INTO existing company files; it never creates one. A company the
+                # export has not written a file for can therefore never receive its statements
+                # and never be scored, however complete its data - CON (Concentra, 13 TTM
+                # periods, $2.2bn revenue) sat unscored for exactly this reason while looking
+                # identical to a company with no data at all. Counted and reported rather than
+                # skipped in silence, because the two cases need opposite responses: one is a
+                # company to exclude, the other is a file to create.
+                missing_file += 1
                 continue
             annual = _statement_rows(rec, currency, quarterly=False)
             if not annual:
@@ -438,8 +446,9 @@ def apply_to_snapshot(data_dir: Path, store_dir: Path,
                 continue
             written += 1
         totals[region] = written
-        log.info("apply_to_snapshot: %s -> %d company files (%d kept richer existing)",
-                 region, written, skipped)
+        log.info("apply_to_snapshot: %s -> %d company files (%d kept richer existing, "
+                 "%d had statements but NO company file to write them into)",
+                 region, written, skipped, missing_file)
     return totals
 
 
