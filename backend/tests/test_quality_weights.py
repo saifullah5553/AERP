@@ -77,9 +77,10 @@ def test_leverage_can_no_longer_be_waved_through() -> None:
         assert res.score is not None and 0 <= res.score <= 100
         # Growth is uncomputable from one period, so its budget leaves the total
         # rather than scoring zero against the company.
-        assert res.categories["growth"]["points"] == 0.0
-
-
+        # Under the adaptive engine an uncomputable category shows as an
+        # applicable_max of 0: nothing earned, and nothing expected of it.
+        assert res.categories["growth"]["applicable_max"] == 0.0
+        assert res.categories["growth"]["earned"] == 0.0
 def test_quick_ratio_excludes_inventory() -> None:
     """Inventory is the slowest current asset to turn into cash, and the first to stop selling
     when a business gets into trouble - so it cannot count toward immediate survival."""
@@ -119,9 +120,10 @@ def test_cash_generation_outweighs_a_tidy_balance_sheet() -> None:
         assert res.score is not None and 0 <= res.score <= 100
         # Growth is uncomputable from one period, so its budget leaves the total
         # rather than scoring zero against the company.
-        assert res.categories["growth"]["points"] == 0.0
-
-
+        # Under the adaptive engine an uncomputable category shows as an
+        # applicable_max of 0: nothing earned, and nothing expected of it.
+        assert res.categories["growth"]["applicable_max"] == 0.0
+        assert res.categories["growth"]["earned"] == 0.0
 def test_returns_are_computed_even_though_they_are_not_scored() -> None:
     """ROE and ROA are no longer weighted, but the company page still shows them - dropping the
     calculation would quietly empty those fields."""
@@ -190,9 +192,10 @@ def test_margins_are_graded_against_peers_not_a_fixed_line() -> None:
         assert res.score is not None and 0 <= res.score <= 100
         # Growth is uncomputable from one period, so its budget leaves the total
         # rather than scoring zero against the company.
-        assert res.categories["growth"]["points"] == 0.0
-
-
+        # Under the adaptive engine an uncomputable category shows as an
+        # applicable_max of 0: nothing earned, and nothing expected of it.
+        assert res.categories["growth"]["applicable_max"] == 0.0
+        assert res.categories["growth"]["earned"] == 0.0
 def test_a_loss_making_peer_group_falls_back_to_absolute_anchors() -> None:
     """A negative median cannot anchor a relative score, and pretending otherwise would rank
     companies against nonsense."""
@@ -225,9 +228,10 @@ def test_operating_and_free_cash_flow_are_scored_by_magnitude() -> None:
         assert res.score is not None and 0 <= res.score <= 100
         # Growth is uncomputable from one period, so its budget leaves the total
         # rather than scoring zero against the company.
-        assert res.categories["growth"]["points"] == 0.0
-
-
+        # Under the adaptive engine an uncomputable category shows as an
+        # applicable_max of 0: nothing earned, and nothing expected of it.
+        assert res.categories["growth"]["applicable_max"] == 0.0
+        assert res.categories["growth"]["earned"] == 0.0
 def test_roic_is_earned_on_capital_actually_employed() -> None:
     """NOPAT over invested capital (equity + debt - cash). A better moat test than ROE, which
     leverage flatters: borrow enough and ROE rises while the business gets worse."""

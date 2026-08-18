@@ -31,8 +31,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.engines.strategy.fundamental_quality import score_fundamentals
-
 # The two pillars of the thesis. Growth and cash decide whether a business is worth owning;
 # debt is a guardrail, not a reason to buy.
 _GROWTH_CHECKS = ("revenue_rising", "operating_profit_rising", "eps_rising")
@@ -280,6 +278,11 @@ class QualityResult:
     # own and, fed quarterly TTM rows, compared adjacent quarters: HCI published 2.90% revenue
     # growth beside a 128.64% net profit growth that WAS annual.
     fundamental_metrics: dict = field(default_factory=dict)
+    # The whole adaptive result: per-metric scores and benchmarks, category maxima before and
+    # after N/A redistribution, the quality matrix, accounting-risk flags and the
+    # classification. Carried so the company page can show WHY a score is what it is rather
+    # than only the number.
+    adaptive: dict = field(default_factory=dict)
 
     @property
     def eligible(self) -> bool:
@@ -485,7 +488,9 @@ def _add_valuation_checks(checks: dict, metrics: dict, inc: list[dict], bal: lis
 def assess_quality(statements: dict[str, list[dict]], min_checks: int = 5,
                    market: dict | None = None,
                    peers: dict[str, float] | None = None,
-                   sector: str | None = None) -> QualityResult:
+                   sector: str | None = None,
+                   region: str | None = None,
+                   industry: str | None = None) -> QualityResult:
     """Run the quality tests. `passed` requires the non-negotiables (positive operating cash
     flow, rising EPS) plus a majority of BOTH the growth and cash pillars - growth and cash are
     the thesis, so neither can be waved through by the other.
@@ -643,14 +648,27 @@ def assess_quality(statements: dict[str, list[dict]], min_checks: int = 5,
     # engine could not score them, so the retired engine's figure stayed on the dashboard
     # beside numbers from the new one. Two methodologies answering one question, with nothing
     # on screen to say which you were reading. No score is honest; a stale score is not.
-    fq = score_fundamentals(statements, sector=sector, peers=peers)
-    score = fq.score
+    # The 0-100 number is now the ADAPTIVE engine: five categories out of 145.5, pro-rata
+    # between the band anchors, with thresholds set by country and metrics marked N/A where a
+    # business model cannot have them. `score` is the normalised percentage, so it stays on
+    # the 0-100 scale every caller already expects.
+    #
+    # Taken WHOLESALE, including when it is None, for the reason recorded above: keeping a
+    # second engine as a fallback is how two PSX insurers kept publishing 99.97 and 99.91 from
+    # a retired methodology beside numbers from the live one.
+    from app.engines.fundamental.adaptive_score import score_company
+
+    adaptive = score_company(statements, region or "psx", sector=sector, industry=industry,
+                             market=market, peers=peers)
+    score = adaptive.percent
 
     return QualityResult(passed=passed, score=score, checks=checks, grades=grades,
-                         grade_label=fq.grade,
-                         categories=fq.categories, flags=fq.flags,
+                         grade_label=adaptive.rating,
+                         categories=adaptive.categories, flags=adaptive.accounting_flags,
+                         adaptive=adaptive.as_dict(),
                          # The figures the SCORE was computed from. Kept separate from
                          # `metrics`, which the older checks still read, so the page can show
                          # the numbers behind the score rather than a second opinion on them.
-                         fundamental_metrics=fq.metrics,
+                         fundamental_metrics={m["key"]: m["value"]
+                                              for m in adaptive.as_dict()["metrics"]},
                          metrics=metrics, reasons=reasons, improving=improving)

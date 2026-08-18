@@ -145,8 +145,13 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
 
         # Valuation needs a quote. Passing the row's own price keeps the two in step - a score
         # computed against a different company's price would be worse than no score.
+        # region and industry go through now: the adaptive engine sets its thresholds from the
+        # country (a P/E of 20 is expensive in Karachi and ordinary in New York) and resolves
+        # the business model partly from the industry label.
         q = assess_quality(statements,
                            sector=r.get("sector"),
+                           region=r.get("region"),
+                           industry=r.get("industry"),
                            market={
             "price": r.get("price"),
             "market_cap": r.get("market_cap"),
