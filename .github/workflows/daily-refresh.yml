@@ -76,29 +76,24 @@ jobs:
           # names that fell out). The command is idempotent within a quarter.
           python -m app.cli model-portfolio || true
 
-      - name: Detect new Buy/Exit signals (for email)
+      - name: Detect new Buy/Exit signals
         run: |
           git show HEAD:frontend/public/data/signal_moves.json > /tmp/old_sig.json 2>/dev/null || echo '{}' > /tmp/old_sig.json
           COUNT=$(python scripts/diff_new_signals.py /tmp/old_sig.json /tmp/signal_body.txt || echo 0)
           echo "NEW_SIGNALS=$COUNT" >> "$GITHUB_ENV"
           echo "Detected $COUNT new buy/exit signal(s)."
 
-      - name: Email new Buy/Exit signals
-        # No-ops harmlessly if mail secrets are unset (continue-on-error), so the refresh
-        # never fails over email.
-        if: ${{ env.NEW_SIGNALS != '0' && env.NEW_SIGNALS != '' }}
-        continue-on-error: true
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: ${{ secrets.MAIL_SERVER || 'smtp.gmail.com' }}
-          server_port: ${{ secrets.MAIL_PORT || 465 }}
-          secure: true
-          username: ${{ secrets.MAIL_USERNAME }}
-          password: ${{ secrets.MAIL_PASSWORD }}
-          subject: "AERP — ${{ env.NEW_SIGNALS }} new Buy/Exit signal(s)"
-          to: ${{ secrets.MAIL_TO }}
-          from: AERP Alerts <${{ secrets.MAIL_USERNAME }}>
-          body: file:///tmp/signal_body.txt
+      # The "Email new Buy/Exit signals" step was removed on 2026-08-18. `continue-on-error`
+      # kept it from failing the job, but with MAIL_TO unset it still recorded a failure
+      # annotation ("At least one of 'to', 'cc' or 'bcc' must be specified") on every single
+      # run - which is exactly the noise that makes a real annotation easy to miss.
+      #
+      # The detection step above is KEPT: it is local, costs nothing, and logs the count, so
+      # the signal diff is still visible in the run. To restore delivery, set the MAIL_TO,
+      # MAIL_USERNAME and MAIL_PASSWORD secrets and re-add a `dawidd6/action-send-mail@v3`
+      # step guarded on `env.NEW_SIGNALS` and on the secret being present, e.g.
+      #     if: ${{ env.NEW_SIGNALS != '0' && env.NEW_SIGNALS != '' && secrets.MAIL_TO != '' }}
+      # so an unconfigured mailbox stays silent instead of annotating.
 
       - name: Commit refreshed snapshot
         run: |

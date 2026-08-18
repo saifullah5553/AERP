@@ -101,29 +101,20 @@ jobs:
           # uncapped daily run guarantees every symbol is repriced at least once a day.
           python -m app.cli refresh-prices --limit 3000 || true
 
-      - name: Detect new alerts (for email)
+      - name: Detect new alerts
         run: |
           git show HEAD:frontend/public/data/catalysts.json > /tmp/old_cat.json 2>/dev/null || echo '{}' > /tmp/old_cat.json
           COUNT=$(python scripts/diff_new_alerts.py /tmp/old_cat.json /tmp/alert_body.txt || echo 0)
           echo "NEW_ALERTS=$COUNT" >> "$GITHUB_ENV"
           echo "Detected $COUNT new alert(s)."
 
-      - name: Email new alerts
-        # Runs only when something new landed; no-ops harmlessly if mail secrets are unset
-        # (continue-on-error), so the refresh never fails over email.
-        if: ${{ env.NEW_ALERTS != '0' && env.NEW_ALERTS != '' }}
-        continue-on-error: true
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: ${{ secrets.MAIL_SERVER || 'smtp.gmail.com' }}
-          server_port: ${{ secrets.MAIL_PORT || 465 }}
-          secure: true
-          username: ${{ secrets.MAIL_USERNAME }}
-          password: ${{ secrets.MAIL_PASSWORD }}
-          subject: "AERP — ${{ env.NEW_ALERTS }} new PSX alert(s)"
-          to: ${{ secrets.MAIL_TO }}
-          from: AERP Alerts <${{ secrets.MAIL_USERNAME }}>
-          body: file:///tmp/alert_body.txt
+      # The "Email new alerts" step was removed on 2026-08-18, for the same reason as the one
+      # in daily-refresh.yml: with MAIL_TO unset it annotated every run with a failure while
+      # `continue-on-error` hid the consequence. At 48 runs a day this was the loudest thing
+      # in the annotations and none of it meant anything.
+      #
+      # Detection above is kept - the alert diff still runs and logs its count. See
+      # daily-refresh.yml for how to restore delivery once the mail secrets exist.
 
       - name: Commit refreshed snapshot (for the record)
         run: |
