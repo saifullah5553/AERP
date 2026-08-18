@@ -15,3 +15,16 @@ QNBK
 # resolve, and the engine correctly declines to publish a score. User instruction: keep only
 # clean quarterly TTM data. Rescraping cannot fix these - the filings themselves are empty.
 2250
+# Extended 2026-08-18: 400 listings with no resolvable sector.
+# Backfill was attempted first and every source refused them: Yahoo's quoteSummary now
+# returns 401 without a crumb; its search endpoint answers these tickers with OPTION
+# CONTRACTS or nothing at all; stockanalysis carries no sector field on its NSE quote
+# pages; and NSE's own industry API blocks datacenter traffic with a 403. 18 US names WERE
+# recovered from stockanalysis and are deliberately NOT in this list. Without a sector a
+# company cannot be routed to a valuation method or a peer group - it can only be priced.
+2210
+9562
+9593
+9616
+9631
+9639

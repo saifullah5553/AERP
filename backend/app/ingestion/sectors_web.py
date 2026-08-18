@@ -25,6 +25,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -349,6 +350,56 @@ def save_sector_store(rows: list[dict]) -> dict[str, int]:
     return counts
 
 
+_SA_CACHE = Path(__file__).resolve().parents[3] / "data" / "sector_cache_stockanalysis.json"
+_SA_SECTOR = re.compile(r"Sector</span>.{0,80}?/stocks/sector/[a-z-]+/\"[^>]*>([^<]{3,40})<")
+
+
+def fetch_stockanalysis_sectors(symbols: list[str], throttle: float = 0.35) -> dict[str, str]:
+    """{symbol: sector} from stockanalysis.com's US company pages.
+
+    Added because the two sources above stopped answering. Yahoo's quoteSummary now returns
+    401 without a crumb, and its search endpoint - which `fetch_yahoo_sectors` uses - answers
+    a query like "TMHC" with four OPTION CONTRACTS and no equity at all, so the exact-symbol
+    match finds nothing. That is why US names were missing sectors; it was never that the
+    tickers were obscure.
+
+    US pages only. The NSE quote pages carry no sector field at all, and NSE's own industry
+    API refuses datacenter traffic (403), so Indian listings are not resolvable from here -
+    they are dropped rather than guessed.
+    """
+    try:
+        cache = json.loads(_SA_CACHE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        cache = {}
+
+    todo = [s for s in symbols if s not in cache]
+    log.info("stockanalysis sectors: %d symbols, %d already cached", len(symbols),
+             len(symbols) - len(todo))
+    if todo:
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                 "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"}
+        with httpx.Client(timeout=25, follow_redirects=True, headers=headers) as client:
+            for i, sym in enumerate(todo, 1):
+                try:
+                    resp = client.get(f"https://stockanalysis.com/stocks/{sym.lower()}/")
+                    if resp.status_code == 200:
+                        m = _SA_SECTOR.search(resp.text)
+                        # Cache the miss too: a company with no sector on the page will not
+                        # grow one, and re-fetching 300 pages every run to learn that again
+                        # is how a lookup becomes a rate limit.
+                        cache[sym] = m.group(1).strip() if m else ""
+                    else:
+                        cache[sym] = ""
+                except Exception:  # noqa: BLE001 - one bad page must not stop the batch
+                    cache[sym] = ""
+                if i % 25 == 0:
+                    log.info("stockanalysis sectors: %d/%d", i, len(todo))
+                time.sleep(throttle)
+        _SA_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        _SA_CACHE.write_text(json.dumps(cache, indent=0, sort_keys=True), encoding="utf-8")
+    return {s: v for s, v in cache.items() if v}
+
+
 def refresh_sectors(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
     """Patch missing `sector` on screener rows + company files (Australia + US)."""
     out = Path(data_dir)
@@ -386,6 +437,15 @@ def refresh_sectors(data_dir: str | Path, limit: int | None = None) -> dict[str,
         and str(r.get("provider_symbol")) not in yahoo
     }
     us = fetch_us_sectors(us_tickers) if us_tickers else {}
+    # Last resort for US names neither Yahoo nor the SEC map resolved.
+    sa_tickers = [
+        str(r.get("symbol") or "").upper()
+        for r in missing
+        if r.get("region") == "us" and r.get("symbol")
+        and str(r.get("provider_symbol")) not in yahoo
+        and str(r.get("symbol") or "").upper() not in us
+    ]
+    sa = fetch_stockanalysis_sectors(sa_tickers) if sa_tickers else {}
 
     filled = with_industry = 0
     for r in missing:
@@ -393,7 +453,7 @@ def refresh_sectors(data_dir: str | Path, limit: int | None = None) -> dict[str,
         sym = str(r.get("symbol") or "").upper()
         hit = yahoo.get(ps) or {}
         sector = hit.get("sector") or (
-            asx.get(ps) if r.get("region") == "australia" else us.get(sym)
+            asx.get(ps) if r.get("region") == "australia" else (us.get(sym) or sa.get(sym))
         )
         if not sector:
             continue

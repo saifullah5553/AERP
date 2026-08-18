@@ -1798,3 +1798,16 @@ XRTX
 YOOV
 ZNTL
 ZURA
+# Extended 2026-08-18: 400 listings with no resolvable sector.
+# Backfill was attempted first and every source refused them: Yahoo's quoteSummary now
+# returns 401 without a crumb; its search endpoint answers these tickers with OPTION
+# CONTRACTS or nothing at all; stockanalysis carries no sector field on its NSE quote
+# pages; and NSE's own industry API blocks datacenter traffic with a 403. 18 US names WERE
+# recovered from stockanalysis and are deliberately NOT in this list. Without a sector a
+# company cannot be routed to a valuation method or a peer group - it can only be priced.
+CAPNU
+CCAQU
+CHARU
+CHPGU
+FSSL
+SWZ
