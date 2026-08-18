@@ -222,3 +222,35 @@ def test_category_weights_reproduce_the_stated_maxima() -> None:
     for cat, n in counts.items():
         assert abs(GOOD * CATEGORY_WEIGHT[cat] / 100 * n - CATEGORY_MAX[cat]) < 1e-9, cat
     assert abs(sum(CATEGORY_MAX.values()) - TOTAL_MAX) < 1e-9
+
+
+def test_the_grade_always_matches_its_own_score() -> None:
+    """The label and the number must never disagree.
+
+    They did: a rescore moved the score and left the label from the previous run, so 3,143 of
+    9,602 rows carried a grade from a band their own score no longer sat in - JPMorgan read
+    61.6 labelled VERY STRONG. A trader reading the label got a different answer from one
+    reading the number, on the same row.
+    """
+    from app.ingestion.score_unify import unify
+    import json
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp)
+        (d / "company").mkdir()
+        rows = [
+            # A stale label from a previous run, one band too high.
+            {"provider_symbol": "AAA", "quality_score": 61.6, "quality_grade": "VERY STRONG"},
+            {"provider_symbol": "BBB", "quality_score": 86.5, "quality_grade": "VERY STRONG"},
+            # No score: the label must go too, not linger.
+            {"provider_symbol": "CCC", "quality_score": None, "quality_grade": "STRONG"},
+        ]
+        (d / "screener.json").write_text(json.dumps(rows), encoding="utf-8")
+        unify(d)
+        out = {r["provider_symbol"]: r
+               for r in json.loads((d / "screener.json").read_text(encoding="utf-8"))}
+        assert out["AAA"]["quality_grade"] == "AVERAGE / ACCEPTABLE"
+        assert out["BBB"]["quality_grade"] == "EXCEPTIONAL"
+        assert out["CCC"]["quality_grade"] is None

@@ -32,6 +32,7 @@ from typing import Any
 
 from app.core.logging import get_logger
 from app.core.safe_path import safe_file
+from app.engines.fundamental.adaptive import rating_for
 
 log = get_logger(__name__)
 
@@ -87,11 +88,25 @@ def unify(data_dir: str | Path) -> dict[str, int]:
                 cleared += 1
             for key in _MIRRORS:
                 row[key] = None
+            row["quality_grade"] = None
         else:
             if any(row.get(k) != canonical for k in _MIRRORS):
                 aligned += 1
             for key in _MIRRORS:
                 row[key] = canonical
+            # THE LABEL IS DERIVED FROM THE SCORE, HERE, EVERY TIME.
+            #
+            # It used to be written by whichever refresh-quality run last touched the row, and
+            # a later rescore moved the score without moving the label: 3,143 rows of 9,602 -
+            # a third of the universe - ended up carrying a grade from a band their own score
+            # no longer sat in. JPMorgan read 61.6 labelled VERY STRONG, which is the 75-84.9
+            # band. A trader reading the label got a different answer from one reading the
+            # number, on the same row of the same screen.
+            #
+            # Deriving it at the single point that owns the score is the only arrangement
+            # where the two cannot drift apart, for exactly the reason this whole module
+            # exists.
+            row["quality_grade"] = rating_for(canonical)
 
         sym = row.get("provider_symbol")
         if not sym:
