@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, type InsiderTx, type NewsFeedItem } from "@/lib/api";
 import { buildAlerts, resultsFiled } from "@/lib/alerts";
 import { fmtCompact } from "@/lib/format";
+import { Th, useSortable } from "@/lib/useSortable";
 import type { CatalystsData } from "@/types/api";
 import { AlertRow } from "./NotificationBell";
 
@@ -14,23 +15,37 @@ function shares(n: number | null): string {
 }
 
 function InsiderTable({ rows }: { rows: InsiderTx[] }) {
+  const value = useCallback((tx: InsiderTx, key: string): unknown => {
+    switch (key) {
+      case "symbol": return tx.symbol;
+      case "insider": return tx.insider;
+      case "type": return tx.type;
+      case "shares": return tx.shares;
+      case "value": return tx.value;
+      case "region": return tx.region;
+      case "date": return tx.date;
+      default: return null;
+    }
+  }, []);
+  const { sorted, sort, toggle } = useSortable(rows, value, { key: "date", dir: "desc" });
+
   if (rows.length === 0) return <div className="p-8 text-center text-sm text-slate-500">No insider transactions.</div>;
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="sticky top-0 bg-base-800 text-[10px] uppercase tracking-wide text-slate-400">
           <tr className="border-b border-base-600">
-            <th className="px-3 py-2 text-left">Ticker</th>
-            <th className="px-3 py-2 text-left">Insider</th>
-            <th className="px-3 py-2 text-left">Action</th>
-            <th className="px-3 py-2 text-right">Shares</th>
-            <th className="px-3 py-2 text-right">Value</th>
-            <th className="px-3 py-2 text-left">Market</th>
-            <th className="px-3 py-2 text-right">Date</th>
+            <Th sortKey="symbol" sort={sort} onSort={toggle} className="px-3 py-2 text-left">Ticker</Th>
+            <Th sortKey="insider" sort={sort} onSort={toggle} className="px-3 py-2 text-left">Insider</Th>
+            <Th sortKey="type" sort={sort} onSort={toggle} className="px-3 py-2 text-left">Action</Th>
+            <Th sortKey="shares" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right">Shares</Th>
+            <Th sortKey="value" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right">Value</Th>
+            <Th sortKey="region" sort={sort} onSort={toggle} className="px-3 py-2 text-left">Market</Th>
+            <Th sortKey="date" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right">Date</Th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((t, i) => {
+          {sorted.map((t, i) => {
             const buy = t.type === "buy";
             return (
               <tr key={i} className="border-b border-base-700/40 hover:bg-base-700/40">

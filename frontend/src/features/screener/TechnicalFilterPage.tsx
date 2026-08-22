@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api } from "@/lib/api";
 import { fmtNumber } from "@/lib/format";
 import type { ScreenerRow } from "@/types/api";
+import { Th, useSortable } from "@/lib/useSortable";
 
 // The four filters, and nothing else on this page. It answers one question - where is price
 // disagreeing with force or momentum - and a page that answers one question well is worth more
@@ -169,27 +170,49 @@ export default function TechnicalFilterPage() {
         ) : (
           <div className="space-y-5">
             {grouped.map((g) => (
-              <section key={g.key}>
+              <MarketTable key={g.key} label={g.label} rows={g.rows} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MarketTable({ label, rows }: { label: string; rows: ScreenerRow[] }) {
+  const value = useCallback((r: ScreenerRow, key: string): unknown => {
+    switch (key) {
+      case "symbol": return r.symbol;
+      case "name": return r.name;
+      case "sector": return r.sector;
+      case "price": return r.price;
+      case "latest": return r.div_latest;
+      default: return null;
+    }
+  }, []);
+  const { sorted, sort, toggle } = useSortable(rows, value, { key: "latest", dir: "desc" });
+  return (
+              <section>
                 <div className="mb-1.5 flex items-baseline gap-3 px-1">
-                  <h3 className="text-sm font-bold text-slate-100">{g.label}</h3>
+                  <h3 className="text-sm font-bold text-slate-100">{label}</h3>
                   <span className="text-xs text-slate-500">
-                    {g.rows.length} {g.rows.length === 1 ? "stock" : "stocks"}
+                    {rows.length} {rows.length === 1 ? "stock" : "stocks"}
                   </span>
                 </div>
                 <div className="overflow-x-auto rounded-lg border border-base-600">
                   <table className="w-full text-sm">
                     <thead className="bg-base-800 text-[10px] uppercase tracking-wide text-slate-400">
                       <tr>
-                        <th className="px-3 py-2 text-left">Ticker</th>
-                        <th className="px-3 py-2 text-left">Company</th>
-                        <th className="px-3 py-2 text-left">Sector</th>
-                        <th className="px-3 py-2 text-right">Price</th>
+                        <Th sortKey="symbol" sort={sort} onSort={toggle} className="px-3 py-2 text-left">Ticker</Th>
+                        <Th sortKey="name" sort={sort} onSort={toggle} className="px-3 py-2 text-left">Company</Th>
+                        <Th sortKey="sector" sort={sort} onSort={toggle} className="px-3 py-2 text-left">Sector</Th>
+                        <Th sortKey="price" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right">Price</Th>
                         <th className="px-3 py-2 text-left">Divergences</th>
-                        <th className="px-3 py-2 text-right">Confirmed</th>
+                        <Th sortKey="latest" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right">Confirmed</Th>
                       </tr>
                     </thead>
                     <tbody>
-                      {g.rows.map((r) => (
+                      {sorted.map((r) => (
                         <tr key={r.provider_symbol ?? r.symbol}
                             className="border-t border-base-700/40 hover:bg-base-700/40">
                           <td className="px-3 py-1.5 font-semibold text-accent">
@@ -220,10 +243,5 @@ export default function TechnicalFilterPage() {
                   </table>
                 </div>
               </section>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
   );
 }

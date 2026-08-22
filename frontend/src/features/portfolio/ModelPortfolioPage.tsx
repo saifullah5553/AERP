@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, type ModelPortfolio, type PortfolioHolding } from "@/lib/api";
 import { fmtNumber, fmtQuarterEnd } from "@/lib/format";
+import { Th, useSortable } from "@/lib/useSortable";
 
 const MARKETS: { key: string; label: string }[] = [
   { key: "all", label: "All Markets" },
@@ -26,6 +27,22 @@ function Holdings({
   holdings: PortfolioHolding[];
   summary?: { holdings: number; avg_return_pct: number; winners: number };
 }) {
+  const value = useCallback((h: PortfolioHolding, key: string): unknown => {
+    switch (key) {
+      case "symbol": return h.symbol;
+      case "name": return h.name;
+      case "sector": return h.sector;
+      case "quality": return h.quality_score;
+      case "results": return h.results_through;
+      case "buy_date": return h.entry_date;
+      case "buy_price": return h.entry_price;
+      case "price": return h.price;
+      case "return": return h.return_pct;
+      default: return null;
+    }
+  }, []);
+  const { sorted: rows, sort, toggle } = useSortable(holdings ?? [], value);
+
   if (!holdings?.length) return null;
   const label = MARKETS.find((m) => m.key === region)?.label ?? region.toUpperCase();
   const weight = 100 / holdings.length;
@@ -62,20 +79,19 @@ function Holdings({
           <thead className="bg-base-800 text-[10px] uppercase tracking-wide text-slate-400">
             <tr className="border-b border-base-600">
               <th className="px-3 py-2 text-left">#</th>
-              <th className="px-3 py-2 text-left">Ticker</th>
-              <th className="px-3 py-2 text-left">Company</th>
-              <th className="px-3 py-2 text-left">Sector</th>
-              <th className="px-3 py-2 text-right">Quality</th>
-              <th className="px-3 py-2 text-right"
-                  title="The quarter's results this pick was made on">Bought On Results</th>
-              <th className="px-3 py-2 text-right">Buy Date</th>
-              <th className="px-3 py-2 text-right">Buy Price</th>
-              <th className="px-3 py-2 text-right">Price</th>
-              <th className="px-3 py-2 text-right">Return %</th>
+              <Th sortKey="symbol" sort={sort} onSort={toggle} className="px-3 py-2 text-left">Ticker</Th>
+              <Th sortKey="name" sort={sort} onSort={toggle} className="px-3 py-2 text-left">Company</Th>
+              <Th sortKey="sector" sort={sort} onSort={toggle} className="px-3 py-2 text-left">Sector</Th>
+              <Th sortKey="quality" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right">Quality</Th>
+              <Th sortKey="results" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right">Bought On Results</Th>
+              <Th sortKey="buy_date" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right">Buy Date</Th>
+              <Th sortKey="buy_price" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right">Buy Price</Th>
+              <Th sortKey="price" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right">Price</Th>
+              <Th sortKey="return" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right">Return %</Th>
             </tr>
           </thead>
           <tbody>
-            {holdings.map((h, i) => (
+            {rows.map((h, i) => (
               <tr key={h.provider_symbol} className="border-b border-base-700/40 hover:bg-base-700/40">
                 <td className="px-3 py-1.5 text-slate-500">{i + 1}</td>
                 <td className="px-3 py-1.5">

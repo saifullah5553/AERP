@@ -1,13 +1,29 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { api, type LedgerMarket, type LedgerQuarter, type RebalanceLedger } from "@/lib/api";
+import { api, type LedgerMarket, type LedgerQuarter, type RebalanceLedger , type LedgerPosition } from "@/lib/api";
 import { fmtNumber } from "@/lib/format";
+import { Th, useSortable } from "@/lib/useSortable";
 
 // Display order only. The list of markets comes from the ledger itself - a hardcoded array is
 // how Dubai built eighteen quarters of history that no page ever showed. Anything the backend
 // publishes and this array has not heard of still appears, at the end.
 const ORDER = ["psx", "us", "india", "australia", "gcc", "dfm"];
+
+// One accessor for both ledger tables - closed trades and open positions carry the same
+// LedgerPosition shape, so they sort by the same rules.
+const positionValue = (r: LedgerPosition, key: string): unknown => {
+  switch (key) {
+    case "symbol": return r.symbol;
+    case "name": return r.name;
+    case "entered": return r.entry_date;
+    case "entry_price": return r.entry_price;
+    case "exit_price": return r.exit_price;
+    case "last_price": return r.last_price;
+    case "return": return r.return_pct;
+    default: return null;
+  }
+};
 
 function pctColor(v: number | null | undefined): string {
   if (v == null) return "#94a3b8";
@@ -28,6 +44,17 @@ function Quarter({ q }: { q: LedgerQuarter }) {
   // new buys are only a claim until the next rebalance prices them.
   const sold = q.exits ?? [];
   const bought = q.entries ?? [];
+  // Tagged and combined so the table can be sorted as one. Action stays a sortable column, so
+  // the sold/bought grouping this page is built around is one click away again.
+  const tagged = useMemo(
+    () => [...sold.map((r) => ({ r, action: "SOLD" })), ...bought.map((r) => ({ r, action: "BOUGHT" }))],
+    [sold, bought],
+  );
+  const trades = useSortable(
+    tagged,
+    (row, key) => (key === "action" ? row.action : positionValue(row.r, key)),
+    { key: "action", dir: "desc" },
+  );
   if (!sold.length && !bought.length) return null;
 
   return (
@@ -72,62 +99,53 @@ function Quarter({ q }: { q: LedgerQuarter }) {
         <table className="w-full text-sm">
           <thead className="bg-base-800 text-[10px] uppercase tracking-wide text-slate-400">
             <tr>
-              <th className="px-3 py-2 text-left">Action</th>
-              <th className="px-3 py-2 text-left">Ticker</th>
-              <th className="px-3 py-2 text-left">Company</th>
-              <th className="px-3 py-2 text-right">Entered</th>
-              <th className="px-3 py-2 text-right">Buy Price</th>
-              <th className="px-3 py-2 text-right">Exit Price</th>
-              <th className="px-3 py-2 text-right">Return</th>
+              <Th sortKey="action" sort={trades.sort} onSort={trades.toggle} className="px-3 py-2 text-left">Action</Th>
+              <Th sortKey="symbol" sort={trades.sort} onSort={trades.toggle} className="px-3 py-2 text-left">Ticker</Th>
+              <Th sortKey="name" sort={trades.sort} onSort={trades.toggle} className="px-3 py-2 text-left">Company</Th>
+              <Th sortKey="entered" sort={trades.sort} onSort={trades.toggle} align="right" className="px-3 py-2 text-right">Entered</Th>
+              <Th sortKey="entry_price" sort={trades.sort} onSort={trades.toggle} align="right" className="px-3 py-2 text-right">Buy Price</Th>
+              <Th sortKey="exit_price" sort={trades.sort} onSort={trades.toggle} align="right" className="px-3 py-2 text-right">Exit Price</Th>
+              <Th sortKey="return" sort={trades.sort} onSort={trades.toggle} align="right" className="px-3 py-2 text-right">Return</Th>
             </tr>
           </thead>
           <tbody>
-            {sold.map((r) => (
-              <tr key={`sold-${r.symbol}`}
-                  className="border-t border-base-700/40 hover:bg-base-700/40">
-                <td className="px-3 py-1.5">
-                  <span className="rounded px-2 py-0.5 text-[10px] font-bold"
-                        style={{ background: "rgba(239,68,68,0.16)", color: "#ef4444" }}>
-                    SOLD
-                  </span>
-                </td>
-                <td className="px-3 py-1.5 font-semibold text-accent">{r.symbol}</td>
-                <td className="max-w-[220px] truncate px-3 py-1.5 text-xs text-slate-400"
-                    title={r.name ?? ""}>{r.name ?? "—"}</td>
-                <td className="num px-3 py-1.5 text-right text-[11px] text-slate-500">
-                  {r.entry_quarter}
-                </td>
-                <td className="num px-3 py-1.5 text-right text-slate-300">
-                  {fmtNumber(r.entry_price)}
-                </td>
-                <td className="num px-3 py-1.5 text-right text-slate-300">
-                  {fmtNumber(r.exit_price)}
-                </td>
-                <td className="num px-3 py-1.5 text-right"><Pct v={r.return_pct} /></td>
-              </tr>
-            ))}
-            {bought.map((r) => (
-              <tr key={`bought-${r.symbol}`}
-                  className="border-t border-base-700/40 hover:bg-base-700/40">
-                <td className="px-3 py-1.5">
-                  <span className="rounded px-2 py-0.5 text-[10px] font-bold"
-                        style={{ background: "rgba(34,197,94,0.16)", color: "#22c55e" }}>
-                    BOUGHT
-                  </span>
-                </td>
-                <td className="px-3 py-1.5 font-semibold text-accent">{r.symbol}</td>
-                <td className="max-w-[220px] truncate px-3 py-1.5 text-xs text-slate-400"
-                    title={r.name ?? ""}>{r.name ?? "—"}</td>
-                <td className="num px-3 py-1.5 text-right text-[11px] text-slate-500">
-                  {q.quarter}
-                </td>
-                <td className="num px-3 py-1.5 text-right text-slate-300">
-                  {fmtNumber(r.entry_price)}
-                </td>
-                <td className="num px-3 py-1.5 text-right text-slate-600">held</td>
-                <td className="num px-3 py-1.5 text-right text-slate-600">—</td>
-              </tr>
-            ))}
+            {trades.sorted.map(({ r, action }) => {
+              const isSold = action === "SOLD";
+              return (
+                <tr key={`${action}-${r.symbol}`}
+                    className="border-t border-base-700/40 hover:bg-base-700/40">
+                  <td className="px-3 py-1.5">
+                    <span className="rounded px-2 py-0.5 text-[10px] font-bold"
+                          style={isSold
+                            ? { background: "rgba(239,68,68,0.16)", color: "#ef4444" }
+                            : { background: "rgba(34,197,94,0.16)", color: "#22c55e" }}>
+                      {action}
+                    </span>
+                  </td>
+                  <td className="px-3 py-1.5 font-semibold text-accent">{r.symbol}</td>
+                  <td className="max-w-[220px] truncate px-3 py-1.5 text-xs text-slate-400"
+                      title={r.name ?? ""}>{r.name ?? "—"}</td>
+                  <td className="num px-3 py-1.5 text-right text-[11px] text-slate-500">
+                    {isSold ? r.entry_quarter : q.quarter}
+                  </td>
+                  <td className="num px-3 py-1.5 text-right text-slate-300">
+                    {fmtNumber(r.entry_price)}
+                  </td>
+                  {isSold ? (
+                    <td className="num px-3 py-1.5 text-right text-slate-300">
+                      {fmtNumber(r.exit_price)}
+                    </td>
+                  ) : (
+                    <td className="num px-3 py-1.5 text-right text-slate-600">held</td>
+                  )}
+                  {isSold ? (
+                    <td className="num px-3 py-1.5 text-right"><Pct v={r.return_pct} /></td>
+                  ) : (
+                    <td className="num px-3 py-1.5 text-right text-slate-600">—</td>
+                  )}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -136,6 +154,7 @@ function Quarter({ q }: { q: LedgerQuarter }) {
 }
 
 function Market({ m }: { m: LedgerMarket }) {
+  const open = useSortable(m.open_positions ?? [], positionValue);
   if (!m.quarters?.length) {
     return (
       <div className="p-8 text-center text-sm text-slate-500">
@@ -217,16 +236,16 @@ function Market({ m }: { m: LedgerMarket }) {
             <table className="w-full text-sm">
               <thead className="bg-base-800 text-[10px] uppercase tracking-wide text-slate-400">
                 <tr>
-                  <th className="px-3 py-2 text-left">Ticker</th>
-                  <th className="px-3 py-2 text-left">Company</th>
-                  <th className="px-3 py-2 text-right">Entered</th>
-                  <th className="px-3 py-2 text-right">Buy Price</th>
-                  <th className="px-3 py-2 text-right">Last</th>
-                  <th className="px-3 py-2 text-right">Unrealised</th>
+                  <Th sortKey="symbol" sort={open.sort} onSort={open.toggle} className="px-3 py-2 text-left">Ticker</Th>
+                  <Th sortKey="name" sort={open.sort} onSort={open.toggle} className="px-3 py-2 text-left">Company</Th>
+                  <Th sortKey="entered" sort={open.sort} onSort={open.toggle} align="right" className="px-3 py-2 text-right">Entered</Th>
+                  <Th sortKey="entry_price" sort={open.sort} onSort={open.toggle} align="right" className="px-3 py-2 text-right">Buy Price</Th>
+                  <Th sortKey="last_price" sort={open.sort} onSort={open.toggle} align="right" className="px-3 py-2 text-right">Last</Th>
+                  <Th sortKey="return" sort={open.sort} onSort={open.toggle} align="right" className="px-3 py-2 text-right">Unrealised</Th>
                 </tr>
               </thead>
               <tbody>
-                {m.open_positions.map((r) => (
+                {open.sorted.map((r) => (
                   <tr key={r.symbol} className="border-t border-base-700/40 hover:bg-base-700/40">
                     <td className="px-3 py-1.5 font-semibold text-accent">{r.symbol}</td>
                     <td className="max-w-[220px] truncate px-3 py-1.5 text-xs text-slate-400"

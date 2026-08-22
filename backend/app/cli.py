@@ -931,6 +931,16 @@ def cmd_export_static(args: argparse.Namespace) -> None:
         if merge:
             regime = _merge_regime(regime, out / "macro_regime.json")
             sector_stats = _merge_sector_stats(sector_stats, out / "sector_stats.json")
+        # ...and BUILD the ones the database never had. The merge above can only carry forward
+        # a region that existed once; Dubai was added after the last database-backed run, so it
+        # has never appeared on the sector page at all - five regions shown, six live. Absences
+        # do not draw attention the way a wrong number does, which is why this went unnoticed.
+        try:
+            from app.services.sectors_snapshot import fill_missing_regions
+            sector_stats = fill_missing_regions(
+                sector_stats, merged, ("psx", "us", "india", "australia", "gcc", "dfm"))
+        except Exception as exc:  # noqa: BLE001 - a sector profile must not fail the export
+            log.warning("sector-stats snapshot fill failed: %s", exc)
         # ...then overwrite the two signals the snapshot can measure TODAY. The merge above
         # exists so a partial run does not blank the page, but for every market except Pakistan
         # it WAS the answer: us/india/gcc/australia held 61.5/57.5/35.5/70.0 unchanged across

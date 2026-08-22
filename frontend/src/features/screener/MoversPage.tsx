@@ -1,32 +1,50 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, type Mover, type MoversData } from "@/lib/api";
 import { fmtSnapshotAge } from "@/lib/format";
+import { Th, useSortable } from "@/lib/useSortable";
 
+// A TABLE rather than the card list this used to be. The cards had no column headers, so
+// this was the one page with nothing to click: movers arrived in whatever order the backend
+// emitted and could not be re-ordered by score, market or name.
 function MoverRow({ m, up }: { m: Mover; up: boolean }) {
   const color = up ? "#22c55e" : "#ef4444";
   return (
-    <Link
-      to={`/company/${encodeURIComponent(m.provider_symbol)}`}
-      className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-base-700/40"
-    >
-      <div className="min-w-0">
-        <span className="font-semibold text-accent">{m.symbol}</span>
-        <span className="ml-2 truncate text-xs text-slate-400">{m.name}</span>
-        <span className="ml-2 rounded bg-base-700 px-1 py-0.5 text-[9px] uppercase text-slate-500">{m.region}</span>
-      </div>
-      <div className="num flex shrink-0 items-center gap-3 text-sm">
-        <span className="text-slate-400">{m.prev} → {m.composite}</span>
-        <span className="w-14 text-right font-bold" style={{ color }}>
-          {up ? "+" : ""}{m.delta}
+    <tr className="border-t border-base-700/40 hover:bg-base-700/40">
+      <td className="px-3 py-1.5 font-semibold text-accent">
+        <Link to={`/company/${encodeURIComponent(m.provider_symbol)}`}>{m.symbol}</Link>
+      </td>
+      <td className="max-w-[220px] truncate px-3 py-1.5 text-xs text-slate-400" title={m.name ?? ""}>
+        {m.name}
+      </td>
+      <td className="px-3 py-1.5">
+        <span className="rounded bg-base-700 px-1 py-0.5 text-[9px] uppercase text-slate-500">
+          {m.region}
         </span>
-      </div>
-    </Link>
+      </td>
+      <td className="num px-3 py-1.5 text-right text-slate-400">{m.prev}</td>
+      <td className="num px-3 py-1.5 text-right text-slate-300">{m.composite}</td>
+      <td className="num px-3 py-1.5 text-right font-bold" style={{ color }}>
+        {up ? "+" : ""}{m.delta}
+      </td>
+    </tr>
   );
 }
 
 function Panel({ title, tone, movers, up }: { title: string; tone: string; movers: Mover[]; up: boolean }) {
+  const value = useCallback((m: Mover, key: string): unknown => {
+    switch (key) {
+      case "symbol": return m.symbol;
+      case "name": return m.name;
+      case "region": return m.region;
+      case "prev": return m.prev;
+      case "composite": return m.composite;
+      case "delta": return m.delta;
+      default: return null;
+    }
+  }, []);
+  const { sorted, sort, toggle } = useSortable(movers, value, { key: "delta", dir: "desc" });
   return (
     <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-base-600 bg-base-800">
       <div className="flex items-center justify-between border-b border-base-600 px-3 py-2">
@@ -38,8 +56,22 @@ function Panel({ title, tone, movers, up }: { title: string; tone: string; mover
           None yet — this fills as composite scores change on refresh.
         </div>
       ) : (
-        <div className="divide-y divide-base-700/50 overflow-y-auto">
-          {movers.map((m) => <MoverRow key={m.provider_symbol} m={m} up={up} />)}
+        <div className="overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-base-800 text-[10px] uppercase tracking-wide text-slate-400">
+              <tr>
+                <Th sortKey="symbol" sort={sort} onSort={toggle} className="px-3 py-2 text-left">Ticker</Th>
+                <Th sortKey="name" sort={sort} onSort={toggle} className="px-3 py-2 text-left">Company</Th>
+                <Th sortKey="region" sort={sort} onSort={toggle} className="px-3 py-2 text-left">Market</Th>
+                <Th sortKey="prev" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right">Was</Th>
+                <Th sortKey="composite" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right">Now</Th>
+                <Th sortKey="delta" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right">Change</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((m) => <MoverRow key={m.provider_symbol} m={m} up={up} />)}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

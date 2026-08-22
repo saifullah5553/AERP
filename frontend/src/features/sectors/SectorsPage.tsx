@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api } from "@/lib/api";
 import { fmtPercent } from "@/lib/format";
+import { Th, useSortable } from "@/lib/useSortable";
 import type { MarketRegion, SectorStat, SectorStatsData } from "@/types/api";
 
 const REGIONS: { value: MarketRegion; label: string }[] = [
@@ -36,10 +37,28 @@ export default function SectorsPage() {
     return () => ctrl.abort();
   }, []);
 
-  const rows = useMemo(() => {
+  const filtered = useMemo(() => {
     const list = (data?.[region] ?? []) as SectorStat[];
     return strongOnly ? list.filter((s) => s.trend === "Strong" || s.trend === "Improving") : list;
   }, [data, region, strongOnly]);
+
+  // The medians live one level down, so the accessor reaches into them rather than the page
+  // flattening every row just to make it sortable.
+  const value = useCallback((s: SectorStat, key: string): unknown => {
+    switch (key) {
+      case "sector": return s.sector;
+      case "score": return s.score;
+      case "trend": return s.trend;
+      case "momentum": return s.momentum;
+      case "fundamental": return s.fundamental;
+      case "roe": return s.medians?.roe;
+      case "net_margin": return s.medians?.net_margin;
+      case "revenue_growth": return s.medians?.revenue_growth;
+      case "count": return s.count;
+      default: return null;
+    }
+  }, []);
+  const { sorted: rows, sort, toggle } = useSortable(filtered, value, { key: "score", dir: "desc" });
 
   return (
     <div className="flex h-full flex-col bg-base-900 text-slate-200">
@@ -79,15 +98,15 @@ export default function SectorsPage() {
             <thead>
               <tr className="border-b border-base-600 text-left text-[11px] uppercase tracking-wide text-slate-500">
                 <th className="py-2 pr-3">#</th>
-                <th className="py-2 pr-3">Sector</th>
-                <th className="num py-2 pr-3 text-right">Score</th>
-                <th className="py-2 pr-3">Trend</th>
-                <th className="num py-2 pr-3 text-right">Momentum</th>
-                <th className="num py-2 pr-3 text-right">Fundamental</th>
-                <th className="num py-2 pr-3 text-right">ROE</th>
-                <th className="num py-2 pr-3 text-right">Net Margin</th>
-                <th className="num py-2 pr-3 text-right">Rev Growth</th>
-                <th className="num py-2 pr-3 text-right">Names</th>
+                <Th sortKey="sector" sort={sort} onSort={toggle} className="py-2 pr-3">Sector</Th>
+                <Th sortKey="score" sort={sort} onSort={toggle} align="right" className="num py-2 pr-3 text-right">Score</Th>
+                <Th sortKey="trend" sort={sort} onSort={toggle} className="py-2 pr-3">Trend</Th>
+                <Th sortKey="momentum" sort={sort} onSort={toggle} align="right" className="num py-2 pr-3 text-right">Momentum</Th>
+                <Th sortKey="fundamental" sort={sort} onSort={toggle} align="right" className="num py-2 pr-3 text-right">Fundamental</Th>
+                <Th sortKey="roe" sort={sort} onSort={toggle} align="right" className="num py-2 pr-3 text-right">ROE</Th>
+                <Th sortKey="net_margin" sort={sort} onSort={toggle} align="right" className="num py-2 pr-3 text-right">Net Margin</Th>
+                <Th sortKey="revenue_growth" sort={sort} onSort={toggle} align="right" className="num py-2 pr-3 text-right">Rev Growth</Th>
+                <Th sortKey="count" sort={sort} onSort={toggle} align="right" className="num py-2 pr-3 text-right">Names</Th>
               </tr>
             </thead>
             <tbody>
