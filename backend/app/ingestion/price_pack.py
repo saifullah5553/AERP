@@ -90,7 +90,8 @@ def pack_region(region: str, store: Path | None = None) -> dict[str, int]:
     return _write(region, merged, kept=len(existing))
 
 
-def merge_series(region: str, series: dict[str, dict[str, float]]) -> dict[str, int]:
+def merge_series(region: str, series: dict[str, dict[str, float]],
+                 volumes: dict[str, dict[str, float]] | None = None) -> dict[str, int]:
     """Fold freshly fetched {symbol: {date: close}} into the stored pack.
 
     This is how the pack stays current without a second network pass: the daily technical
@@ -112,10 +113,26 @@ def merge_series(region: str, series: dict[str, dict[str, float]]) -> dict[str, 
                 clean[str(day)[:10]] = float(f"{price:.7g}")
         if clean:
             merged.setdefault(key, {}).update(clean)
-    return _write(region, merged, kept=kept)
+
+    load_packed(region)                      # ensure the volume cache is populated
+    merged_vol = {s: dict(v) for s, v in _VOL_CACHE.get(region, {}).items()}
+    for symbol, points in (volumes or {}).items():
+        key = str(symbol).upper().replace("/", "_").replace(":", "_")
+        clean_v = {}
+        for day, value in points.items():
+            try:
+                vol = float(value)
+            except (TypeError, ValueError):
+                continue
+            if day and vol >= 0:
+                clean_v[str(day)[:10]] = vol
+        if clean_v:
+            merged_vol.setdefault(key, {}).update(clean_v)
+    return _write(region, merged, kept=kept, volumes=merged_vol)
 
 
-def _write(region: str, merged: dict[str, dict[str, float]], kept: int) -> dict[str, int]:
+def _write(region: str, merged: dict[str, dict[str, float]], kept: int,
+           volumes: dict[str, dict[str, float]] | None = None) -> dict[str, int]:
     """Serialise the merged series, dates ascending, and drop the stale in-process copy."""
     out: dict[str, dict[str, list]] = {}
     points = 0
@@ -123,7 +140,14 @@ def _write(region: str, merged: dict[str, dict[str, float]], kept: int) -> dict[
         if not series:
             continue
         days = sorted(series)
-        out[symbol] = {"d": days, "c": [series[d] for d in days]}
+        entry: dict[str, list] = {"d": days, "c": [series[d] for d in days]}
+        vol = (volumes or {}).get(symbol)
+        if vol:
+            # Aligned to the SAME day list as the closes, so index i means the same bar in
+            # both arrays. None where a day has no volume rather than a zero, because zero
+            # volume is a real and different statement about a trading day.
+            entry["v"] = [vol.get(d) for d in days]
+        out[symbol] = entry
         points += len(days)
 
     PACK_DIR.mkdir(parents=True, exist_ok=True)
@@ -138,6 +162,7 @@ def _write(region: str, merged: dict[str, dict[str, float]], kept: int) -> dict[
     # A process that packs and then reads must see what it just wrote, not the copy it loaded
     # before the write.
     _CACHE.pop(region, None)
+    _VOL_CACHE.pop(region, None)
     log.info("price-pack[%s]: %d symbols (%d already stored), %d closes -> %.1f MB",
              region, len(out), kept, points, target.stat().st_size / 1024 / 1024)
     _report_freshness(region, out)
@@ -184,6 +209,9 @@ def _report_freshness(region: str, out: dict[str, dict[str, list]]) -> None:
         log.info(msg, *args)
 
 
+_VOL_CACHE: dict[str, dict[str, dict[str, float]]] = {}
+
+
 def load_packed(region: str) -> dict[str, dict[str, float]]:
     """{symbol: {date: close}} for a market, or {} when the pack is absent."""
     if region in _CACHE:
@@ -201,9 +229,18 @@ def load_packed(region: str) -> dict[str, dict[str, float]]:
         return _CACHE[region]
 
     out: dict[str, dict[str, float]] = {}
+    vols: dict[str, dict[str, float]] = {}
     for symbol, series in (raw or {}).items():
         dates, closes = series.get("d") or [], series.get("c") or []
-        out[str(symbol).upper()] = dict(zip(dates, closes, strict=False))
+        key = str(symbol).upper()
+        out[key] = dict(zip(dates, closes, strict=False))
+        # "v" is OPTIONAL and sparse. Volume matters where we can get it - the Elder Force
+        # Index is close times volume, so without it EFI divergences silently degrade to
+        # RSI-only, which is how PSX ran for months. A symbol with no "v" simply keeps None
+        # in the volume column rather than a fabricated number.
+        if series.get("v"):
+            vols[key] = dict(zip(dates, series["v"], strict=False))
+    _VOL_CACHE[region] = vols
     _CACHE[region] = out
     log.info("price-pack[%s]: loaded %d symbols", region, len(out))
     return out
@@ -223,4 +260,6 @@ def packed_bars(region: str, symbol: str) -> dict[str, list]:
     series = load_packed(region).get(key)
     if not series:
         return {}
-    return {day: [day, None, None, None, close, None] for day, close in series.items()}
+    vols = _VOL_CACHE.get(region, {}).get(key) or {}
+    return {day: [day, None, None, None, close, vols.get(day)]
+            for day, close in series.items()}

@@ -57,6 +57,12 @@ jobs:
           # Benchmarks first: the quarterly history compares every market against its index,
           # and a stale index makes the comparison quietly wrong rather than visibly missing.
           python -m app.cli refresh-indices || true
+          # PSX bars, from the exchange's own market-watch - ONE request for the whole market.
+          # PSX is absent from the Yahoo pass below (skip_regions), so nothing else advances
+          # its daily bars: they sat on 3 August for nineteen days while PSX PRICES stayed
+          # current from this same endpoint, which is why the screener looked healthy and
+          # every PSX technical, divergence and signal date was computed on a dead chart.
+          python -m app.cli refresh-psx-bars --out ../frontend/public/data || true
           python -m app.cli refresh-prices || true
           # No limit: patterns and the strategy's entry timing need an OHLC pass over the WHOLE
           # universe, otherwise most names never get a candlestick/chart pattern at all.

@@ -113,3 +113,33 @@ def test_a_stale_snapshot_file_fails(tmp_path: Path) -> None:
     checks, failed = verify(data, repo_root=tmp_path, today=TODAY)
     assert failed == 1
     assert [c for c in checks if not c.ok][0].name == "file[macro_regime.json]"
+
+
+def test_the_pack_round_trips_volume(tmp_path: Path, monkeypatch) -> None:
+    """Volume must survive write -> read, or EFI divergences silently degrade to RSI-only.
+
+    `packed_bars` always had a volume column and always returned None in it. PSX ran that way
+    for months: the divergence page showed RSI signals and no EFI ones, which looks exactly
+    like a market that happens to have no force divergences.
+    """
+    from app.ingestion import price_pack
+
+    monkeypatch.setattr(price_pack, "PACK_DIR", tmp_path)
+    price_pack._CACHE.clear()
+    price_pack._VOL_CACHE.clear()
+
+    price_pack.merge_series(
+        "psx",
+        {"LUCK": {"2026-08-21": 440.41, "2026-08-22": 442.0}},
+        volumes={"LUCK": {"2026-08-21": 581614.0, "2026-08-22": 601000.0}},
+    )
+    bars = price_pack.packed_bars("psx", "LUCK")
+    assert bars["2026-08-21"][4] == 440.41          # close
+    assert bars["2026-08-21"][5] == 581614.0        # volume, no longer None
+    assert bars["2026-08-22"][5] == 601000.0
+
+    # A later close-only merge must not wipe the volume already stored.
+    price_pack.merge_series("psx", {"LUCK": {"2026-08-25": 445.0}})
+    bars = price_pack.packed_bars("psx", "LUCK")
+    assert bars["2026-08-21"][5] == 581614.0
+    assert bars["2026-08-25"][5] is None            # no volume for that day, not a zero
