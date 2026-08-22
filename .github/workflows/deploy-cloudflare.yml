@@ -1,0 +1,134 @@
+name: Deploy to Cloudflare
+
+# Publishes the site to Cloudflare Pages and the live-price proxy to Cloudflare Workers.
+#
+# WHY, alongside the existing GitHub Pages deploy: the scheduler. Measured over eight days,
+# GitHub started the half-hourly refresh 3-7 times a day instead of 48, so a "30-minute" price
+# is routinely hours old. Cloudflare fixes that from two directions - Workers cron triggers
+# actually fire, and the price proxy lets the BROWSER fetch quotes for the rows on screen, so
+# freshness stops depending on a batch job at all.
+#
+# Both deploys stay in place for now. Running them side by side is how we find out whether
+# Cloudflare behaves before anything is switched off.
+#
+# REQUIRED SECRETS (create these in Settings -> Secrets -> Actions):
+#   CLOUDFLARE_API_TOKEN    a token with "Cloudflare Pages: Edit" and "Workers Scripts: Edit"
+#   CLOUDFLARE_ACCOUNT_ID   from the right-hand sidebar of the Cloudflare dashboard
+#
+# Without them this workflow SKIPS rather than fails - an unconfigured deploy is not a broken
+# build, and a permanently red run is how a real failure gets ignored.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - "workers/**"
+      - ".github/workflows/deploy-cloudflare.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-deploy
+  cancel-in-progress: false
+
+jobs:
+  site:
+    name: Pages (website + PWA)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Do we have Cloudflare credentials?
+        id: creds
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$TOKEN" ] && [ -n "$ACCOUNT" ]; then
+            echo "ready=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=no" >> "$GITHUB_OUTPUT"
+            echo "::notice::Cloudflare secrets not set - skipping. See CLOUDFLARE.md."
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.creds.outputs.ready == 'yes'
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build the site
+        if: steps.creds.outputs.ready == 'yes'
+        working-directory: frontend
+        # No VITE_BASE. Cloudflare serves from the domain root, unlike GitHub Pages which needs
+        # the /AERP/ subpath - vite.config already defaults `base` to "/".
+        run: |
+          npm ci
+          npm run build
+
+      - name: Check the deployment against Cloudflare Pages limits
+        if: steps.creds.outputs.ready == 'yes'
+        working-directory: frontend
+        # Pages refuses a deployment with more than 20,000 files or any single file over 25 MB.
+        # screener.json is already 22.9 MB and grows with the universe, so this fails LOUDLY
+        # here rather than halfway through an upload with a message about a file nobody named.
+        run: |
+          files=$(find dist -type f | wc -l)
+          big=$(find dist -type f -size +25M)
+          echo "dist: $files files"
+          if [ "$files" -gt 20000 ]; then
+            echo "::error::$files files exceeds the Cloudflare Pages limit of 20,000"
+            exit 1
+          fi
+          if [ -n "$big" ]; then
+            echo "::error::these exceed the 25 MB per-file limit:"
+            echo "$big" | while read -r f; do echo "  $(du -h "$f")"; done
+            exit 1
+          fi
+
+      - name: Deploy to Pages
+        if: steps.creds.outputs.ready == 'yes'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy frontend/dist --project-name=aerp --branch=main
+
+  proxy:
+    name: Worker (live prices)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Do we have Cloudflare credentials?
+        id: creds
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$TOKEN" ] && [ -n "$ACCOUNT" ]; then
+            echo "ready=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=no" >> "$GITHUB_OUTPUT"
+            echo "::notice::Cloudflare secrets not set - skipping."
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.creds.outputs.ready == 'yes'
+        with:
+          node-version: "20"
+
+      - name: Deploy the price proxy
+        if: steps.creds.outputs.ready == 'yes'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: workers/price-proxy
+          command: deploy

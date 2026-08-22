@@ -1,0 +1,14 @@
+# Cloudflare Worker: the live-price proxy.
+#
+# Deploy:  cd workers/price-proxy && npx wrangler deploy
+# The free plan covers 100,000 requests a day, which is far more than this needs - the page
+# only ever asks for the symbols currently on screen.
+
+name = "aerp-price-proxy"
+main = "src/index.js"
+compatibility_date = "2026-01-01"
+
+# No KV, no R2, no D1. The Worker holds no state: it forwards a request, reshapes the answer
+# and lets Cloudflare's edge cache do the deduplication. Nothing to provision, nothing to pay
+# for, and nothing that can drift out of date.
+workers_dev = true
