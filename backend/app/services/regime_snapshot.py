@@ -83,21 +83,98 @@ def _index_signal(index_row: dict | None) -> dict | None:
     }
 
 
-def _breadth_signal(region_rows: list[dict]) -> dict | None:
-    """Mean composite across the market's equities - how much of it is working, not just the
-    index, which a handful of large names can carry on their own."""
-    vals = [r["composite_score"] for r in region_rows
-            if r.get("composite_score") is not None
-            and (r.get("asset_class") or "equity") == "equity"]
-    if len(vals) < 5:
+MA_WINDOW = 50
+MIN_BREADTH_SAMPLE = 20
+RANGE_WINDOW = 250          # about a trading year
+
+
+def _index_from_pack(symbol: str) -> dict | None:
+    """Index trend computed straight from the stored series, when no snapshot row exists.
+
+    ^KSE100 and DFMGI.AE are maintained in the global pack by `refresh-indices` on every run,
+    but neither has ever appeared as a screener ROW - the rows come from the database export
+    and the two symbols never made it in. The lookup above therefore found nothing, and the
+    merge kept whatever was last written: Pakistan published a 26 July index reading in the
+    middle of August, and Dubai had no index signal at all, which left its regime resting on
+    breadth and inflation alone.
+
+    Waiting on the database path to be fixed leaves those two markets wrong in the meantime,
+    so this reads the series we already keep. The measure is where today's close sits inside
+    its own trading-year range: 100 at a 52-week high, 0 at the low, 50 mid-range. Bounded,
+    standard, and obvious to argue with - and it announces its own source so nobody has to
+    guess which method produced a given number.
+    """
+    from app.ingestion.price_pack import load_packed
+
+    series = load_packed("global").get(str(symbol).upper())
+    if not series or len(series) < MA_WINDOW:
         return None
-    avg = sum(vals) / len(vals)
+    days = sorted(series)[-RANGE_WINDOW:]
+    closes = [series[d] for d in days]
+    low, high, last = min(closes), max(closes), closes[-1]
+    if high <= low:
+        return None
+    score = (last - low) / (high - low) * 100.0
+    prior = closes[-min(len(closes), 63)]          # roughly three months back
+    arrow = "↑" if last > prior else ("↓" if last < prior else "→")
+    return {
+        "key": "index_trend",
+        "label": f"Index Trend ({symbol})",
+        "value": f"{arrow} {last:,.0f}",
+        "score": round(score, 1),
+        "source": "position in 52-week range, our own stored series",
+        "as_of": days[-1],
+    }
+
+
+def _breadth_signal(region_rows: list[dict], region: str) -> dict | None:
+    """Percentage of the market trading above its own 50-day average.
+
+    THIS USED TO BE THE MEAN COMPOSITE SCORE, and that was not breadth. It measured how much
+    OUR ENGINE liked a market's companies, not whether the market was advancing - so Dubai,
+    which has the highest median fundamental score of any market we cover, scored highest on
+    "breadth" almost by construction and was published as Bullish on the strength of it. A
+    regime signal that reads our own opinion back to us cannot disagree with us, which makes
+    it worthless as a regime signal.
+
+    Percent-above-50-day is the textbook measure and it is now computable: the price pack
+    carries the daily closes for every market. It says something the index cannot - whether a
+    rise is broad or is a handful of large names carrying an otherwise flat market.
+    """
+    from app.ingestion.price_pack import load_packed
+
+    packed = load_packed(region)
+    if not packed:
+        return None
+
+    above = total = 0
+    for r in region_rows:
+        if (r.get("asset_class") or "equity") != "equity" or not r.get("symbol"):
+            continue
+        key = str(r["symbol"]).upper().replace("/", "_").replace(":", "_")
+        series = packed.get(key)
+        if not series or len(series) < MA_WINDOW:
+            continue
+        days = sorted(series)[-MA_WINDOW:]
+        closes = [series[d] for d in days]
+        ma = sum(closes) / len(closes)
+        if ma <= 0:
+            continue
+        total += 1
+        if closes[-1] > ma:
+            above += 1
+
+    if total < MIN_BREADTH_SAMPLE:
+        return None
+    pct = above / total * 100.0
     return {
         "key": "breadth",
         "label": "Market Breadth",
-        "value": f"avg score {avg:.0f} across {len(vals):,}",
-        "score": round(avg, 1),
-        "source": "composite score, this snapshot",
+        "value": f"{pct:.0f}% above 50-day ({above:,} of {total:,})",
+        # The percentage IS the 0-100 score: half the market above its average is a neutral
+        # 50, which is the right anchor and needs no rescaling.
+        "score": round(pct, 1),
+        "source": f"{MA_WINDOW}-day average, our own daily closes",
         "as_of": None,
     }
 
@@ -118,9 +195,14 @@ def snapshot_signals(data_dir: str | Path) -> dict[str, list[dict]]:
     for region, index_sym in REGION_INDEX.items():
         signals = []
         idx = _index_signal(by_symbol.get(index_sym)) if index_sym else None
+        if idx is None and index_sym:
+            # No row for this index. Fall back to the stored series rather than leaving the
+            # market with no trend at all - an absent signal does not renormalise to neutral,
+            # it hands the whole weight to whatever else happens to be present.
+            idx = _index_from_pack(index_sym)
         if idx:
             signals.append(idx)
-        breadth = _breadth_signal(by_region.get(region) or [])
+        breadth = _breadth_signal(by_region.get(region) or [], region)
         if breadth:
             signals.append(breadth)
         if signals:
