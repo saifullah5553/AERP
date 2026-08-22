@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 from app.ingestion import price_pack
 from app.services.regime_snapshot import _breadth_signal, _index_from_pack
 

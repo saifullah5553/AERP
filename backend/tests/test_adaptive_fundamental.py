@@ -232,10 +232,11 @@ def test_the_grade_always_matches_its_own_score() -> None:
     61.6 labelled VERY STRONG. A trader reading the label got a different answer from one
     reading the number, on the same row.
     """
-    from app.ingestion.score_unify import unify
     import json
     import tempfile
     from pathlib import Path
+
+    from app.ingestion.score_unify import unify
 
     with tempfile.TemporaryDirectory() as tmp:
         d = Path(tmp)
