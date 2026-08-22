@@ -183,6 +183,27 @@ def cmd_pending_results(args: argparse.Namespace) -> None:
                                           symbols, days=args.days, probe=not args.no_probe))
 
 
+def cmd_verify_freshness(args: argparse.Namespace) -> None:
+    """Fail the run when an artifact is stale. The one command that must NOT be fail-open."""
+    import sys
+    from pathlib import Path as _P
+
+    from app.ingestion.freshness import verify
+
+    data_dir = _P(args.out or "../frontend/public/data")
+    checks, failed = verify(data_dir)
+    for c in checks:
+        print(c.line())
+    print("")
+    print(f"{len(checks)} checks, {failed} failed")
+    if failed:
+        # Non-zero on purpose. Every other step in this pipeline ends in `|| true`, which is
+        # why a broken one could go unnoticed for weeks. This is the post-condition, so it
+        # must be able to turn the run red.
+        print("::error::freshness check failed - an artifact is stale or incomplete")
+        sys.exit(1)
+
+
 def cmd_init_db(args: argparse.Namespace) -> None:
     """Create all tables (local/dev convenience; production uses Alembic)."""
     from app.db.session import engine
@@ -1237,6 +1258,8 @@ def build_parser() -> argparse.ArgumentParser:
     pp.add_argument("--cost-bps", type=float, default=30.0)
     pp.add_argument("--stop-pct", type=float, default=25.0)
     pp.add_argument("--out", default=None)
+    vf = add("verify-freshness", cmd_verify_freshness)
+    vf.add_argument("--out", default=None)
     rq = add("refresh-quality", cmd_refresh_quality, limit=True)
     rq.add_argument("--out", default=None)
     qh = add("refresh-quality-history", cmd_quality_history, limit=True)

@@ -241,3 +241,27 @@ jobs:
             exit 1
           fi
           echo "Next refresh requested."
+
+  freshness:
+    # A SEPARATE job that needs `build` but does not gate `deploy`. The check must be able to
+    # turn the run red without stopping good data from shipping: one stale artifact should be
+    # visible, not a reason to withhold the other twenty-three that are fine. Deploy runs in
+    # parallel off the same `needs: build`.
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r backend/requirements.txt
+      - name: Verify nothing was silently left stale
+        working-directory: backend
+        # Deliberately NOT `|| true`. Every other step in this pipeline is fail-open, which is
+        # precisely why something was always quietly out of date - a step that failed was
+        # skipped, the export carried the previous value forward, and the run reported success.
+        # This is the post-condition, and it is the one command allowed to fail.
+        run: python -m app.cli verify-freshness --out ../frontend/public/data
