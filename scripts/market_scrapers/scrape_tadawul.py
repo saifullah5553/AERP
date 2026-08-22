@@ -42,8 +42,27 @@ LIST_URL = "https://stockanalysis.com/list/saudi-stock-exchange/"
 QUOTE_PREFIX = "quote/tadawul"      # stockanalysis path for this exchange
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "tadawul_data")
+# The REPO ROOT, not this script's folder. These scrapers wrote to
+# scripts/market_scrapers/tadawul_data while `consolidate-fundamentals` reads
+# <repo>/tadawul_data - two directories with the same name, one of them invisible to the
+# pipeline. A targeted refresh therefore appeared to succeed and changed nothing downstream,
+# which is the worst shape a bug can take here. AERP_DATA_DIR overrides for a one-off run.
+_REPO_ROOT = os.path.dirname(os.path.dirname(BASE_DIR))
+DATA_DIR = os.environ.get("AERP_DATA_DIR") or os.path.join(_REPO_ROOT, "tadawul_data")
 SYMBOL_FILE = os.path.join(DATA_DIR, "_symbols.csv")
+
+# Targeted refresh, matching what scrape_psx.py already supported and these five did not.
+#
+#   AERP_SYMBOLS="LUCK,ATLH"   scrape only these, skipping the full-list harvest
+#   AERP_FORCE=1               re-download even when a CSV is already on disk
+#
+# Without FORCE these scrapers skip any symbol they already have a file for, which is right
+# for resuming an interrupted harvest and useless for the job that actually matters month to
+# month: a company has FILED AGAIN and its CSV is stale. There was no way to refresh one
+# without deleting files by hand, so 5,357 overdue filers across five markets could not be
+# updated at all.
+_ONLY = [s.strip().upper() for s in os.environ.get("AERP_SYMBOLS", "").split(",") if s.strip()]
+_FORCE = os.environ.get("AERP_FORCE", "").lower() in {"1", "true", "yes"}
 # Why a symbol produced nothing. The distinction cannot be recovered afterwards, and it
 # matters: "no financials page exists" is a permanent fact about the company, while "the fetch
 # failed" is about this run. Excluding a real company from the platform because of a timeout
@@ -233,6 +252,10 @@ LIST_JS = """() => {
 
 
 def collect_symbols(page):
+    if _ONLY:
+        print(f"Targeted run: {len(_ONLY)} symbol(s) from AERP_SYMBOLS")
+        return list(_ONLY)
+
     """Every listed symbol, paging through the list 500 at a time. Cached after the first run."""
     if os.path.exists(SYMBOL_FILE):
         with open(SYMBOL_FILE, encoding="utf-8") as fh:
@@ -418,6 +441,8 @@ def already_done(symbol, settled=None):
     warrants and rights - and re-walking them costs four page loads and their pauses on EVERY
     restart, twenty minutes of confirming what is already known.
     """
+    if _FORCE:
+        return False        # a forced run re-fetches even a complete company
     known = (settled or {}).get(symbol, {})
     return all(
         has_file(symbol, name) or known.get(name) == "no_financials_page"
@@ -430,7 +455,7 @@ def scrape_symbol(page, symbol, settled=None):
     known = (settled or {}).get(symbol, {})
     for name, path in STATEMENTS.items():
         csv_file = os.path.join(DATA_DIR, f"{symbol}_{name}.csv")
-        if os.path.exists(csv_file) and os.path.getsize(csv_file) > 10:
+        if not _FORCE and os.path.exists(csv_file) and os.path.getsize(csv_file) > 10:
             saved += 1
             continue
         if known.get(name) == "no_financials_page":
