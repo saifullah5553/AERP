@@ -50,6 +50,20 @@ export default function ScreenerPage() {
   // Live prices: update loaded grid rows in place as ticks arrive.
   useEffect(() => {
     return openQuoteStream({
+      // Only what is RENDERED. `getRenderedNodes` is the rows actually on screen, not the
+      // whole filtered set, which is what keeps a poll to tens of symbols instead of
+      // thousands - the price proxy is metered per request and the rows nobody is looking at
+      // are already priced by the snapshot.
+      getSymbols: () => {
+        const gridApi = gridApiRef.current;
+        if (!gridApi) return [];
+        const out: string[] = [];
+        for (const node of gridApi.getRenderedNodes()) {
+          const sym = node.data?.provider_symbol;
+          if (sym) out.push(sym);
+        }
+        return out;
+      },
       onOpen: () => setLive(true),
       onError: () => setLive(false),
       onQuote: (q) => {

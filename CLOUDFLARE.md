@@ -89,13 +89,21 @@ into the status bar.
 
 Two of those deserve attention rather than a tick.
 
-**`screener.json` is 22.9 MB against a 25 MB cap**, and it grows with the universe. The deploy
-workflow checks this before uploading and fails with the offending filename, so it will stop
-being a surprise — but the fix is to split the screener per market, which also fixes the far
-more pressing problem that 22.9 MB is a brutal first load on a phone.
+**`screener.json` is 22.9 MB against a 25 MB cap.** That is the STORED size, which is what the
+cap measures. The deploy checks it before uploading and fails with the filename, so it stops
+being a surprise; ~9% headroom, and the universe just shrank by 921 exclusions, so it is not
+urgent.
 
-**11,030 files is comfortable now** and would only bind if the company universe roughly
-doubled.
+**Over the wire it is 3.7 MB, not 22.9.** Cloudflare gzips text automatically and this file
+compresses to 16%. An earlier note here called it a brutal mobile load on the raw number — that
+was wrong. 3.7 MB is heavy-ish on a phone but not remotely the same problem.
+
+Splitting per market is still worth doing eventually, and the measured prize is real: a PSX-only
+user would pull 0.2 MB instead of 3.7 MB.
+
+    us 1.9 MB gzip | india 0.9 | australia 0.4 | psx 0.2 | gcc 0.1 | dfm 0.02
+
+**11,030 files is comfortable** and would only bind if the universe roughly doubled.
 
 ## The bigger constraint, which Cloudflare does not solve on its own
 
@@ -110,10 +118,32 @@ deciding one thing first — today you can `git show` last Tuesday's screener, a
 genuinely useful this week for tracing what changed. R2 has versioning but it is not free-tier
 generous, so that history is a real thing to give up on purpose rather than by accident.
 
-## Using the live-price proxy
+## Live prices — one more variable to set
 
-The Worker is deployed and callable, but the frontend does **not** call it yet — that is a
-separate change to the screener, kept apart so this deploy can be verified on its own.
+The frontend now uses the proxy, but only when it is told where to find it.
+
+After the first deploy, note the Worker URL and add it as a repository **variable** (Settings →
+Secrets and variables → Actions → **Variables**, not Secrets — it is a public URL):
+
+```
+VITE_PRICE_PROXY = https://aerp-price-proxy.<your-subdomain>.workers.dev
+```
+
+Then re-run the deploy. Unset, the site simply uses snapshot prices exactly as it does today —
+it degrades, it does not break.
+
+With it set, the screener polls the proxy every 20 seconds for **only the rows currently
+rendered**, and the LIVE indicator lights up. Background tabs stop polling. A failed poll drops
+the indicator rather than leaving the page claiming to be live.
+
+Verified end to end before shipping, by serving the real Worker over HTTP and consuming it with
+the exact code path the client uses:
+
+```
+AAPL     price=309.90  change_pct=-0.14
+MSFT     price=491.71  change_pct=+0.90
+LUCK.KA  price=440.03  change_pct=-0.09
+```
 
 ```
 GET /quote?symbols=AAPL,MSFT,LUCK.KA   → { quotes: { AAPL: { price, change, changePct, ... } } }

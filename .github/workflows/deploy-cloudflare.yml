@@ -67,9 +67,21 @@ jobs:
         working-directory: frontend
         # No VITE_BASE. Cloudflare serves from the domain root, unlike GitHub Pages which needs
         # the /AERP/ subpath - vite.config already defaults `base` to "/".
+        #
+        # VITE_PRICE_PROXY is what switches live prices on. Without it the site falls back to
+        # snapshot prices exactly as it does today, so an unset variable degrades rather than
+        # breaks. Set it as a repository VARIABLE (not a secret - it is a public URL) once the
+        # Worker is deployed and you know its subdomain.
+        env:
+          VITE_PRICE_PROXY: ${{ vars.VITE_PRICE_PROXY }}
         run: |
           npm ci
           npm run build
+          if [ -n "$VITE_PRICE_PROXY" ]; then
+            echo "live prices ON via $VITE_PRICE_PROXY"
+          else
+            echo "::notice::VITE_PRICE_PROXY not set - the site will use snapshot prices only"
+          fi
 
       - name: Check the deployment against Cloudflare Pages limits
         if: steps.creds.outputs.ready == 'yes'
