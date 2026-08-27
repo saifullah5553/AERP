@@ -20,16 +20,15 @@ proven itself — switching off the working one first is how you find out it did
 
 ---
 
-## 1 · Create the account and project
+## 1 · Nothing to click
 
-1. Sign up at <https://dash.cloudflare.com/sign-up>. No card is required for what this uses.
-2. **Workers & Pages → Create → Pages → Connect to Git**, pick `saifullah5553/AERP`.
-3. When it asks for build settings, **skip / cancel the git integration** and finish creating
-   an empty project named exactly **`aerp`**.
+The workflow creates the Pages project itself (`wrangler pages project create aerp`). The
+dashboard is not involved, which matters because it keeps being reorganised - "Workers & Pages"
+moved under **Compute** in the 2026 redesign, and an instruction naming a menu item ages badly.
 
-That last step is deliberate. Cloudflare's own git build would need to check out a 5 GB
-repository on every deploy. The workflow here builds on a GitHub runner, where the checkout is
-already warm, and uploads only `dist`.
+The project is deliberately NOT connected to Git. Cloudflare's own Git build would check out a
+5 GB repository on every deploy; the workflow builds on a GitHub runner and uploads only
+`dist`.
 
 ## 2 · Mint an API token
 
@@ -49,8 +48,10 @@ dashboard home page.
 
 ```
 CLOUDFLARE_API_TOKEN    the token from step 2
-CLOUDFLARE_ACCOUNT_ID   the account id from the sidebar
+CLOUDFLARE_ACCOUNT_ID   c4dd7cad6f3c53dc853e7a6af8ead80c
 ```
+
+The account id is the hex string in your dashboard URL, so it needs no hunting.
 
 Until both exist the deploy workflow **skips** rather than fails. An unconfigured deploy is not
 a broken build, and a permanently red run is exactly how a real failure gets ignored.

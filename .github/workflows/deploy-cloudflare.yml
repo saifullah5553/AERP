@@ -103,6 +103,19 @@ jobs:
             exit 1
           fi
 
+      # Create the project if it does not exist yet, so nobody has to find it in a dashboard
+      # that keeps being reorganised - "Workers & Pages" moved under "Compute" in the 2026
+      # redesign. `|| true` is right here and only here: the command fails when the project
+      # ALREADY exists, which is the normal case and not an error.
+      - name: Ensure the Pages project exists
+        if: steps.creds.outputs.ready == 'yes'
+        uses: cloudflare/wrangler-action@v3
+        continue-on-error: true
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages project create aerp --production-branch=main
+
       - name: Deploy to Pages
         if: steps.creds.outputs.ready == 'yes'
         uses: cloudflare/wrangler-action@v3
