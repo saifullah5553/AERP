@@ -74,6 +74,7 @@ jobs:
         # Worker is deployed and you know its subdomain.
         env:
           VITE_PRICE_PROXY: ${{ vars.VITE_PRICE_PROXY }}
+          VITE_DATA_BASE: ${{ vars.VITE_DATA_BASE }}
         run: |
           npm ci
           npm run build
@@ -81,6 +82,22 @@ jobs:
             echo "live prices ON via $VITE_PRICE_PROXY"
           else
             echo "::notice::VITE_PRICE_PROXY not set - the site will use snapshot prices only"
+          fi
+
+          # DECOUPLE THE DATA FROM THE DEPLOY. With VITE_DATA_BASE pointing at an origin that
+          # already serves the snapshot, the app fetches it at runtime and the deployment does
+          # not need to carry it: 15 files instead of 11,051, ~1.5 MB instead of 440 MB.
+          #
+          # The point is not the size, it is the FAILURE MODE. Bundled, a failed deploy freezes
+          # the data, because the only way to publish new data is to redeploy the whole site.
+          # Separated, a failed deploy leaves the last good shell serving current data, and a
+          # failed pipeline leaves a working site with stale data that verify-freshness reports.
+          # Two things that break for different reasons stop taking each other down.
+          if [ -n "$VITE_DATA_BASE" ]; then
+            echo "data served from $VITE_DATA_BASE - dropping the bundled snapshot"
+            rm -rf dist/data
+          else
+            echo "::notice::VITE_DATA_BASE not set - shipping the full 440 MB snapshot with the site"
           fi
 
       - name: Check the deployment against Cloudflare Pages limits

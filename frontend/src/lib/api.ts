@@ -206,7 +206,21 @@ const V1 = `${BASE}/api/v1`;
 // snapshot (baked into /data/*.json at build time) with no backend — used for the
 // GitHub Pages demo. Filtering/sorting/pagination happen client-side.
 export const IS_STATIC = BASE === "";
-const DATA_BASE = `${import.meta.env.BASE_URL}data`;
+// WHERE THE DATA COMES FROM, which is deliberately NOT tied to where the app is hosted.
+//
+// Bundling 440 MB of snapshot into the deployment couples two things that fail for different
+// reasons and on different schedules: the app shell changes when code changes (rarely), the
+// data changes every thirty minutes. Coupled, a failed deploy freezes the DATA, and a data
+// refresh forces a 440 MB redeploy of a shell that did not change.
+//
+// Set VITE_DATA_BASE to an absolute origin and the app fetches its snapshot from there
+// instead - GitHub Pages serves it with `access-control-allow-origin: *`, so this works
+// cross-origin today with no new infrastructure. The deployment then carries only the shell
+// (~1.5 MB, 15 files), and a broken deploy cannot stop the data updating.
+//
+// Unset, it falls back to same-origin exactly as before.
+const DATA_BASE = (import.meta.env.VITE_DATA_BASE ?? "").replace(/\/$/, "")
+  || `${import.meta.env.BASE_URL}data`;
 
 function qs(params: Record<string, unknown>): string {
   const sp = new URLSearchParams();

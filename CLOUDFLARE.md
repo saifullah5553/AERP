@@ -157,3 +157,44 @@ Check it with:
 ```bash
 curl "https://aerp-price-proxy.<your-subdomain>.workers.dev/quote?symbols=AAPL,LUCK.KA"
 ```
+
+---
+
+## Why GitHub is in the loop, and what happens when it fails
+
+**The pipeline has to run somewhere.** Scoring, valuation, technicals and the scrapers are
+Python. Cloudflare cannot run them, and its own Git build would check out a 5 GB repository on
+every deploy. GitHub Actions is free and unlimited on public repos, so that is where the data
+is made.
+
+**But the deploy does not have to be coupled to it, and originally it was.** Bundling the
+snapshot into the deployment ties together two things that fail for different reasons on
+different schedules: the app shell changes when code changes (rarely), the data changes every
+thirty minutes. Coupled, a failed deploy freezes the DATA, because publishing new data means
+redeploying the whole site.
+
+Set `VITE_DATA_BASE` and they come apart:
+
+```
+VITE_DATA_BASE = https://saifullah5553.github.io/AERP/data
+```
+
+    bundled       11,051 files   440 MB
+    shell only        12 files     5.4 MB
+
+GitHub Pages serves the snapshot with `access-control-allow-origin: *`, so this works
+cross-origin today with no new infrastructure. What it buys is failure isolation:
+
+| what breaks | before | after |
+|---|---|---|
+| Cloudflare deploy fails | data frozen at last deploy | last good shell keeps serving CURRENT data |
+| Pipeline fails | site fine, data silently stale | same, and `verify-freshness` turns the run red |
+| GitHub Pages down | — | site loads, data does not (cached copy shown offline) |
+| Cloudflare down | site down | GitHub Pages copy still up |
+
+Both deploys run, so there are always two live copies of the site.
+
+**The one remaining single point is the pipeline itself** - if GitHub Actions stops entirely,
+data stops updating everywhere. That is not fixable by hosting; it is fixable by noticing, which
+is what `verify-freshness` is for. It checks 24 things and exits non-zero, so a stall becomes a
+red run the same day rather than a discovery weeks later.
