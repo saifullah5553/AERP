@@ -45,6 +45,21 @@ MIN_UNIVERSE = 30
 # rather than whoever is better. Both pages must agree about when a rebalance happened or the
 # history will not describe the portfolio it claims to.
 MIN_COVERAGE = 0.70
+# How far after the intended trade date a rebalance may actually fill before we stop believing
+# it happened at all.
+#
+# `traded_on` starts at quarter-end + 2 months and is then restated to the earliest session any
+# holding actually filled on. That fill comes from `prices.on_or_after(symbol, target)`, which
+# returns the first session at or after the target THAT SYMBOL HAS A PRICE FOR - and if our bar
+# history does not reach back that far, the first such session can be years later. Nothing
+# checked it. The Dec-21 PSX rebalance was recorded as trading on 2026-08-30, so its "quarter"
+# ran 2022-03-29 to today and returned +262.78% for the portfolio and +299.87% for the KSE-100.
+# Those overlapping years were then compounded with every later quarter that covered the same
+# period, which is how Pakistan reported +1,408% and India +24,452%.
+#
+# A quarter we cannot price near its own trade date is one we cannot reconstruct. It is dropped,
+# not recorded with a date four years out.
+MAX_FILL_LAG_DAYS = 45
 
 REGION_LABELS = {
     # Dubai, added once its CSVs landed. A market absent from this map is absent from the
@@ -236,6 +251,16 @@ def build_region(rows: list[dict], region: str, prices: Prices,
         if sessions:
             traded_on = min(sessions)
 
+        # The fill has to be near the date the rule would have traded. Anything further out
+        # means our price history does not cover this rebalance, so there is no trade to
+        # reconstruct - see MAX_FILL_LAG_DAYS.
+        lag_days = (date.fromisoformat(traded_on) - date.fromisoformat(target)).days
+        if lag_days > MAX_FILL_LAG_DAYS:
+            log.info("ledger[%s]: %s not reconstructable - earliest fill %s is %d days after "
+                     "the %s trade date", region, _quarter_label(quarter_end), traded_on,
+                     lag_days, target)
+            continue
+
         # The PORTFOLIO's return for the quarter just ended: every name held through it,
         # equal weight, priced from this rebalance back to the last one. Not the average of
         # what happened to be SOLD - a name held four quarters dumps its whole multi-quarter
@@ -255,6 +280,17 @@ def build_region(rows: list[dict], region: str, prices: Prices,
             "results_for": quarter_end,
             "quarter": _quarter_label(quarter_end),
             "traded_on": traded_on,
+            # The period this row's return ACTUALLY covers. A quarter whose predecessor could
+            # not be reconstructed inherits the whole gap: India runs Mar 23 straight to Sep 24,
+            # so that row's +176% spans eighteen months, not three. The comparison stays fair -
+            # the index is measured over the same two dates and consecutive rows never overlap -
+            # but a row labelled 'Sep 24' that covers a year and a half must say so rather
+            # than let the reader assume a quarter.
+            "period_from": (out_quarters[-1]["traded_on"] if (i > 0 and out_quarters)
+                            else None),
+            "period_days": ((date.fromisoformat(traded_on)
+                             - date.fromisoformat(out_quarters[-1]["traded_on"])).days
+                            if (i > 0 and out_quarters) else None),
             "universe": len(by_quarter[quarter_end]),
             "entries": sorted(entries, key=lambda e: -(e["score"] or 0)),
             "exits": sorted(exits, key=lambda e: (e["return_pct"] is None,
@@ -303,14 +339,18 @@ def build_region(rows: list[dict], region: str, prices: Prices,
     index_compounded = 1.0
     index_quarters = 0
     for q in out_quarters[1:]:
-        if q["portfolio_return_pct"] is not None:
-            compounded *= 1 + q["portfolio_return_pct"] / 100
-        # Compounded over the SAME quarters the portfolio was compounded over, so the two
-        # numbers answer one question. A quarter the portfolio could not be measured in is not
-        # one the index gets credit for either.
-        if q["portfolio_return_pct"] is not None and q.get("index_return_pct") is not None:
-            index_compounded *= 1 + q["index_return_pct"] / 100
-            index_quarters += 1
+        # BOTH or NEITHER. The comment here used to promise the index was "compounded over the
+        # SAME quarters the portfolio was compounded over" while the code compounded the
+        # portfolio on its own condition and the index on a stricter one - so the portfolio ran
+        # through quarters the index sat out, and the two figures covered different spans.
+        # Pakistan compounded 19 quarters against the index's 12 and called the difference
+        # "beat by 33.55pp"; every market had the same mismatch. A quarter that cannot be
+        # measured for both is not a quarter either of them gets credit for.
+        if q["portfolio_return_pct"] is None or q.get("index_return_pct") is None:
+            continue
+        compounded *= 1 + q["portfolio_return_pct"] / 100
+        index_compounded *= 1 + q["index_return_pct"] / 100
+        index_quarters += 1
     return {
         "region": region,
         "label": REGION_LABELS.get(region, region.upper()),
@@ -324,8 +364,11 @@ def build_region(rows: list[dict], region: str, prices: Prices,
         "realised_avg_return_pct": (round(sum(realised) / len(realised), 2)
                                     if realised else None),
         "realised_winners": sum(1 for r in realised if r > 0),
-        "compounded_return_pct": round((compounded - 1) * 100, 2) if len(out_quarters) > 1
-        else None,
+        # Over `index_quarters` quarters - the ones both could be measured in. That is the
+        # only span on which the comparison below means anything.
+        "compounded_return_pct": (round((compounded - 1) * 100, 2)
+                                  if index_quarters else None),
+        "compounded_quarters": index_quarters,
         # The benchmark, over the same quarters, compounded the same way. `excess` is the whole
         # point of showing it: a market that rose 300% while the rule made 318% is a very
         # different result from the same 318% in a flat market, and the compounded figure on

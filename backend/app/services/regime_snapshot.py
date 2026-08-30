@@ -28,6 +28,7 @@ guess at them would be worse than their absence - the weights renormalise over w
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +36,9 @@ from app.core.logging import get_logger
 from app.services.macro_regime import REGION_LABEL
 
 log = get_logger(__name__)
+
+# "... regime is bullish (80/100)." - the clause the recomputed health has to agree with.
+_RE_VERDICT = re.compile(r"is [a-z]+ \(\d+/100\)")
 
 # The index whose trend represents each market. Every entry here must also appear in
 # `universe_curated.INDICES`, or the lookup below finds nothing and the market silently keeps
@@ -246,6 +250,15 @@ def merge_live_signals(regime: dict[str, Any], data_dir: str | Path,
                 health = sum(weights.get(k, 0.0) * v for k, v in scored) / total_w
                 country["health"] = round(health, 1)
                 country["regime"] = label_for(country["health"])
+                # The explanation is written by the macro engine and carried through here
+                # unchanged, so recomputing health without restating it leaves the card
+                # arguing with itself: Dubai shipped labelled 'Neutral' beside the sentence
+                # 'regime is bullish (80/100)' - the same disagreement that was caught on
+                # this page once already. Restate the verdict clause and keep the reasoning.
+                text = country.get("explanation")
+                if isinstance(text, str) and text:
+                    country["explanation"] = _RE_VERDICT.sub(
+                        f"is {country['regime'].lower()} ({round(health)}/100)", text, count=1)
         countries[region] = country
         touched.append(region)
 
