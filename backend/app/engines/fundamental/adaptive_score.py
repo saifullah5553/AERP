@@ -15,7 +15,9 @@ from app.engines.fundamental.adaptive import (
     CATEGORY_MAX,
     COUNTRIES,
     DEFAULT_COUNTRY,
+    FIN_METRIC_COUNT,
     INSURER,
+    METRIC_WEIGHT_COUNT,
     MODEL_NOTE,
     TOTAL_MAX,
     AdaptiveResult,
@@ -188,6 +190,7 @@ def score_company(statements: dict[str, list[dict]], region: str,
     res.coverage = round(coverage, 3)
     res.scored_count = scored
     res.applicable_count = sum(1 for m in metrics if not m.na_model)
+    res.metric_total = FIN_METRIC_COUNT if model in (BANK, INSURER) else METRIC_WEIGHT_COUNT
     # Two gates, because they catch different things. The count stops a company with three
     # measurable metrics from being ranked beside one with thirty. The RATIO stops a company
     # from being flattered by absence: renormalising over whatever happens to be present would

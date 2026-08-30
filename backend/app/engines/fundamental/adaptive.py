@@ -420,6 +420,11 @@ class AdaptiveResult:
     # carry this alongside it invites the two to be compared as though they were.
     scored_count: int = 0
     applicable_count: int = 0
+    # How many metrics the matrix THIS company was scored on actually contains: 15 for an
+    # operating company, 9 for a bank or insurer. Publishing the operating count for everyone
+    # made a bank read "scored on 9 of 15", which states that six metrics were skipped when
+    # its matrix never had them.
+    metric_total: int = METRIC_WEIGHT_COUNT
 
     def as_dict(self) -> dict:
         return {
@@ -441,7 +446,7 @@ class AdaptiveResult:
             "coverage": self.coverage,
             "scored_count": self.scored_count,
             "applicable_count": self.applicable_count,
-            "metric_total": METRIC_WEIGHT_COUNT,
+            "metric_total": self.metric_total,
             "metrics": [
                 {
                     "key": m.key, "category": m.category, "label": m.label,
