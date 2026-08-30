@@ -90,7 +90,7 @@ jobs:
           # 11,684 requests to about 9,700 - roughly seven minutes rather than an hour and three
           # quarters.
           OK=0
-          for REGION in us india australia psx gcc; do
+          for REGION in us india australia psx gcc dfm; do
             # One market failing must not lose the other four - but ALL of them failing is not
             # a quiet day, it is a broken job, and it reported success as "Pending: 0" for
             # weeks. Count the ones that worked and insist on at least one.
@@ -109,13 +109,13 @@ jobs:
           cat data/pending/*.txt 2>/dev/null | grep -v '^#' | grep -v '^$' | sort -u > /tmp/pending_all.txt
           SYMS=$(paste -sd, - < /tmp/pending_all.txt)
           echo "symbols=$SYMS" >> "$GITHUB_OUTPUT"
-          echo "Pending across all markets: $(wc -l < /tmp/pending_all.txt) (from $OK of 5 markets)"
+          echo "Pending across all markets: $(wc -l < /tmp/pending_all.txt) (from $OK of 6 markets)"
 
       - name: Re-scrape them
         if: steps.pick.outputs.symbols != ''
         run: |
           python scripts/scrape_fundamentals.py \
-            --regions us,india,australia,psx,gcc \
+            --regions us,india,australia,psx,gcc,dfm \
             --symbols "${{ steps.pick.outputs.symbols }}" \
             --workers 3 --page-pause 0.5 --work 300 --rest 0
 

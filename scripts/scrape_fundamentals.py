@@ -54,6 +54,13 @@ MARKET_PREFIX = {
     # out of earlier runs on the assumption it was not - verified against Aramco (2222).
     "gcc": "quote/tadawul",
     "psx": "quote/psx",
+    # Dubai. Added 2026-08-30, and it was simply missing rather than unavailable: the market
+    # has been in the universe since 2026-08-07, 'pending-results --region dfm' has been
+    # naming companies with unfetched quarters all along, and every one of them fell through
+    # because this map had no dfm key - '--regions dfm' resolved to an empty list and the
+    # scraper reported 'nothing to do'. Verified against Air Arabia (DFM:AIRARABIA), whose
+    # statement pages carry revenue, gross profit and net income like any other market.
+    "dfm": "quote/dfm",
 }
 STATEMENTS = {
     # NOT bare "financials" - that landing page carries only a condensed 7-row summary
@@ -361,7 +368,7 @@ def scrape_symbol(page, region: str, sym: str, page_pause: float) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--regions", default="us,india,australia,gcc,psx")
+    ap.add_argument("--regions", default="us,india,australia,gcc,psx,dfm")
     ap.add_argument("--work", type=float, default=120.0, help="minutes of scraping per cycle")
     ap.add_argument("--rest", type=float, default=30.0, help="minutes of rest between cycles")
     ap.add_argument("--page-pause", type=float, default=0.8, help="seconds between page loads")
