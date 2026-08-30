@@ -243,9 +243,19 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
 
         # The full scorecard, for the company page: category-by-category, the current TTM
         # figures behind it, and any earnings-quality red flags.
+        # `scored_count` travels with the score because the two are not separable. A bank is
+        # measured on four of the fifteen metrics - the other eleven have no meaning for it -
+        # and a 100 built on four is a different claim from a 100 built on fifteen. Publishing
+        # the number without the count invites the page to rank them as equals.
+        _ad = q.adaptive or {}
         doc["fundamental_scorecard"] = {
             "score": q.score, "grade": q.grade_label,
             "categories": q.categories, "metrics": q.metrics, "flags": q.flags,
+            "scored_count": _ad.get("scored_count"),
+            "applicable_count": _ad.get("applicable_count"),
+            "metric_total": _ad.get("metric_total"),
+            "model": _ad.get("model"), "model_note": _ad.get("model_note"),
+            "classification": _ad.get("classification"),
         }
         try:
             cf.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")

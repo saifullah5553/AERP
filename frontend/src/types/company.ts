@@ -137,13 +137,32 @@ export interface QualityTrend {
 
 /** The six-category Fundamental Quality Score, as computed for this company. */
 export interface ScoreCategory {
+  label?: string;
   earned: number;
-  points: number;
-  parts: Record<string, number | null>;
+  /** What this category COULD have earned for this company. Lower than `original_max` when a
+   *  metric does not apply to the business model - a bank has no quick ratio - and the score
+   *  renormalises over the rest rather than charging the company for the gap. */
+  applicable_max: number;
+  /** The category's budget before any model exclusions. */
+  original_max?: number;
+  percent?: number | null;
+  scored?: number;
+  na_model?: number;
+  no_data?: number;
+  parts?: Record<string, number | null>;
 }
 export interface FundamentalScorecard {
   score: number | null;
   grade: string;
+  /** How many of the fifteen matrix metrics could be measured, and how many APPLY at all to
+   *  this business model. A bank has eleven marked N/A by design, so its score rests on four -
+   *  which the page must show, or a 100 on four reads the same as a 100 on fifteen. */
+  scored_count?: number | null;
+  applicable_count?: number | null;
+  metric_total?: number | null;
+  model?: string | null;
+  model_note?: string | null;
+  classification?: string | null;
   categories: Record<string, ScoreCategory>;
   metrics: Record<string, number | null>;
   /** Earnings-quality red flags, e.g. profit not backed by operating cash. */

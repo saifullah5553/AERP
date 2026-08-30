@@ -1,15 +1,19 @@
 import type { FundamentalScorecard as Scorecard } from "@/types/company";
 
-// The order the framework defines them in, with the budget each carries. Shown even when a
-// category scored nothing, because "0 of 20 on cash flow" is the finding - a category that
-// silently vanished would read as though it had never been assessed.
+// The six groups of the fifteen-metric matrix, in the order the specification lists them.
+//
+// These keys must match what the engine publishes. They did not: the list here named six
+// categories the adaptive engine has never produced ("profitability", "capital_efficiency",
+// "balance_sheet"), and the row below required a `points` field the engine calls
+// `applicable_max`. Between them, EVERY category bar was skipped - the breakdown had been
+// invisible on every company page while looking like a component that worked.
 const CATEGORIES: { key: string; label: string }[] = [
-  { key: "growth", label: "Growth & Growth Quality" },
-  { key: "profitability", label: "Profitability & Margins" },
-  { key: "capital_efficiency", label: "Capital Efficiency" },
-  { key: "cash_flow", label: "Cash Flow & Earnings Quality" },
-  { key: "balance_sheet", label: "Balance Sheet & Solvency" },
-  { key: "working_capital", label: "Working Capital & Efficiency" },
+  { key: "growth", label: "Growth" },
+  { key: "margins", label: "Margins vs Industry" },
+  { key: "leverage", label: "Leverage & Coverage" },
+  { key: "returns", label: "Returns on Capital" },
+  { key: "liquidity", label: "Liquidity" },
+  { key: "cash_flow", label: "Cash Flow" },
 ];
 
 function tone(pct: number): string {
@@ -41,14 +45,40 @@ export default function FundamentalScorecard({ card }: { card: Scorecard }) {
         </div>
         <div className="flex flex-col gap-0.5">
           <span className="text-sm font-semibold text-slate-200">{card.grade}</span>
+          {card.applicable_count != null && card.metric_total != null && (
+            <span className="text-[11px] text-slate-500">
+              scored on {card.scored_count ?? card.applicable_count} of {card.metric_total}
+              {card.applicable_count < card.metric_total
+                ? ` — ${card.metric_total - card.applicable_count} not applicable to a ${
+                    card.model ?? "business of this type"}`
+                : ""}
+            </span>
+          )}
+          {card.classification && (
+            <span className="text-[11px] text-slate-400">{card.classification}</span>
+          )}
         </div>
       </div>
 
       <div className="space-y-1.5">
         {CATEGORIES.map(({ key, label }) => {
           const c = card.categories?.[key];
-          if (!c || !c.points) return null;
-          const pct = c.points ? c.earned / c.points : 0;
+          if (!c) return null;
+          const max = c.applicable_max ?? 0;
+          // A category every one of whose metrics is N/A for this business model is reported
+          // as such, not dropped. "N/A for a bank" and "scored zero" are opposite findings and
+          // a blank row would let the reader guess wrong.
+          if (!max) {
+            return (
+              <div key={key} className="flex items-center gap-3">
+                <span className="w-56 shrink-0 text-[11px] text-slate-400">{label}</span>
+                <span className="flex-1 text-[11px] text-slate-600">
+                  not applicable to this business model
+                </span>
+              </div>
+            );
+          }
+          const pct = c.earned / max;
           return (
             <div key={key} className="flex items-center gap-3">
               <span className="w-56 shrink-0 text-[11px] text-slate-400">{label}</span>
@@ -58,7 +88,7 @@ export default function FundamentalScorecard({ card }: { card: Scorecard }) {
                                background: tone(pct) }} />
               </span>
               <span className="num w-16 shrink-0 text-right text-[11px] text-slate-300">
-                {c.earned.toFixed(1)}/{c.points}
+                {c.earned.toFixed(1)}/{max.toFixed(1)}
               </span>
             </div>
           );

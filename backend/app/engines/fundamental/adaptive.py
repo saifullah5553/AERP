@@ -1,36 +1,53 @@
-"""Adaptive fundamental scoring - Pakistan baseline, adjusted by country and sector.
+"""Adaptive fundamental scoring - the fifteen-metric matrix, adjusted by country and sector.
 
-Five categories out of 145.5:
+    #   Metric                        Scored against
+    1   Revenue growth                pro-rata, country growth norms
+    2   Operating profit growth       pro-rata, country growth norms
+    3   Net profit growth             pro-rata, country growth norms
+    4   Gross margin                  INDUSTRY median
+    5   Operating margin              INDUSTRY median
+    6   Net margin                    INDUSTRY median
+    7   Debt to equity                STOCK EXCHANGE standards (measured, see Country)
+    8   Return on equity              pro-rata, country norms
+    9   Return on invested capital    pro-rata, against the local cost of capital
+    10  Interest coverage             pro-rata
+    11  Current ratio                 pro-rata
+    12  Quick ratio                   pro-rata
+    13  Operating cash flow vs net income   pro-rata on the ratio
+    14  Operating cash flow           positive / negative
+    15  Free cash flow                positive / negative
 
-    Growth            18     4 metrics  x weight 90
-    Stability         47.5  12 metrics  x weight 79.1667
-    Valuation         34     8 metrics  x weight 85
-    Working capital   21     5 metrics  x weight 84
-    Cash flow         25     5 metrics  x weight 100   (4 cash metrics + Piotroski)
+EQUAL WEIGHTS, because the specification sets none. Each metric is worth 100/15 = 6.67 points
+and the total is 100. Any other split would be a judgement the specification did not make;
+inventing one and presenting it as the framework would hide a choice inside a number.
 
-A metric contributes ``score * weight / 100``. The per-metric weights are not stated in the
-specification but are forced by it: equal weights within a category are the only assignment
-that reproduces the stated maxima.
+SCORING IS PRO-RATA, not three-step GOOD/AVERAGE/BAD. The thresholds set the shape - BAD
+anchors 1, AVERAGE anchors 3, GOOD anchors 5 - but a value between two anchors is interpolated,
+so 14.9% revenue growth scores 4.98 and 5.1% scores 3.02 instead of both collapsing to 3.
 
-SCORING IS PRO-RATA, not three-step GOOD/AVERAGE/BAD. The thresholds still set the shape -
-BAD anchors 1, AVERAGE anchors 3, GOOD anchors 5 - but a value between two anchors is
-interpolated, so 14.9% revenue growth scores 4.98 and 5.1% scores 3.02 instead of both
-collapsing to 3. Banding threw away most of the information in each number and let the total
-jump on rounding noise: a company a basis point below a threshold lost a whole weighted point
-to one a basis point above.
+THREE METRICS ARE RELATIVE AND THE REST ABSOLUTE, exactly as specified. Margins are scored
+against the company's own INDUSTRY median, because an absolute margin threshold ranks
+industries rather than companies - it would put every software firm above every supermarket
+regardless of which is the better operator. Debt to equity is scored against its own EXCHANGE.
+Everything else is scored against fixed, country-adjusted anchors.
 
 N/A IS THE POINT OF THIS ENGINE. A metric with no economic meaning for a business model is
 excluded from the applicable maximum rather than scored 1 - a bank is not a failing
-manufacturer because it holds no inventory. The final score is
-``earned / applicable_max * 145.5``.
+manufacturer because it holds no inventory. The final score is ``earned / applicable_max * 100``.
 
-WHAT THIS ENGINE CANNOT DO, stated rather than faked. The specification asks for banking
-metrics (NIM, CET1, NPL, CASA, provision coverage), insurance metrics (combined, loss and
-expense ratios, solvency) and REIT metrics (FFO, AFFO, NAV, occupancy). None of those line
-items exist in our quarterly-TTM store, which carries income, balance sheet and cash flow
-only. For those models this engine does the half it can - it marks the industrial metrics
-N/A and renormalises - and reports the missing half through ``model_note`` instead of
-inventing a proxy and calling it a capital ratio.
+EVERY METRIC IS READ AT THE LATEST PERIOD THAT ACTUALLY REPORTS IT. Reading column 0 alone
+looked correct and silently discarded companies: across the store the newest TTM column is null
+for 19% of inventory, 10% of current assets and liabilities, and 8% of interest expense, while
+NO field is null in every column for any company. Those are reporting lags, not nil balances,
+and treating them as absent dropped roughly a third of Indian companies out of the liquidity
+metrics. Each metric now takes the newest period in which ALL of its own inputs are present, so
+a ratio never mixes one period's numerator with another's, and reports which period it used.
+
+WHAT THIS ENGINE DOES NOT SCORE, stated rather than faked. Valuation is not here: this matrix
+measures the business, and what it is worth is the valuation engine's question. Banking,
+insurance and REIT line items (NIM, CET1, NPL, combined ratio, FFO, occupancy) are absent from
+our quarterly-TTM store, so for those models the engine scores the metrics that stay meaningful,
+marks the rest N/A, and says so through ``model_note`` rather than inventing a proxy.
 """
 
 from __future__ import annotations
@@ -40,29 +57,35 @@ from typing import Any
 
 GOOD, AVERAGE, BAD = 5.0, 3.0, 1.0
 
-CATEGORY_MAX = {
-    "growth": 18.0,
-    "stability": 47.5,
-    "valuation": 34.0,
-    "working_capital": 21.0,
-    "cash_flow": 25.0,
+# Six groups, purely for presentation - the weights are equal, so a category's budget is just
+# 6.667 x however many metrics it holds. Grouping earns its place by making the score readable
+# ("weak on liquidity"), not by changing the arithmetic.
+METRIC_WEIGHT_COUNT = 15
+CATEGORY_METRICS = {
+    "growth": 3,        # revenue, operating profit, net profit
+    "margins": 3,       # gross, operating, net - each against the industry median
+    "leverage": 2,      # debt/equity, interest coverage
+    "returns": 2,       # ROE, ROIC
+    "liquidity": 2,     # current, quick
+    "cash_flow": 3,     # CFO vs net income, CFO sign, FCF sign
 }
-TOTAL_MAX = 145.5
+TOTAL_MAX = 100.0
+PER_METRIC = TOTAL_MAX / METRIC_WEIGHT_COUNT          # 6.667
 
-CATEGORY_WEIGHT = {
-    "growth": 90.0,
-    "stability": 47.5 / 12 / 5 * 100,   # 79.1667
-    "valuation": 85.0,
-    "working_capital": 84.0,
-    "cash_flow": 100.0,
-}
+CATEGORY_MAX = {k: n * PER_METRIC for k, n in CATEGORY_METRICS.items()}
+
+# `Metric.weighted` is ``score * weight / 100`` and a full mark is GOOD (5), so the weight that
+# makes one metric worth PER_METRIC is PER_METRIC / 5 * 100. Equal for every category by
+# construction - the category a metric sits in must not change what it is worth.
+CATEGORY_WEIGHT = {k: PER_METRIC / GOOD * 100.0 for k in CATEGORY_METRICS}
 
 CATEGORY_LABEL = {
     "growth": "Growth",
-    "stability": "Stability",
-    "valuation": "Valuation",
-    "working_capital": "Working Capital",
-    "cash_flow": "Cash Flow / Business Model",
+    "margins": "Margins vs Industry",
+    "leverage": "Leverage & Coverage",
+    "returns": "Returns on Capital",
+    "liquidity": "Liquidity",
+    "cash_flow": "Cash Flow",
 }
 
 
@@ -85,32 +108,50 @@ class Country:
     growth_avg: float
     ev_ebitda_good: float
     roe_good: float
+    # Debt/equity at which the exchange's own non-financial listings score 5, 3 and 1. The
+    # specification says "stock exchange standards", so these are MEASURED from the exchange
+    # rather than borrowed from a US textbook: the 25th percentile, median and 75th percentile
+    # of total debt / total equity across our own statements for that market, financials
+    # excluded because deposit funding is not leverage in the same sense. Sample sizes at the
+    # time of measurement: PSX 366, US 3,679, India 1,889, Australia 970, Saudi 310.
+    de_good: float
+    de_avg: float
+    de_bad: float
     why: str
 
 
 COUNTRIES: dict[str, Country] = {
     "psx": Country(
         "Pakistan", 0.115, 0.29, 10, 15, 1.5, 1.5, 3.0, 0.04, 0.15, 0.05, 10, 0.20,
+        0.12, 0.42, 1.13,
         "baseline"),
     "us": Country(
         "United States", 0.043, 0.21, 20, 28, 3.0, 2.5, 5.0, 0.02, 0.08, 0.03, 14, 0.15,
+        0.1, 0.46, 1.14,
         "P/E 10->20: a 4.3% risk-free rate against 11.5% supports roughly double the "
         "multiple. Growth 15%->8%: mature industries in a large economy compound slower. "
         "Dividend 4%->2%: US payout runs largely through buybacks."),
     "australia": Country(
         "Australia", 0.042, 0.30, 18, 25, 2.2, 2.0, 4.0, 0.035, 0.08, 0.03, 12, 0.13,
+        0.02, 0.17, 0.57,
         "Developed-market rates, and a franking-credit culture that keeps yields high "
         "relative to other developed markets."),
     "india": Country(
         "India", 0.068, 0.25, 22, 32, 3.0, 3.0, 6.0, 0.015, 0.14, 0.06, 15, 0.16,
+        0.08, 0.28, 0.64,
         "P/E 10->22 despite a 6.8% risk-free rate: sustained double-digit earnings growth is "
         "capitalised by domestic flows. Dividend 4%->1.5%: Indian companies retain."),
     "gcc": Country(
         "Saudi (Tadawul)", 0.050, 0.20, 16, 22, 2.0, 2.5, 4.5, 0.035, 0.10, 0.04, 12, 0.14,
+        0.14, 0.43, 0.9,
         "Moderate rates, a 20% zakat/tax regime, and government-linked payout policy."),
     "dfm": Country(
         "Dubai (DFM)", 0.045, 0.09, 14, 20, 1.8, 2.5, 4.5, 0.045, 0.10, 0.04, 11, 0.14,
-        "9% corporate tax and a high-payout market; rates track the dollar peg."),
+        0.14, 0.43, 0.9,
+        "9% corporate tax and a high-payout market; rates track the dollar peg. Leverage "
+        "standards are BORROWED FROM TADAWUL: only 29 DFM non-financials have a usable "
+        "debt/equity, too few for a percentile, and a Gulf neighbour is a closer "
+        "comparison than inventing a number or falling back on Pakistan."),
 }
 
 DEFAULT_COUNTRY = COUNTRIES["psx"]
@@ -138,24 +179,33 @@ INAPPLICABLE: dict[str, set[str]] = {
     BANK: {
         # A bank funds itself with deposits: interest expense is its cost of goods, not a
         # financing burden, and balance-sheet leverage is the business, not a risk to punish.
-        "interest_coverage", "debt_to_equity", "current_ratio", "total_debt",
-        "fixed_asset_turnover",
-        # Banks do not report an operating profit line, and the specification is explicit that
-        # generic margin thresholds must not be applied to them. Marked N/A rather than left
-        # to read as missing data, because the distinction is the whole point of the flag.
-        "op_cagr", "operating_margin",
-        "inventory_turnover", "dso", "dio", "dpo", "ccc",
-        # Corporate FCF is not meaningful: CFO swings with deposit flows, not performance.
-        "fcf_per_share", "fcf_margin", "fcf_to_cfo", "croic",
-        "ev_ebitda",   # enterprise value is meaningless where debt IS the raw material
+        "debt_to_equity", "interest_coverage",
+        # No inventory and no operating cycle, so a current or quick ratio compares two
+        # numbers that do not mean for a bank what they mean for a manufacturer.
+        "current_ratio", "quick_ratio",
+        # Banks report no gross profit and no operating profit line, and the specification is
+        # explicit that generic margin thresholds must not be applied to them.
+        "gross_margin", "operating_margin", "op_growth",
+        # EVERY cash-flow metric, not just free cash flow. A bank's operating cash flow is
+        # dominated by deposit and loan flows, so it swings hard on balance-sheet growth
+        # rather than performance: JPMorgan's most recent operating cash flow is NEGATIVE
+        # $107bn and its cash-to-earnings ratio -1.65, which scored the bank BAD twice for
+        # lending more money. Capex is trivial for the same reason, so free cash flow measures
+        # the funding cycle instead of the business.
+        "free_cash_flow", "operating_cash_flow", "cfo_vs_net_income",
+        # Invested capital has no meaning where the balance sheet IS the product.
+        "roic",
     },
     INSURER: {
-        "interest_coverage", "current_ratio", "inventory_turnover", "dio", "ccc",
-        "fixed_asset_turnover", "ev_ebitda", "croic",
+        "interest_coverage", "current_ratio", "quick_ratio", "gross_margin", "roic",
     },
-    REIT: {"inventory_turnover", "dio", "ccc", "dso", "dpo", "fixed_asset_turnover"},
-    UTILITY: {"inventory_turnover", "dio"},
-    TECH: {"inventory_turnover", "dio"},
+    REIT: {
+        # Property is the inventory and it sits in non-current assets; a quick ratio on a REIT
+        # measures nothing about its ability to meet obligations.
+        "quick_ratio", "gross_margin",
+    },
+    UTILITY: set(),
+    TECH: set(),
     COMMODITY: set(),
     GENERAL: set(),
 }
@@ -357,6 +407,11 @@ class AdaptiveResult:
     classification: str = ""
     trend: str = ""
     coverage: float = 0.0
+    # How much of the matrix actually applied. A 100% built on the four metrics a bank can
+    # have is not the same claim as a 100% built on all fifteen, and a score that does not
+    # carry this alongside it invites the two to be compared as though they were.
+    scored_count: int = 0
+    applicable_count: int = 0
 
     def as_dict(self) -> dict:
         return {
@@ -376,6 +431,9 @@ class AdaptiveResult:
             "classification": self.classification,
             "trend": self.trend,
             "coverage": self.coverage,
+            "scored_count": self.scored_count,
+            "applicable_count": self.applicable_count,
+            "metric_total": METRIC_WEIGHT_COUNT,
             "metrics": [
                 {
                     "key": m.key, "category": m.category, "label": m.label,

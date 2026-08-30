@@ -35,11 +35,14 @@ def test_strong_grower_with_building_cash_passes() -> None:
         ocf=[12, 16, 20, 26], cash=[40, 55, 70, 95],
     ))
     assert q.passed is True
-    # One reported period cannot be scored by the six-category engine, which needs a
-    # history to measure trend and year-on-year change - so it reports None rather than
-    # a number. The property this test names is asserted against the live engine, on a
-    # full 20-period company, in test_fundamental_quality.py.
-    assert q.score is None
+    # This company IS scored now, and the change is deliberate. The framework this replaced
+    # spent ten of its metrics on three-year-versus-five-year comparisons, so four periods
+    # could not reach its gate and it returned None. The fifteen-metric matrix measures levels
+    # - margins, leverage, returns, liquidity, cash flow - which four periods can support: it
+    # scores twelve of the fifteen here, and the three it skips are line items this fixture
+    # simply does not define (gross profit, interest expense, capex).
+    assert q.score is not None
+    assert 60 < q.score <= 100
 
 
 def test_falling_eps_fails_even_when_everything_else_is_fine() -> None:
