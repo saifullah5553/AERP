@@ -114,7 +114,7 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
         log.warning("sector multiples failed: %s", exc)
         _MULTIPLES = {}
 
-    scored = passed = improving = no_data = 0
+    scored = passed = improving = no_data = write_failed = 0
     for r in targets:
         cf = safe_file(cdir, f"{r['provider_symbol']}.json")
         if cf is None or not cf.exists():
@@ -259,7 +259,16 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
         }
         try:
             cf.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
-        except OSError:
+        except OSError as exc:
+            # COUNTED AND LOGGED, not silently dropped. This swallowed 2,085 failed writes in
+            # one run - a fifth of the universe - and still reported success: the company kept
+            # its previous scorecard, the summary said nothing, and the only visible trace was
+            # a 'scored' count 2,085 lower than the run before. Transient file locks on
+            # Windows are the usual cause and a retry fixes them, but a write failure on the
+            # primary output must never be invisible.
+            write_failed += 1
+            if write_failed <= 5:
+                log.warning("quality: could not write %s (%s)", cf.name, exc)
             continue
 
         scored += 1
@@ -268,6 +277,11 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
 
     (out / "screener.json").write_text(json.dumps(rows), encoding="utf-8")
     result = {"targets": len(targets), "scored": scored, "passed": passed,
-              "improving": improving, "no_statements": no_data}
+              "improving": improving, "no_statements": no_data,
+              "write_failed": write_failed}
+    if write_failed:
+        log.error("quality: %d company files could not be written - those keep their PREVIOUS "
+                  "scorecard and the snapshot is inconsistent until this is re-run",
+                  write_failed)
     log.info("refresh-quality: %s", result)
     return result
