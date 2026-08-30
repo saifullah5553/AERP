@@ -3,7 +3,7 @@ name: Deploy to Cloudflare
 # Publishes the site to Cloudflare Pages and the live-price proxy to Cloudflare Workers.
 #
 # WHY, alongside the existing GitHub Pages deploy: the scheduler. Measured over eight days,
-# GitHub started the half-hourly refresh 3-7 times a day instead of 48, so a "30-minute" price
+# GitHub started the half-hourly refresh 3-7 times a day instead of 48, so a scheduled price
 # is routinely hours old. Cloudflare fixes that from two directions - Workers cron triggers
 # actually fire, and the price proxy lets the BROWSER fetch quotes for the rows on screen, so
 # freshness stops depending on a batch job at all.

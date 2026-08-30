@@ -178,7 +178,7 @@ def _report_freshness(region: str, out: dict[str, dict[str, list]]) -> None:
     """Say out loud how old this region's newest bar is, and how much of it lags behind.
 
     Quotes already had `price_refresh.report_staleness`; BARS had nothing, and the difference
-    mattered. When the daily refresh was being cancelled, the half-hourly job kept quoting
+    mattered. When the daily refresh was being cancelled, the scheduled price job kept quoting
     today's price while this pack sat at 3 Aug for Pakistan and 11 Aug for everywhere else -
     so every technical score, divergence and index trend was computed on a fortnight-old chart
     behind a price that said today. Nothing looked wrong on any screen.

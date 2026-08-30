@@ -6,8 +6,11 @@
 //
 // Path 2 is why the Worker exists. On the static site `BASE` is empty, so this module used to
 // return a no-op and prices were only ever as fresh as the last batch refresh - and that batch
-// is best-effort: measured over eight days, GitHub started the half-hourly job 3-7 times a day
-// instead of 48. The browser could fetch quotes itself except Yahoo sends no CORS header, so
+// is best-effort AND it now runs only every two hours: measured over eight days, GitHub started
+// the then-half-hourly job 3-7 times a day instead of 48, and the cadence has since been cut to
+// twelve a day to stop the snapshot commits growing the repository. That makes this path the
+// only thing standing between the page and two-hour-old prices.
+// The browser could fetch quotes itself except Yahoo sends no CORS header, so
 // the Worker makes the call server-side and returns it with the header the browser needs.
 //
 // It asks only for the symbols ON SCREEN. That is the whole cost model: fifty rows a tick, not

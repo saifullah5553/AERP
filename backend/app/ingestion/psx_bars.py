@@ -3,7 +3,7 @@
 WHY THIS EXISTS. PSX had no working path to advance its daily bars, and the effect was
 invisible: `refresh_technicals` takes `skip_regions=("psx",)` so PSX never enters the Yahoo
 pass that folds closes into the price pack, and the local OHLC CSVs stopped on 3 August. The
-half-hourly portal market-watch keeps PSX PRICES current, so the screener looked perfectly
+scheduled portal market-watch keeps PSX PRICES current, so the screener looked perfectly
 healthy while every PSX technical score, divergence and signal date was computed on a chart
 that had not moved for nineteen days. A stale chart and a chart that has not moved look
 identical from the outside.
@@ -128,15 +128,22 @@ def refresh_from_market_watch() -> dict[str, int]:
     """Append today's close for the WHOLE market from a single request.
 
     The cheap path, and the one that keeps PSX bars current day to day. `parse_market_watch`
-    already backs the half-hourly price ingest, so this adds no new traffic and cannot trip
+    already backs the scheduled price ingest, so this adds no new traffic and cannot trip
     the per-symbol cooldown - it just stops throwing the closes away once the prices have been
     read out of them.
     """
     from app.ingestion.price_pack import merge_series
-    from app.ingestion.psx_market import PsxClient, parse_market_watch
+
+    # PSXPortalClient, not PsxClient. The wrong name made this raise ImportError on EVERY run
+    # - and because the import sits inside the function, above the try, it escaped the except
+    # below and was then swallowed by the workflow's `|| true`. PSX bars stopped advancing on
+    # 2026-08-21 and nothing went red for nine days: prices stayed current from the scheduled
+    # ingest, so the screener looked healthy while every PSX technical was computed on a chart
+    # that had stopped. The freshness checker is what caught it.
+    from app.ingestion.psx_market import PSXPortalClient, parse_market_watch
 
     try:
-        rows = parse_market_watch(PsxClient().market_watch())
+        rows = parse_market_watch(PSXPortalClient().market_watch())
     except Exception as exc:  # noqa: BLE001 - reported, not swallowed into a silent zero
         log.warning("psx-bars: market-watch fetch failed (%s)", exc)
         return {"symbols": 0, "source": "market-watch", "error": type(exc).__name__}

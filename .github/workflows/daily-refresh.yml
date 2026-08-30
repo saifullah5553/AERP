@@ -21,7 +21,7 @@ permissions:
   id-token: write
 
 concurrency:
-  # Deliberately NOT the "pages" group. Sharing it with the half-hourly price refresh is what
+  # Deliberately NOT the "pages" group. Sharing it with the two-hourly price refresh is what
   # killed this job: GitHub keeps only the newest PENDING run per group, so when this queued
   # behind a price run at 22:15 the next price run at 22:35 cancelled it. Over the last 100
   # runs this workflow completed ONCE. Technicals are a once-a-day job after the last market

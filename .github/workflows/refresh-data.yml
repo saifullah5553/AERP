@@ -14,9 +14,17 @@ on:
     # not failed (44 of 48 that did start succeeded). Scheduled Actions are best-effort and
     # the top and bottom of the hour are the most contended slots on the platform, so an
     # odd minute gets dropped less. It is still best-effort: the only way to guarantee the
-    # 30-minute cadence is an external workflow_dispatch, which is never dropped
+    # cadence is an external workflow_dispatch, which is never dropped
     # (scripts/dispatch_refresh.ps1).
-    - cron: "13,43 * * * *"
+    #
+    # EVERY TWO HOURS as of 2026-08-30, down from twice an hour. Each run commits a snapshot,
+    # and at 48 a day that is what took the repository to 5.04 GB against GitHub's 5 GB limit -
+    # so the cadence is also the growth rate. Twelve runs a day is a quarter of the write
+    # volume for prices that, outside a session you are actively watching, were only ever as
+    # fresh as the last batch anyway. Live intraday prices come from the Cloudflare price
+    # proxy in the browser, which polls every 20 seconds and does not touch the repository at
+    # all - so this cadence sets how fresh the SNAPSHOT is, not how fresh the screen is.
+    - cron: "13 */2 * * *"
   workflow_dispatch:
   push:
     paths: [".github/workflows/refresh-data.yml"] # self-test on changes
@@ -66,7 +74,7 @@ jobs:
           # had quietly become append-only-by-accident: adding ^KSE100 and DFMGI.AE to
           # universe_curated.INDICES changed nothing at all, and Pakistan's regime kept
           # publishing a three-week-old index reading while Dubai had no index signal.
-          # Idempotent - it upserts, so re-running it every 30 minutes adds nothing new.
+          # Idempotent - it upserts, so re-running it on every refresh adds nothing new.
           #
           # Deliberately NOT `|| true`. The first version of this line had one, and after it
           # shipped the two index rows still did not appear - leaving no way to tell whether
@@ -95,7 +103,7 @@ jobs:
           # Cap to the top names by composite (screener is composite-sorted) so the ~11k
           # universe doesn't blow the 30-min budget / trip Yahoo rate limits. PSX prices come
           # from one market-watch request regardless of the cap.
-          # Runs every 30 minutes, so it stays capped - but refresh-prices now takes the
+          # Runs on every refresh, so it stays capped - but refresh-prices now takes the
           # STALEST rows first, which makes the cap a rotation instead of a permanent
           # exclusion. Whatever misses this cycle is at the front of the next one, and the
           # uncapped daily run guarantees every symbol is repriced at least once a day.
