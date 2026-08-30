@@ -670,6 +670,14 @@ function PriceActionSection({ pa, patternSignal }: { pa: PriceAction | null; pat
         />
         <StatRow label="Volume trend" value={titleCase(pa.volume.trend)} />
         <StatRow label="Pattern read" value={patternSignal ?? "—"} />
+        <StatRow
+          label="vs its market"
+          value={
+            pa.relative?.lead_pct != null
+              ? `${pa.relative.lead_pct > 0 ? "+" : ""}${pa.relative.lead_pct.toFixed(1)}pp (63d)`
+              : "—"
+          }
+        />
         <StatRow label="Technical score" value={pa.score != null ? `${pa.score.toFixed(1)}/100` : "—"} />
       </div>
 
@@ -678,6 +686,9 @@ function PriceActionSection({ pa, patternSignal }: { pa: PriceAction | null; pat
         {pa.notes.map((n) => (
           <div key={n} className="mt-1 text-amber-400/80">{n}</div>
         ))}
+        {pa.relative?.note && pa.relative.lead_pct != null && (
+          <div className="mt-1 text-slate-300">{pa.relative.note.charAt(0).toUpperCase() + pa.relative.note.slice(1)}</div>
+        )}
         {pa.candles.length > 0 && (
           <div className="mt-1 text-slate-500">Last bar: {pa.candles.join("; ")}</div>
         )}

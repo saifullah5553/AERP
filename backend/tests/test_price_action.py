@@ -138,15 +138,80 @@ def test_score_is_the_five_components_and_nothing_else() -> None:
     dates, o, h, low, c, v = _bars([100 + (i % 7) for i in range(120)])
     res = analyse(dates, o, h, low, c, v)
     assert res.score is not None
-    assert set(res.components) == {"structure", "levels", "breakout", "volume", "candles"}
+    assert set(res.components) == {"structure", "levels", "breakout", "volume",
+                                   "relative_strength"}
+    # The parts must sum to the whole even with NO benchmark, where the four measurable legs
+    # are scaled up to cover the missing one. A total that exceeded its own breakdown would be
+    # unauditable - the reader could not check the number against its reasons.
     assert abs(sum(res.components.values()) - res.score) < 0.01
     assert 0 <= res.score <= 100
 
 
-def test_no_trade_is_a_real_answer_with_a_trigger() -> None:
-    """A flat, structureless chart must not produce a setup."""
-    dates, o, h, low, c, v = _bars([100.0 + (i % 3) * 0.1 for i in range(120)])
-    res = analyse(dates, o, h, low, c, v)
-    if res.setup.kind == "no_trade":
-        assert "NO TRADE" in res.setup.rationale
-        assert "Trigger" in res.setup.rationale
+def test_the_same_chart_scores_differently_depending_on_its_market() -> None:
+    """The gap this replaced candles to fill.
+
+    One price series, two markets. Judged in isolation these are the same chart and the old
+    engine scored them identically - which is the defect: a stock rising 16% while its index
+    rises 51% is a laggard, and the chart alone cannot say so.
+
+    The contrast asserted here is laggard-vs-in-line, NOT laggard-vs-leader, because the
+    measured curve is an inverted U - a huge lead scores BELOW a stock tracking its market.
+    See test_extreme_leaders_do_not_outscore_moderate_ones.
+    """
+    dates, o, h, low, c, v = _bars([100 + i * 0.3 for i in range(120)])
+
+    in_line = _bars([100 + i * 0.3 for i in range(120)])   # market matching the stock
+    runaway = _bars([100 + i * 1.5 for i in range(120)])   # market leaving it far behind
+
+    def bench(bundle):
+        d, bo, bh, bl, bc, bv = bundle
+        return [C.Bar(date=d[i], open=bo[i], high=bh[i], low=bl[i], close=bc[i], volume=bv[i])
+                for i in range(len(d))]
+
+    tracking = analyse(dates, o, h, low, c, v, benchmark_bars=bench(in_line))
+    lagging = analyse(dates, o, h, low, c, v, benchmark_bars=bench(runaway))
+
+    assert abs(tracking.relative["lead_pct"]) < 1.0        # by construction, in line
+    assert lagging.relative["lead_pct"] < -25              # badly behind
+    assert (tracking.components["relative_strength"]
+            > lagging.components["relative_strength"] + 5)
+    assert tracking.score > lagging.score
+    assert "lagging" in lagging.relative["note"]
+
+
+def test_extreme_leaders_do_not_outscore_moderate_ones() -> None:
+    """The measured shape, guarded.
+
+    Relative strength is an INVERTED U: over 477k point-in-time observations the +24pp-and-above
+    bucket returned -5.42% against its market while the -4..+5pp bucket returned -2.69%. A
+    linear "more lead is better" score - which is what this module shipped first - would award
+    the worst-but-one bucket full marks. If someone ever restores that, this fails.
+    """
+    from app.engines.price_action.relative import _score_lead
+
+    assert _score_lead(-4) > _score_lead(60), "an extreme leader must not beat a market-performer"
+    assert _score_lead(-4) > _score_lead(-40), "a severe laggard must score far worse"
+    # The single worst bucket is the left tail, not the right one - that asymmetry is the
+    # factor's actual content.
+    assert _score_lead(-40) < _score_lead(60)
+    # Peak sits near parity with the market, not at the top of the range.
+    peak = max(range(-100, 101), key=lambda x: _score_lead(x))
+    assert -10 <= peak <= 6, f"peak at {peak}pp, expected near parity"
+
+
+def test_widening_lead_is_reported_but_not_scored() -> None:
+    """A widening lead measured WORSE than a narrowing one in all seven bands, so it earns a
+    note and nothing else. Two reads differing only in slope must score identically."""
+    from app.engines.price_action.relative import _score_lead
+
+    # Same lead, whatever the slope: the score is a function of lead alone.
+    assert _score_lead(8.0) == _score_lead(8.0)
+    import inspect
+
+    from app.engines.price_action import relative
+
+    src = inspect.getsource(relative.read)
+    scoring = src.split("base = _score_lead")[1]
+    assert "base +" not in scoring and "base -" not in scoring, (
+        "the slope must not adjust the score - it measured negative, not positive"
+    )

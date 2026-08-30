@@ -9,10 +9,18 @@ percentage moves, ranges, averages of volume, counts of touches, distances to le
     Structure          25   where the swings are, and whether they are rising or falling
     Support/resistance 20   how close price is to a level, and how well tested that level is
     Breakout quality   20   did it CLOSE through, on what volume, and did it hold
-    Volume confirmation 20  volume read against the price move it accompanied
-    Candle/price action 15  the decisiveness of the most recent bar
+    Relative strength  20   is it beating its own market, and is that lead widening
+    Volume confirmation 15  volume read against the price move it accompanied
                        ---
                        100
+
+Candle reading was removed from the SCORE on 2026-08-30. It carried 15 points on the shape of
+a single bar, the detectors had measured defects (three_black_crows fired on 10% of all bars),
+and our own factor study found the technical inputs were negative predictors over 60 days.
+Relative strength took the weight because it is the measure a technician reaches for first and
+the one thing this engine could not previously say: a stock up 4% in a market up 9% and a stock
+up 4% in a market down 3% scored identically, and those are opposite facts. The candle notes
+are still computed and still reported - they just no longer move the number.
 
 The score is a summary of those five readings, not a prediction, and it deliberately cannot be
 moved by anything fundamental - no earnings, no valuation, no news, no analyst view.
@@ -29,6 +37,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from app.engines.price_action import candles as C
+from app.engines.price_action import relative as R
 from app.engines.price_action import structure as S
 from app.engines.price_action import volume as V
 
@@ -64,6 +73,7 @@ class PriceActionResult:
     zones: list[dict] = field(default_factory=list)
     volume: dict[str, Any] = field(default_factory=dict)
     candle_notes: list[str] = field(default_factory=list)
+    relative: dict[str, Any] = field(default_factory=dict)
     summary: str = ""
     what_changes_it: dict[str, str] = field(default_factory=dict)
     quality: str = "unrated"      # excellent | good | average | weak | avoid
@@ -269,6 +279,14 @@ def _setup(bars: list[C.Bar], zones: list[S.Zone], struct: S.Structure, breakout
     return Setup("no_trade", rationale=f"NO TRADE - WAIT. Trigger: {waiting}.")
 
 
+# The chart legs' natural maxima (structure 25, levels 20, breakout 20, volume 20) and the
+# share of the score they carry. Relative strength takes the remaining 10 - see the note at
+# its call site for the measurement that sized it.
+CORE_MAX = 85.0
+CORE_TARGET = 90.0
+RELATIVE_MAX = 10.0
+
+
 def _structure_points(struct: S.Structure) -> float:
     return {
         "strong_uptrend": 25.0, "weak_uptrend": 19.0,
@@ -322,7 +340,8 @@ def _volume_points(vol: V.VolumeRead, vol_trend: str, breakout: str) -> float:
     return 11.0
 
 
-def analyse(dates, open_, high, low, close, volume) -> PriceActionResult:
+def analyse(dates, open_, high, low, close, volume,
+            benchmark_bars: list | None = None) -> PriceActionResult:
     """The whole read, from OHLCV alone."""
     bars = C.to_bars(dates, open_, high, low, close, volume)
     if len(bars) < MIN_BARS:
@@ -368,13 +387,65 @@ def analyse(dates, open_, high, low, close, volume) -> PriceActionResult:
     phase, confidence, phase_note = _phase(daily_struct, vol_trend, status, in_range)
 
     candle_notes = C.read(bars)
-    candle_points, candle_note = C.quality(bars)
     struct_points = _structure_points(daily_struct)
     level_points, level_note = _level_points(level_zones, price)
     volume_points = _volume_points(vol, vol_trend, status)
 
-    total = round(struct_points + level_points + breakout_points + volume_points
-                  + candle_points, 2)
+    # RELATIVE STRENGTH replaces the candle score. A single bar's shape carried 15 points and
+    # earned none of them: the detectors had real defects (three_black_crows fired on 10% of
+    # all bars), and the factor study found the technical inputs were negative predictors over
+    # 60 days. Whether a security is beating its own market is the measure a technician reaches
+    # for first, and it was the one thing this engine could not say.
+    #
+    # IT CARRIES 10 POINTS, NOT 20, AND THE MEASUREMENT IS WHY. Scored on the curve its own
+    # panel study produced, 62% of today's 9,760 securities land between 88 and 100 and only
+    # 11% fall below 50: the factor genuinely separates severe laggards and genuinely cannot
+    # tell the rest apart. Handing a near-constant leg a fifth of the score would not add
+    # information, it would DILUTE the four legs that do discriminate - the same number of
+    # points, a smaller share of them doing any work. So it is sized as what it measured as:
+    # a penalty on the weak tail, costing a severe laggard its full 10 and a typical name
+    # under one.
+    rel = R.read(bars, benchmark_bars)
+    rel_points = 0.0 if rel.score is None else rel.score / 100.0 * RELATIVE_MAX
+
+    # Candle reading is still COMPUTED and still reported in `candle_notes` for anyone reading
+    # one chart; it simply no longer moves the number.
+    #
+    # The four chart legs top out at 25 + 20 + 20 + 20 = 85 by the natural scales of the
+    # functions above, and relative strength adds 10. Scale them to 90 so a perfect read is
+    # exactly 100 - without this the score silently capped at 95 and nothing said so.
+    core_lift = CORE_TARGET / CORE_MAX
+    struct_points *= core_lift
+    level_points *= core_lift
+    breakout_points *= core_lift
+    volume_points *= core_lift
+
+    if rel.score is None:
+        # No benchmark: renormalise over what WAS measurable, rather than scoring a zero for
+        # the missing leg and marking down every security whose index we cannot resolve.
+        #
+        # Scale the components themselves, not just the total. The published invariant is that
+        # the parts sum to the score - that is what makes it auditable, and a total quietly
+        # larger than its own breakdown would be exactly the kind of number this project keeps
+        # having to un-trust.
+        lift = 100.0 / CORE_TARGET
+        struct_points *= lift
+        level_points *= lift
+        breakout_points *= lift
+        volume_points *= lift
+    # Round the parts FIRST and total the rounded parts, so the breakdown adds up to the
+    # published score exactly rather than to within a rounding error. `levels` used to be
+    # stored unrounded while the rest were rounded, which left the four components on a company
+    # page summing to 48.22 beside a score of 48.24 - small, but the page then disagrees with
+    # itself and there is no way for a reader to tell that apart from a real fault.
+    parts = {
+        "structure": round(struct_points, 2),
+        "levels": round(level_points, 2),
+        "breakout": round(breakout_points, 2),
+        "volume": round(volume_points, 2),
+        "relative_strength": round(rel_points, 2),
+    }
+    total = round(sum(parts.values()), 2)
     setup = _setup(bars, level_zones, daily_struct, status, vol)
 
     bias = ("bullish" if total >= 62 and daily_struct.label not in
@@ -392,10 +463,10 @@ def analyse(dates, open_, high, low, close, volume) -> PriceActionResult:
         structure_daily=daily_struct.label, structure_weekly=weekly_struct.label,
         breakout_status=status, setup=setup,
         components={
-            "structure": round(struct_points, 2), "levels": level_points,
-            "breakout": round(breakout_points, 2), "volume": round(volume_points, 2),
-            "candles": candle_points,
+            **parts,
         },
+        relative={"lead_pct": rel.lead_pct, "recent_lead_pct": rel.recent_lead_pct,
+                  "improving": rel.improving, "score": rel.score, "note": rel.note},
         zones=[asdict(z) for z in level_zones],
         volume={"relative": vol.relative, "label": vol.label, "average": vol.average,
                 "trend": vol_trend, "note": vol.note, "verdict": verdict},

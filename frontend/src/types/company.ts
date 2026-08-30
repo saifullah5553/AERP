@@ -59,6 +59,15 @@ export interface PriceAction {
     trend: string; note: string; verdict: string;
   };
   candles: string[];
+  /** Strength against the security's OWN market index. Note this is not `volume.relative`
+   *  above, which is relative volume - two different quantities that share a word. */
+  relative?: {
+    lead_pct: number | null;
+    recent_lead_pct: number | null;
+    improving: boolean | null;
+    score: number | null;
+    note: string;
+  };
   summary: string;
   what_changes_it: { bullish?: string; bearish?: string; wait?: string };
   notes: string[];

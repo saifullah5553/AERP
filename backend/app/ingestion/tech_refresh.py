@@ -341,6 +341,41 @@ def _backtest_psx(rows, company, regime_map, today, limit):
     log.info("PSX signal-since backtest: %d updated", updated)
 
 
+# The index whose performance each market is measured against. Relative strength is meaningless
+# without one, and these series are already maintained in the global price pack by
+# `refresh-indices` on every run - so this costs no extra fetch.
+BENCHMARK = {
+    "us": "^GSPC", "india": "^NSEI", "australia": "^AXJO",
+    "gcc": "^TASI.SR", "psx": "^KSE100", "dfm": "DFMGI.AE",
+}
+_BENCH_CACHE: dict[str, list] = {}
+
+
+def _benchmark_bars(region: str) -> list:
+    """Benchmark closes as Bar objects, loaded once per region per process."""
+    if region in _BENCH_CACHE:
+        return _BENCH_CACHE[region]
+    symbol = BENCHMARK.get(region or "")
+    out: list = []
+    if symbol:
+        from app.engines.price_action.candles import Bar
+        from app.ingestion.price_pack import packed_bars
+
+        rows = packed_bars("global", symbol)
+        for day in sorted(rows):
+            _d, _o, _h, _l, close, _v = rows[day]
+            if close is not None:
+                out.append(Bar(date=day, open=close, high=close, low=close,
+                               close=close, volume=None))
+    if not out and symbol:
+        # Loud, because a silently absent benchmark makes relative strength null for a whole
+        # market and the score renormalises around it without complaint - exactly the kind of
+        # invisible degradation this codebase keeps producing.
+        log.warning("relative strength: no packed history for benchmark %s (%s)", symbol, region)
+    _BENCH_CACHE[region] = out
+    return out
+
+
 def refresh_technicals(
     data_dir: str | Path,
     skip_regions: tuple[str, ...] = ("psx",),
@@ -405,7 +440,8 @@ def refresh_technicals(
         if h is None:
             continue
         dates, open_, high, low, close, vol = h
-        read = analyse_price_action(dates, open_, high, low, close, vol)
+        read = analyse_price_action(dates, open_, high, low, close, vol,
+                                    benchmark_bars=_benchmark_bars(r.get("region")))
         tech = read.score
         if tech is None:
             continue
@@ -559,6 +595,9 @@ def refresh_technicals(
                     "breakout_status": read.breakout_status,
                     "components": read.components, "zones": read.zones,
                     "volume": read.volume, "candles": read.candle_notes,
+                    # Relative strength is a fifth of the score, so it ships with its reasoning.
+                    # A leg that moves the number without showing why is unauditable.
+                    "relative": read.relative,
                     "summary": read.summary, "what_changes_it": read.what_changes_it,
                     "notes": read.notes,
                     "setup": {

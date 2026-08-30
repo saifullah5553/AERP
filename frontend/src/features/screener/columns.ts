@@ -1,11 +1,9 @@
 import type { ColDef } from "ag-grid-community";
 
-import { fmtInt, fmtNumber, fmtPercent, scoreHeatBg, titleize } from "@/lib/format";
+import { fmtInt, fmtNumber, fmtPercent, scoreHeatBg } from "@/lib/format";
 import type { ScreenerRow } from "@/types/api";
 import {
-  ActionCell,
   ChangeCell,
-  PatternCell,
   QuarterScoreCell,
   ScoreCell,
   TrendCell,
@@ -200,32 +198,16 @@ export function buildColumnDefs(): ColDef<ScreenerRow>[] {
       cellRenderer: ScoreCell,
       cellStyle: heat,
     },
-    {
-      field: "top_candlestick",
-      headerName: "Candlestick",
-      width: 150,
-      sortable: false,
-      cellRenderer: PatternCell,
-      valueFormatter: (p) => titleize(p.value),
-    },
-    {
-      field: "top_chart_pattern",
-      headerName: "Chart Pattern",
-      width: 160,
-      sortable: false,
-      cellRenderer: PatternCell,
-      valueFormatter: (p) => titleize(p.value),
-    },
-    {
-      field: "strategy_action",
-      headerName: "Action",
-      headerTooltip:
-        "Quality gate + price action: BUY (strong/improving and starting to move), HOLD, " +
-        "WATCH (quality, awaiting a move), AVOID (fails the fundamental gate)",
-      width: 110,
-      sortable: true,
-      cellRenderer: ActionCell,
-    },
+    // CANDLESTICK, CHART PATTERN and ACTION were removed on 2026-08-30.
+    //
+    // They were noise dressed as signal. The patterns are pattern-detector output with no
+    // demonstrated edge, and the Action badge was a BUY/WATCH/AVOID call derived from the
+    // same technical inputs the column beside it already labels "a negative predictor over
+    // 60 days". A grid that prints BUY next to an admission that the model is inverted is
+    // worse than one that prints nothing: it invites a trade the evidence does not support.
+    //
+    // The detectors still run and are still stored on the company page for anyone who wants
+    // to look one up; what went is the promotion of an unvalidated call to a screener column.
     // No standalone "Fund Score" column: the headline score IS the newest quarter, so it
     // repeated whichever quarter column that company last reported. The grid still OPENS
     // ranked by it (lib/api.ts sorts on quality_score when no column is sorted) - the
