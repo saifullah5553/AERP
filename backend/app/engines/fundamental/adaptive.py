@@ -72,12 +72,21 @@ CATEGORY_METRICS = {
 TOTAL_MAX = 100.0
 PER_METRIC = TOTAL_MAX / METRIC_WEIGHT_COUNT          # 6.667
 
+# The financial sector is scored on its OWN nine-metric matrix (see financial.py), because
+# eleven of the fifteen have no meaning for a deposit-funded balance sheet. Its categories
+# carry their own weight: nine metrics, equal, also totalling 100.
+FIN_METRIC_COUNT = 9
+FIN_CATEGORY_METRICS = {"fin_growth": 4, "fin_profitability": 3, "fin_capital": 2}
+FIN_PER_METRIC = TOTAL_MAX / FIN_METRIC_COUNT          # 11.111
+
 CATEGORY_MAX = {k: n * PER_METRIC for k, n in CATEGORY_METRICS.items()}
+CATEGORY_MAX.update({k: n * FIN_PER_METRIC for k, n in FIN_CATEGORY_METRICS.items()})
 
 # `Metric.weighted` is ``score * weight / 100`` and a full mark is GOOD (5), so the weight that
 # makes one metric worth PER_METRIC is PER_METRIC / 5 * 100. Equal for every category by
 # construction - the category a metric sits in must not change what it is worth.
 CATEGORY_WEIGHT = {k: PER_METRIC / GOOD * 100.0 for k in CATEGORY_METRICS}
+CATEGORY_WEIGHT.update({k: FIN_PER_METRIC / GOOD * 100.0 for k in FIN_CATEGORY_METRICS})
 
 CATEGORY_LABEL = {
     "growth": "Growth",
@@ -86,6 +95,10 @@ CATEGORY_LABEL = {
     "returns": "Returns on Capital",
     "liquidity": "Liquidity",
     "cash_flow": "Cash Flow",
+    # The financial matrix.
+    "fin_growth": "Growth",
+    "fin_profitability": "Profitability",
+    "fin_capital": "Capital & Stability",
 }
 
 
@@ -176,32 +189,17 @@ _MODEL_KEYWORDS: list[tuple[str, str]] = [
 ]
 
 INAPPLICABLE: dict[str, set[str]] = {
-    BANK: {
-        # A bank funds itself with deposits: interest expense is its cost of goods, not a
-        # financing burden, and balance-sheet leverage is the business, not a risk to punish.
-        "debt_to_equity", "interest_coverage",
-        # No inventory and no operating cycle, so a current or quick ratio compares two
-        # numbers that do not mean for a bank what they mean for a manufacturer.
-        "current_ratio", "quick_ratio",
-        # Banks report no gross profit and no operating profit line, and the specification is
-        # explicit that generic margin thresholds must not be applied to them.
-        "gross_margin", "operating_margin", "op_growth",
-        # EVERY cash-flow metric, not just free cash flow. A bank's operating cash flow is
-        # dominated by deposit and loan flows, so it swings hard on balance-sheet growth
-        # rather than performance: JPMorgan's most recent operating cash flow is NEGATIVE
-        # $107bn and its cash-to-earnings ratio -1.65, which scored the bank BAD twice for
-        # lending more money. Capex is trivial for the same reason, so free cash flow measures
-        # the funding cycle instead of the business.
-        "free_cash_flow", "operating_cash_flow", "cfo_vs_net_income",
-        # Invested capital has no meaning where the balance sheet IS the product.
-        "roic",
-    },
-    INSURER: {
-        "interest_coverage", "current_ratio", "quick_ratio", "gross_margin", "roic",
-    },
+    # BANK and INSURER are EMPTY because they are no longer scored on this matrix at all -
+    # they get the nine financial metrics in financial.py, every one of which applies to them.
+    # Marking eleven of fifteen N/A was the old answer, and it left a bank assessed on the four
+    # metrics that happened to survive: JPMorgan and UBL both scored exactly 100.0 on that
+    # remainder and outranked companies measured on the full fifteen.
+    BANK: set(),
+    INSURER: set(),
     REIT: {
         # Property is the inventory and it sits in non-current assets; a quick ratio on a REIT
-        # measures nothing about its ability to meet obligations.
+        # measures nothing about its ability to meet obligations. A REIT keeps the operating
+        # matrix otherwise - it collects rent and services debt like an operating company.
         "quick_ratio", "gross_margin",
     },
     UTILITY: set(),
@@ -211,11 +209,16 @@ INAPPLICABLE: dict[str, set[str]] = {
 }
 
 MODEL_NOTE = {
-    BANK: ("Bank: industrial metrics marked N/A and their weight redistributed. NIM, CET1, "
-           "NPL, provision coverage, CASA and loan/deposit are NOT scored - those line items "
-           "are absent from our statement store, so the banking framework is half applied."),
-    INSURER: ("Insurer: combined, loss and expense ratios and solvency are absent from our "
-              "statement store; only the generic metrics that stay meaningful are scored."),
+    BANK: ("Bank: scored on the nine-metric financial matrix - growth in income, profit, "
+           "assets and book value per share; ROE, ROA and net margin; equity/assets and "
+           "earnings stability - with thresholds measured from 471 banks. NIM, CET1, NPL, "
+           "provision coverage, CASA and loan/deposit are NOT scored: those line items are "
+           "absent from our statement store. Asset quality is the thing that actually kills "
+           "banks and it is the thing this cannot see."),
+    INSURER: ("Insurer: scored on the financial matrix with its own thresholds, measured from "
+              "187 insurers - an insurer's median ROA is 2.7% against a bank's 1.0% and its "
+              "equity/assets 27.5% against 10.7%. Combined, loss and expense ratios and "
+              "solvency margins are absent from our statement store and are NOT scored."),
     REIT: ("REIT: FFO, AFFO, NAV and occupancy are absent from our statement store, and "
            "depreciation makes conventional EPS understate the business."),
     UTILITY: "Utility: inventory metrics N/A; regulated returns make stability dominate.",
@@ -259,7 +262,12 @@ def classify_model(sector: str | None, industry: str | None = None,
         interest = _f(income.get("interest_expense"))
         revenue = _f(income.get("revenue"))
         leverage = (assets / equity) if (assets and equity and equity > 0) else None
-        int_share = (interest / revenue) if (interest and revenue and revenue > 0) else None
+        # THE MAGNITUDE. The store signs interest expense negative, so the raw ratio is
+        # negative and the >= 0.10 test below could never be true for any company that
+        # reported the line at all - the same sign error that made interest coverage a
+        # constant. It survived because the test tolerates a MISSING ratio, and 77% of
+        # financials do not report interest expense, so the common path still worked.
+        int_share = (abs(interest) / revenue) if (interest and revenue and revenue > 0) else None
         if (leverage is not None and leverage >= 6.0
                 and not inventory
                 and (int_share is None or int_share >= 0.10)):

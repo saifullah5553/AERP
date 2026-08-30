@@ -10,10 +10,12 @@ exactly like banks being bad businesses.
 from __future__ import annotations
 
 from app.engines.fundamental.adaptive import (
+    BANK,
     CATEGORY_LABEL,
     CATEGORY_MAX,
     COUNTRIES,
     DEFAULT_COUNTRY,
+    INSURER,
     MODEL_NOTE,
     TOTAL_MAX,
     AdaptiveResult,
@@ -28,6 +30,7 @@ from app.engines.fundamental.adaptive_metrics import (
     piotroski_score,
     risk_from_flags,
 )
+from app.engines.fundamental.financial import classify_financial
 
 # Four of the fifteen. The matrix is a quarter the size of the framework it replaces, so the
 # old count of eight would now refuse whole business models rather than thin data: with its
@@ -156,7 +159,10 @@ def score_company(statements: dict[str, list[dict]], region: str,
     # leverage, liquidity and cash-conversion facts the matrix already scores, so including it
     # would count them twice. It stays on the record because a single 0-9 summary is useful to
     # read next to the score.
-    res.piotroski = piotroski_score(inc, bal, cf)
+    # Not for financials: the F-Score's nine tests assume gross margin, asset turnover,
+    # current ratio and leverage read the way they do for an operating company. Running it on
+    # a bank produces a number with no meaning rather than a missing one.
+    res.piotroski = None if model in (BANK, INSURER) else piotroski_score(inc, bal, cf)
 
     res.metrics = metrics
     earned, applicable, cats = _normalise(metrics)
@@ -209,15 +215,28 @@ def score_company(statements: dict[str, list[dict]], region: str,
         cap = sum(cats.get(k, {}).get("applicable_max") or 0.0 for k in keys)
         return round(earned / cap * 100, 1) if cap else None
 
-    res.matrix = {
-        "growth": _tier(pct("growth")),
-        "quality": _tier(pct("margins", "returns")),
-        "strength": _tier(pct("leverage", "liquidity")),
-        "cash_flow": _tier(pct("cash_flow")),
-    }
-    res.classification = _classify(res.matrix["growth"], res.matrix["quality"],
-                                   res.matrix["strength"], res.matrix["cash_flow"],
-                                   res.trend)
+    if model in (BANK, INSURER):
+        # The financial matrix has no cash-flow leg - a bank's operating cash flow tracks
+        # deposit and loan flows, not performance - so it is classified on its own three axes
+        # rather than being fed a fourth that would always read "Unknown".
+        res.matrix = {
+            "growth": _tier(pct("fin_growth")),
+            "profitability": _tier(pct("fin_profitability")),
+            "capital": _tier(pct("fin_capital")),
+        }
+        res.classification = classify_financial(
+            res.matrix["growth"], res.matrix["profitability"], res.matrix["capital"],
+            res.trend)
+    else:
+        res.matrix = {
+            "growth": _tier(pct("growth")),
+            "quality": _tier(pct("margins", "returns")),
+            "strength": _tier(pct("leverage", "liquidity")),
+            "cash_flow": _tier(pct("cash_flow")),
+        }
+        res.classification = _classify(res.matrix["growth"], res.matrix["quality"],
+                                       res.matrix["strength"], res.matrix["cash_flow"],
+                                       res.trend)
     return res
 
 

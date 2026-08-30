@@ -1,20 +1,25 @@
 import type { FundamentalScorecard as Scorecard } from "@/types/company";
 
-// The six groups of the fifteen-metric matrix, in the order the specification lists them.
+// The categories come from the DATA, in the order the engine emitted them, using the label it
+// already publishes alongside each one. Nothing is hardcoded here on purpose.
 //
-// These keys must match what the engine publishes. They did not: the list here named six
-// categories the adaptive engine has never produced ("profitability", "capital_efficiency",
-// "balance_sheet"), and the row below required a `points` field the engine calls
-// `applicable_max`. Between them, EVERY category bar was skipped - the breakdown had been
-// invisible on every company page while looking like a component that worked.
-const CATEGORIES: { key: string; label: string }[] = [
-  { key: "growth", label: "Growth" },
-  { key: "margins", label: "Margins vs Industry" },
-  { key: "leverage", label: "Leverage & Coverage" },
-  { key: "returns", label: "Returns on Capital" },
-  { key: "liquidity", label: "Liquidity" },
-  { key: "cash_flow", label: "Cash Flow" },
-];
+// A hardcoded list is what broke this component before: it named six categories the engine has
+// never produced ("profitability", "capital_efficiency", "balance_sheet") and required a
+// `points` field the engine calls `applicable_max`, so EVERY bar was skipped - the breakdown
+// was invisible on every company page while the component looked like it worked. There are now
+// two matrices with different categories (an operating company gets six, a bank gets three),
+// which a fixed list would have got wrong again the moment banks moved to their own.
+const FALLBACK_LABELS: Record<string, string> = {
+  growth: "Growth",
+  margins: "Margins vs Industry",
+  leverage: "Leverage & Coverage",
+  returns: "Returns on Capital",
+  liquidity: "Liquidity",
+  cash_flow: "Cash Flow",
+  fin_growth: "Growth",
+  fin_profitability: "Profitability",
+  fin_capital: "Capital & Stability",
+};
 
 function tone(pct: number): string {
   if (pct >= 0.8) return "#22c55e";
@@ -61,9 +66,8 @@ export default function FundamentalScorecard({ card }: { card: Scorecard }) {
       </div>
 
       <div className="space-y-1.5">
-        {CATEGORIES.map(({ key, label }) => {
-          const c = card.categories?.[key];
-          if (!c) return null;
+        {Object.entries(card.categories ?? {}).map(([key, c]) => {
+          const label = c.label ?? FALLBACK_LABELS[key] ?? key;
           const max = c.applicable_max ?? 0;
           // A category every one of whose metrics is N/A for this business model is reported
           // as such, not dropped. "N/A for a bank" and "scored zero" are opposite findings and

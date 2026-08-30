@@ -15,10 +15,12 @@ from __future__ import annotations
 from app.engines.fundamental.adaptive import (
     AVERAGE,
     BAD,
+    BANK,
     COUNTRIES,
     DEFAULT_COUNTRY,
     GOOD,
     INAPPLICABLE,
+    INSURER,
     Metric,
     _at,
     _cagr,
@@ -119,6 +121,13 @@ def build_metrics(inc: list[dict], bal: list[dict], cf: list[dict],
     `market` is unused - the matrix scores the BUSINESS, and what the market will pay for it
     is the valuation engine's question. It stays in the signature because callers pass it.
     """
+    # A bank is not an operating company with missing data - it is a different kind of
+    # business, and it gets its own matrix rather than this one with eleven holes in it.
+    if model in (BANK, INSURER):
+        from app.engines.fundamental.financial import build_financial_metrics
+
+        return build_financial_metrics(inc, bal, region, model)
+
     c = COUNTRIES.get(region, DEFAULT_COUNTRY)
     na = INAPPLICABLE.get(model, set())
     peers = peers or {}

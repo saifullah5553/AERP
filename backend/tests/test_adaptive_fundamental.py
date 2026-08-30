@@ -91,13 +91,13 @@ def test_the_same_company_scores_differently_by_country() -> None:
     assert pk.percent != us.percent
 
 
-def test_bank_metrics_are_na_and_the_maximum_shrinks() -> None:
-    """A bank must not be scored on a quick ratio, interest coverage or free cash flow.
+def test_a_bank_is_scored_on_the_financial_matrix_not_the_operating_one() -> None:
+    """A bank gets its own nine metrics, not the operating fifteen with holes in them.
 
-    Scoring them 1 instead of N/A is the failure this engine exists to prevent: it makes every
-    bank look like a failing manufacturer, and the score gives no hint that the metrics were
-    never meaningful. JPMorgan is the live case - its most recent operating cash flow is
-    negative $107bn because it lent money, which is a bank working, not a bank failing.
+    Marking eleven of the fifteen N/A was the old answer and it left a bank assessed on
+    whatever happened to survive - revenue growth, net profit growth, net margin and ROE.
+    JPMorgan and UBL both scored exactly 100.0 on that remainder and outranked companies
+    measured on all fifteen. Four metrics is not an assessment.
     """
     st = _rows(20)
     bank = score_company(st, "psx", sector="Commercial Banks", market=MARKET)
@@ -106,20 +106,42 @@ def test_bank_metrics_are_na_and_the_maximum_shrinks() -> None:
     assert bank.model == BANK
     assert plain.model == GENERAL
 
-    na = {m.key for m in bank.metrics if m.na_model}
-    for key in ("current_ratio", "quick_ratio", "interest_coverage", "debt_to_equity",
-                "roic", "gross_margin", "operating_margin", "free_cash_flow",
-                "operating_cash_flow", "cfo_vs_net_income"):
-        assert key in na, f"{key} should be N/A for a bank"
+    keys = {m.key for m in bank.metrics}
+    assert keys == {"sales_growth", "net_growth", "asset_growth", "book_value_growth",
+                    "roe", "roa", "net_margin", "equity_to_assets", "earnings_stability"}
+    # Nothing is N/A any more, because every one of the nine applies to a bank.
+    assert not [m for m in bank.metrics if m.na_model]
+    assert bank.applicable_count == 9
 
-    # The maximum shrinks with them, which is what stops the N/A metrics costing anything.
-    assert bank.applicable_max < plain.applicable_max
-    assert bank.categories["liquidity"]["applicable_max"] == 0.0
-    assert bank.categories["liquidity"]["na_model"] == 2
-    # And the thinness is REPORTED, not hidden: four metrics of fifteen is a different claim
-    # from fifteen of fifteen even when both come to the same percentage.
-    assert bank.applicable_count == 4
-    assert plain.applicable_count == 15
+    # The operating-company metrics are simply absent, not scored badly.
+    for gone in ("current_ratio", "quick_ratio", "interest_coverage", "gross_margin",
+                 "free_cash_flow", "debt_to_equity", "roic"):
+        assert gone not in keys
+
+    # Both matrices are out of 100, so the two scores sit on the same scale.
+    assert abs(bank.applicable_max - 100.0) < 1e-9
+    assert abs(plain.applicable_max - 100.0) < 1e-9
+
+
+def test_banks_and_insurers_are_measured_against_different_norms() -> None:
+    """One set of thresholds would call every insurer over-capitalised and every bank thin.
+
+    Measured across our own statements: median ROA is 1.0% for a bank and 2.7% for an insurer,
+    equity to assets 10.7% against 27.5%, net margin 28.6% against 7.4% - because an insurer's
+    revenue is premiums.
+    """
+    from app.engines.fundamental.financial import ANCHORS
+
+    for metric in ("roa", "equity_to_assets", "net_margin"):
+        assert ANCHORS["bank"][metric] != ANCHORS["insurer"][metric], metric
+    # Every anchor triple must be ordered, or prorata reads the direction backwards.
+    for model, table in ANCHORS.items():
+        for metric, (bad, avg, good) in table.items():
+            rising = good > bad
+            assert (avg > bad and good > avg) if rising else (avg < bad and good < avg), \
+                f"{model}.{metric} anchors are not monotonic"
+    # Earnings stability is the one where LOWER is better, and it must be stated that way.
+    assert ANCHORS["bank"]["earnings_stability"][2] < ANCHORS["bank"]["earnings_stability"][0]
 
 
 def test_a_bank_is_not_penalised_for_being_a_bank() -> None:
@@ -163,13 +185,15 @@ def test_missing_data_is_not_the_same_as_not_applicable() -> None:
     the denominator and a firm reporting almost nothing scores full marks on the little it does
     report.
     """
+    # A REIT, not a bank: banks now have their own matrix with nothing marked N/A, so the
+    # model-exclusion path has to be exercised on a model that still uses the operating one.
     st = _rows(20)
-    bank = score_company(st, "psx", sector="Commercial Banks", market=MARKET)
-    by_model = [m for m in bank.metrics if m.na_model]
-    assert by_model, "a bank should have model-inapplicable metrics"
+    reit = score_company(st, "psx", sector="REIT - Diversified", market=MARKET)
+    by_model = [m for m in reit.metrics if m.na_model]
+    assert by_model, "a REIT should have model-inapplicable metrics"
     assert all(m.score is None for m in by_model)
     # The two reasons are reported separately per category.
-    liq = bank.categories["liquidity"]
+    liq = reit.categories["liquidity"]
     assert "na_model" in liq and "no_data" in liq
 
 
@@ -220,6 +244,9 @@ def test_category_weights_reproduce_the_stated_maxima() -> None:
         CATEGORY_MAX,
         CATEGORY_METRICS,
         CATEGORY_WEIGHT,
+        FIN_CATEGORY_METRICS,
+        FIN_METRIC_COUNT,
+        FIN_PER_METRIC,
         GOOD,
         METRIC_WEIGHT_COUNT,
         PER_METRIC,
@@ -227,12 +254,18 @@ def test_category_weights_reproduce_the_stated_maxima() -> None:
     )
 
     assert sum(CATEGORY_METRICS.values()) == METRIC_WEIGHT_COUNT == 15
-    for cat, n in CATEGORY_METRICS.items():
-        assert abs(GOOD * CATEGORY_WEIGHT[cat] / 100 * n - CATEGORY_MAX[cat]) < 1e-9, cat
-    assert abs(sum(CATEGORY_MAX.values()) - TOTAL_MAX) < 1e-9
-    # Equal per metric, whichever category it happens to sit in. Grouping is presentation.
-    assert len(set(CATEGORY_WEIGHT.values())) == 1
-    assert abs(PER_METRIC * 15 - 100.0) < 1e-9
+    assert sum(FIN_CATEGORY_METRICS.values()) == FIN_METRIC_COUNT == 9
+
+    # Each matrix totals 100 on its own, so a bank's score and a manufacturer's sit on the
+    # same scale even though they were reached by counting different things.
+    for metrics, per in ((CATEGORY_METRICS, PER_METRIC),
+                         (FIN_CATEGORY_METRICS, FIN_PER_METRIC)):
+        for cat, n in metrics.items():
+            assert abs(GOOD * CATEGORY_WEIGHT[cat] / 100 * n - CATEGORY_MAX[cat]) < 1e-9, cat
+        assert abs(sum(CATEGORY_MAX[c] for c in metrics) - TOTAL_MAX) < 1e-9
+        assert abs(per * sum(metrics.values()) - TOTAL_MAX) < 1e-9
+        # Equal per metric WITHIN a matrix. Grouping is presentation, not weight.
+        assert len({CATEGORY_WEIGHT[c] for c in metrics}) == 1
 
 
 def test_every_metric_of_the_matrix_is_present_and_nothing_else() -> None:
