@@ -145,6 +145,11 @@ export interface ScoreCategory {
   applicable_max: number;
   /** The category's budget before any model exclusions. */
   original_max?: number;
+  /** LEGACY. Roughly a quarter of stored company files still carry the older six-category
+   *  scorecard, which names this field `points` and publishes no `label`. Those files are
+   *  rewritten as each company is next scored, so both shapes are live at once and the
+   *  component has to read either. */
+  points?: number;
   percent?: number | null;
   scored?: number;
   na_model?: number;

@@ -10,6 +10,7 @@ import type { FundamentalScorecard as Scorecard } from "@/types/company";
 // two matrices with different categories (an operating company gets six, a bank gets three),
 // which a fixed list would have got wrong again the moment banks moved to their own.
 const FALLBACK_LABELS: Record<string, string> = {
+  // Current matrices - the engine publishes its own labels, so these are only a safety net.
   growth: "Growth",
   margins: "Margins vs Industry",
   leverage: "Leverage & Coverage",
@@ -19,6 +20,14 @@ const FALLBACK_LABELS: Record<string, string> = {
   fin_growth: "Growth",
   fin_profitability: "Profitability",
   fin_capital: "Capital & Stability",
+  // Shapes still present in stored files, which are rewritten only as each company is next
+  // scored. Until then both live side by side and neither may render as a blank row.
+  profitability: "Profitability",
+  capital_efficiency: "Capital Efficiency",
+  balance_sheet: "Balance Sheet",
+  working_capital: "Working Capital",
+  stability: "Stability",
+  valuation: "Valuation",
 };
 
 function tone(pct: number): string {
@@ -68,11 +77,18 @@ export default function FundamentalScorecard({ card }: { card: Scorecard }) {
       <div className="space-y-1.5">
         {Object.entries(card.categories ?? {}).map(([key, c]) => {
           const label = c.label ?? FALLBACK_LABELS[key] ?? key;
-          const max = c.applicable_max ?? 0;
+          // `applicable_max` is the current field; `points` is what the older six-category
+          // scorecard called it, and about a quarter of stored files still carry that shape.
+          // Reading only the new name made every one of their categories look like a zero
+          // budget - and the row below would then have announced "not applicable to this
+          // business model" for six categories that were simply written by an older pass.
+          const max = c.applicable_max ?? c.points;
+          // Genuinely unknown: skip rather than guess in either direction.
+          if (max == null) return null;
           // A category every one of whose metrics is N/A for this business model is reported
           // as such, not dropped. "N/A for a bank" and "scored zero" are opposite findings and
           // a blank row would let the reader guess wrong.
-          if (!max) {
+          if (max === 0) {
             return (
               <div key={key} className="flex items-center gap-3">
                 <span className="w-56 shrink-0 text-[11px] text-slate-400">{label}</span>
