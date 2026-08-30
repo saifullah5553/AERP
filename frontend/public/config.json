@@ -1,0 +1,4 @@
+{
+  "_comment": "Runtime overrides. Edit this file on the deployed site to change where live prices come from - no rebuild, no re-upload of the whole bundle. Leave priceProxy empty to fall back to snapshot prices.",
+  "priceProxy": ""
+}

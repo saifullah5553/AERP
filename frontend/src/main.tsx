@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 
 import App from "@/App";
 import "@/index.css";
+import { loadRuntimeConfig } from "@/lib/liveQuotes";
 import { initTheme } from "@/lib/theme";
 
 initTheme();
@@ -19,6 +20,10 @@ if ("serviceWorker" in navigator && import.meta.env.PROD) {
     });
   });
 }
+
+// Runtime config before first paint, so live prices pick up a corrected proxy URL without a
+// rebuild. Deliberately not awaited: a missing or slow config.json must not delay the app.
+void loadRuntimeConfig();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
