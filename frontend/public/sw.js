@@ -19,12 +19,17 @@
 const SHELL_VERSION = "aerp-shell-v1";
 const DATA_CACHE = "aerp-data-v1";
 
+// Derived from where the worker itself was served, so the same file works at "/" and at
+// "/AERP/". Hardcoding "/" meant every precache entry 404'd under a subpath and the install
+// silently cached nothing.
+const SCOPE = new URL("./", self.location).pathname;
+
 const SHELL_ASSETS = [
-  "/",
-  "/index.html",
-  "/manifest.webmanifest",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png",
+  SCOPE,
+  `${SCOPE}index.html`,
+  `${SCOPE}manifest.webmanifest`,
+  `${SCOPE}icons/icon-192.png`,
+  `${SCOPE}icons/icon-512.png`,
 ];
 
 self.addEventListener("install", (event) => {
@@ -55,7 +60,7 @@ self.addEventListener("activate", (event) => {
 });
 
 function isData(url) {
-  return url.pathname.startsWith("/data/");
+  return url.pathname.startsWith(`${SCOPE}data/`);
 }
 
 function isShell(request, url) {
@@ -64,8 +69,8 @@ function isShell(request, url) {
     request.destination === "script" ||
     request.destination === "style" ||
     request.destination === "font" ||
-    url.pathname.startsWith("/icons/") ||
-    url.pathname.startsWith("/assets/")
+    url.pathname.startsWith(`${SCOPE}icons/`) ||
+    url.pathname.startsWith(`${SCOPE}assets/`)
   );
 }
 
@@ -118,7 +123,9 @@ self.addEventListener("fetch", (event) => {
           .catch(() => {
             // A single-page app: any navigation offline should still boot the shell and let
             // the router take over, rather than showing the browser's dinosaur.
-            if (request.destination === "document") return caches.match("/index.html");
+            if (request.destination === "document") {
+              return caches.match(`${SCOPE}index.html`);
+            }
             return new Response("", { status: 504 });
           });
       }),
