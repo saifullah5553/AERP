@@ -4,19 +4,28 @@
  * Two caches, deliberately handled differently, because the app shell and the data have
  * opposite requirements:
  *
- *   SHELL (html/js/css/icons)  cache-first.  It only changes when a build ships, and the
- *                              version bump below is what retires the old one.
+ *   DOCUMENT (index.html)      NETWORK-FIRST.  It names the hashed bundle, so caching it is
+ *                              caching the whole app version. Serving it cache-first pinned
+ *                              every returning visitor to the build they first loaded: the
+ *                              server had the new bundle, index.html on the server pointed at
+ *                              it, and the browser never asked. Three screener columns stayed
+ *                              on screen for a user a full day after they were deleted,
+ *                              deployed and verified live. Offline still falls back to cache.
+ *   ASSETS (hashed js/css)     cache-first, and safely so: the filename contains a content
+ *                              hash, so a new build is a new URL and can never be stale.
  *   DATA  (/data/*.json)       network-first, falling back to cache.  A price must never be
  *                              served from cache when the network is available - a stale
  *                              price that LOOKS live is the one failure this whole project
  *                              keeps running into. Offline, a clearly-old number beats a
  *                              blank screen, so the fallback stands.
  *
- * Bump SHELL_VERSION on any change to this file or the app shell. Old caches are deleted on
- * activate, so a stale shell cannot outlive a deploy.
+ * Bump SHELL_VERSION on any change to this file. Old caches are deleted on activate, so a
+ * stale shell cannot outlive a deploy. Note this is now a backstop rather than the mechanism:
+ * with the document fetched network-first, a deploy reaches the user without needing anyone to
+ * remember to bump anything - which is the point, because nobody did for the whole life of v1.
  */
 
-const SHELL_VERSION = "aerp-shell-v1";
+const SHELL_VERSION = "aerp-shell-v2";
 const DATA_CACHE = "aerp-data-v1";
 
 // Derived from where the worker itself was served, so the same file works at "/" and at
@@ -63,9 +72,12 @@ function isData(url) {
   return url.pathname.startsWith(`${SCOPE}data/`);
 }
 
+function isDocument(request) {
+  return request.mode === "navigate" || request.destination === "document";
+}
+
 function isShell(request, url) {
   return (
-    request.destination === "document" ||
     request.destination === "script" ||
     request.destination === "style" ||
     request.destination === "font" ||
@@ -108,6 +120,28 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // The document decides which bundle runs, so it is always fetched fresh when the network
+  // allows. A cached copy is kept only to boot the app offline.
+  if (isDocument(request)) {
+    event.respondWith(
+      fetch(request)
+        .then((resp) => {
+          if (resp.ok && resp.type === "basic") {
+            const copy = resp.clone();
+            caches.open(SHELL_VERSION).then((c) => c.put(request, copy));
+          }
+          return resp;
+        })
+        .catch(() =>
+          caches
+            .match(request)
+            .then((hit) => hit || caches.match(`${SCOPE}index.html`))
+            .then((hit) => hit || new Response("", { status: 504 })),
+        ),
+    );
+    return;
+  }
+
   if (isShell(request, url)) {
     event.respondWith(
       caches.match(request).then((hit) => {
@@ -120,14 +154,7 @@ self.addEventListener("fetch", (event) => {
             }
             return resp;
           })
-          .catch(() => {
-            // A single-page app: any navigation offline should still boot the shell and let
-            // the router take over, rather than showing the browser's dinosaur.
-            if (request.destination === "document") {
-              return caches.match(`${SCOPE}index.html`);
-            }
-            return new Response("", { status: 504 });
-          });
+          .catch(() => new Response("", { status: 504 }));
       }),
     );
   }

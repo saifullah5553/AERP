@@ -6,7 +6,9 @@ const EXPORT_COLUMNS: (keyof ScreenerRow)[] = [
   "volume", "pe_ttm", "roe", "debt_to_equity", "revenue_growth",
   "eps_growth", "dividend_yield", "strategy_action", "quality_score",
   "fundamental_score", "technical_score",
-  "top_candlestick", "top_chart_pattern",
+  // No top_candlestick / top_chart_pattern. They were removed from the grid as noise dressed
+  // as signal, and a download that still carries them just moves the same unvalidated call
+  // into a spreadsheet, where it looks more authoritative rather than less.
 ];
 
 function csvCell(v: unknown): string {
