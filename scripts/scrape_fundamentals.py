@@ -42,7 +42,18 @@ OUT_DIR = Path(os.environ.get("AERP_FUND_CSV_DIR", REPO / "data" / "fundamentals
 LOG = REPO / "data" / "scrape_fundamentals.log"
 
 # Never needed for reading a table, and they are most of the bytes on these pages.
-_SKIP_RESOURCES = {"image", "media", "font", "stylesheet"}
+# NOT "stylesheet". Aborting the stylesheet breaks the page: it renders the statement
+# correctly for an instant and then the site's own JavaScript throws and replaces the whole
+# document with "An error occurred" - four tables and eighteen rows become zero. Measured
+# 2026-08-31 on DFM:AIRARABIA, and confirmed by elimination: image, media and font are all
+# safe on their own and in combination; stylesheet alone is enough to break it.
+#
+# This was the cause of the entire fundamentals backlog. The scraper waited for a table that
+# had just been destroyed, retried three times, and recorded the symbol as "without usable
+# data" - which is how 111 of 216 Saudi names and 94 of 201 US names were lost, and why the
+# run crawled at ~15 companies an hour: nearly all of that time was spent waiting out
+# timeouts on pages that had already been wrecked.
+_SKIP_RESOURCES = {"image", "media", "font"}
 
 # stockanalysis URL prefix per market. PSX already has its own folder from the earlier scrape,
 # but it is included so a single command can top up everything.
