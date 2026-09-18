@@ -10,7 +10,7 @@ name: Daily Technical Refresh
 # produced nothing for all 453 names. It now reads our own bar store instead: 453/453 dated.
 on:
   schedule:
-    - cron: "15 22 * * *" # 22:15 UTC (after US close; offset from the 30-min refresh)
+    - cron: "15 22 * * *" # ONCE DAILY, 22:15 UTC (after the US close; offset from the others)
   workflow_dispatch:
   push:
     paths: [".github/workflows/daily-refresh.yml"] # self-test on changes

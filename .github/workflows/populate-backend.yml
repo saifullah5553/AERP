@@ -6,7 +6,7 @@ name: Populate Live Backend
 on:
   workflow_dispatch:
   schedule:
-    - cron: "30 */6 * * *" # every 6 hours, offset from the demo refresh
+    - cron: "30 6 * * *" # ONCE DAILY, 06:30 UTC (was every 6 hours)
 
 concurrency:
   group: populate-backend

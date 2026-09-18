@@ -17,14 +17,16 @@ on:
     # cadence is an external workflow_dispatch, which is never dropped
     # (scripts/dispatch_refresh.ps1).
     #
-    # EVERY TWO HOURS as of 2026-08-30, down from twice an hour. Each run commits a snapshot,
-    # and at 48 a day that is what took the repository to 5.04 GB against GitHub's 5 GB limit -
-    # so the cadence is also the growth rate. Twelve runs a day is a quarter of the write
-    # volume for prices that, outside a session you are actively watching, were only ever as
-    # fresh as the last batch anyway. Live intraday prices come from the Cloudflare price
-    # proxy in the browser, which polls every 20 seconds and does not touch the repository at
-    # all - so this cadence sets how fresh the SNAPSHOT is, not how fresh the screen is.
-    - cron: "13 */2 * * *"
+    # ONCE A DAY as of 2026-09-18, down from twice an hour and then two-hourly. Each run
+    # commits a snapshot, so the cadence IS the repository's growth rate: 48 runs a day is
+    # what took it past GitHub's 5 GB limit, and 86% of the repo is this one directory.
+    # One run a day is 1/48th of the write volume.
+    #
+    # This sets how fresh the SNAPSHOT is, not how fresh the screen is. Live intraday prices
+    # come from the Cloudflare price proxy in the browser, which polls every 20 seconds and
+    # never touches the repository - so a daily snapshot costs nothing for a session you are
+    # actively watching, and only matters for the first paint before the proxy responds.
+    - cron: "13 21 * * *"   # ONCE DAILY, 21:13 UTC - an hour before the daily refresh
   workflow_dispatch:
   push:
     paths: [".github/workflows/refresh-data.yml"] # self-test on changes

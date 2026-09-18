@@ -13,7 +13,7 @@ name: PSX Fundamentals Refresh
 # something actually changed — a blocked/empty run is a harmless no-op (no bad data).
 on:
   schedule:
-    - cron: "20 2 * * 1,4" # Mon & Thu 02:20 UTC
+    - cron: "20 2 * * *" # ONCE DAILY, 02:20 UTC (was Mon & Thu)
   workflow_dispatch:
     inputs:
       symbols:
