@@ -91,13 +91,12 @@ def test_the_same_company_scores_differently_by_country() -> None:
     assert pk.percent != us.percent
 
 
-def test_a_bank_is_scored_on_the_financial_matrix_not_the_operating_one() -> None:
-    """A bank gets its own nine metrics, not the operating fifteen with holes in them.
+def test_bank_metrics_are_na_and_the_maximum_shrinks() -> None:
+    """A bank must not be scored on inventory, current ratio or interest coverage.
 
-    Marking eleven of the fifteen N/A was the old answer and it left a bank assessed on
-    whatever happened to survive - revenue growth, net profit growth, net margin and ROE.
-    JPMorgan and UBL both scored exactly 100.0 on that remainder and outranked companies
-    measured on all fifteen. Four metrics is not an assessment.
+    Scoring them 1 instead of N/A is the failure this engine exists to prevent: it makes every
+    bank look like a failing manufacturer, and the score gives no hint that the metrics were
+    never meaningful.
     """
     st = _rows(20)
     bank = score_company(st, "psx", sector="Commercial Banks", market=MARKET)
@@ -106,42 +105,15 @@ def test_a_bank_is_scored_on_the_financial_matrix_not_the_operating_one() -> Non
     assert bank.model == BANK
     assert plain.model == GENERAL
 
-    keys = {m.key for m in bank.metrics}
-    assert keys == {"sales_growth", "net_growth", "asset_growth", "book_value_growth",
-                    "roe", "roa", "net_margin", "equity_to_assets", "earnings_stability"}
-    # Nothing is N/A any more, because every one of the nine applies to a bank.
-    assert not [m for m in bank.metrics if m.na_model]
-    assert bank.applicable_count == 9
+    na = {m.key for m in bank.metrics if m.na_model}
+    for key in ("inventory_turnover", "ccc", "current_ratio", "interest_coverage",
+                "debt_to_equity", "croic"):
+        assert key in na, f"{key} should be N/A for a bank"
 
-    # The operating-company metrics are simply absent, not scored badly.
-    for gone in ("current_ratio", "quick_ratio", "interest_coverage", "gross_margin",
-                 "free_cash_flow", "debt_to_equity", "roic"):
-        assert gone not in keys
-
-    # Both matrices are out of 100, so the two scores sit on the same scale.
-    assert abs(bank.applicable_max - 100.0) < 1e-9
-    assert abs(plain.applicable_max - 100.0) < 1e-9
-
-
-def test_banks_and_insurers_are_measured_against_different_norms() -> None:
-    """One set of thresholds would call every insurer over-capitalised and every bank thin.
-
-    Measured across our own statements: median ROA is 1.0% for a bank and 2.7% for an insurer,
-    equity to assets 10.7% against 27.5%, net margin 28.6% against 7.4% - because an insurer's
-    revenue is premiums.
-    """
-    from app.engines.fundamental.financial import ANCHORS
-
-    for metric in ("roa", "equity_to_assets", "net_margin"):
-        assert ANCHORS["bank"][metric] != ANCHORS["insurer"][metric], metric
-    # Every anchor triple must be ordered, or prorata reads the direction backwards.
-    for model, table in ANCHORS.items():
-        for metric, (bad, avg, good) in table.items():
-            rising = good > bad
-            assert (avg > bad and good > avg) if rising else (avg < bad and good < avg), \
-                f"{model}.{metric} anchors are not monotonic"
-    # Earnings stability is the one where LOWER is better, and it must be stated that way.
-    assert ANCHORS["bank"]["earnings_stability"][2] < ANCHORS["bank"]["earnings_stability"][0]
+    # The maximum shrinks with them, which is what stops the N/A metrics costing anything.
+    assert bank.applicable_max < plain.applicable_max
+    assert bank.categories["working_capital"]["applicable_max"] == 0.0
+    assert bank.categories["working_capital"]["na_model"] == 5
 
 
 def test_a_bank_is_not_penalised_for_being_a_bank() -> None:
@@ -185,16 +157,14 @@ def test_missing_data_is_not_the_same_as_not_applicable() -> None:
     the denominator and a firm reporting almost nothing scores full marks on the little it does
     report.
     """
-    # A REIT, not a bank: banks now have their own matrix with nothing marked N/A, so the
-    # model-exclusion path has to be exercised on a model that still uses the operating one.
     st = _rows(20)
-    reit = score_company(st, "psx", sector="REIT - Diversified", market=MARKET)
-    by_model = [m for m in reit.metrics if m.na_model]
-    assert by_model, "a REIT should have model-inapplicable metrics"
+    bank = score_company(st, "psx", sector="Commercial Banks", market=MARKET)
+    by_model = [m for m in bank.metrics if m.na_model]
+    assert by_model, "a bank should have model-inapplicable metrics"
     assert all(m.score is None for m in by_model)
     # The two reasons are reported separately per category.
-    liq = reit.categories["liquidity"]
-    assert "na_model" in liq and "no_data" in liq
+    stab = bank.categories["stability"]
+    assert "na_model" in stab and "no_data" in stab
 
 
 def test_a_company_reporting_almost_nothing_is_not_scored() -> None:
@@ -217,7 +187,7 @@ def test_growth_is_measured_even_on_short_history() -> None:
     growing 2%.
     """
     fast = score_company(_rows(8), "psx", sector="Industrials", market=MARKET)
-    sales = next(m for m in fast.metrics if m.key == "sales_growth")
+    sales = next(m for m in fast.metrics if m.key == "sales_cagr")
     assert sales.value is not None
     assert sales.score is not None
 
@@ -234,92 +204,24 @@ def test_rating_bands_match_the_specification() -> None:
 
 
 def test_category_weights_reproduce_the_stated_maxima() -> None:
-    """Fifteen metrics, equal weight, totalling exactly 100.
+    """18 + 47.5 + 34 + 21 + 25 = 145.5, with equal weights inside each category.
 
-    The specification lists the metrics and sets no weights, so they are equal - and that is a
-    decision worth pinning. A later edit that quietly made one category heavier would change
-    the meaning of every stored score without changing anything visible.
+    The specification gives the maxima but not the per-metric weights; this is the assignment
+    that reproduces them, and it is worth pinning so a later edit cannot quietly change the
+    scale every stored score sits on.
     """
     from app.engines.fundamental.adaptive import (
         CATEGORY_MAX,
-        CATEGORY_METRICS,
         CATEGORY_WEIGHT,
-        FIN_CATEGORY_METRICS,
-        FIN_METRIC_COUNT,
-        FIN_PER_METRIC,
         GOOD,
-        METRIC_WEIGHT_COUNT,
-        PER_METRIC,
         TOTAL_MAX,
     )
 
-    assert sum(CATEGORY_METRICS.values()) == METRIC_WEIGHT_COUNT == 15
-    assert sum(FIN_CATEGORY_METRICS.values()) == FIN_METRIC_COUNT == 9
-
-    # Each matrix totals 100 on its own, so a bank's score and a manufacturer's sit on the
-    # same scale even though they were reached by counting different things.
-    for metrics, per in ((CATEGORY_METRICS, PER_METRIC),
-                         (FIN_CATEGORY_METRICS, FIN_PER_METRIC)):
-        for cat, n in metrics.items():
-            assert abs(GOOD * CATEGORY_WEIGHT[cat] / 100 * n - CATEGORY_MAX[cat]) < 1e-9, cat
-        assert abs(sum(CATEGORY_MAX[c] for c in metrics) - TOTAL_MAX) < 1e-9
-        assert abs(per * sum(metrics.values()) - TOTAL_MAX) < 1e-9
-        # Equal per metric WITHIN a matrix. Grouping is presentation, not weight.
-        assert len({CATEGORY_WEIGHT[c] for c in metrics}) == 1
-
-
-def test_every_metric_of_the_matrix_is_present_and_nothing_else() -> None:
-    """The fifteen, by name. A metric added or dropped without the specification changing
-    would move every score, and this is the only place that would notice."""
-    res = score_company(_rows(20), "psx", sector="Industrials", market=MARKET)
-    assert {m.key for m in res.metrics} == {
-        "sales_growth", "op_growth", "net_growth",
-        "gross_margin", "operating_margin", "net_margin",
-        "debt_to_equity", "interest_coverage",
-        "roe", "roic",
-        "current_ratio", "quick_ratio",
-        "cfo_vs_net_income", "operating_cash_flow", "free_cash_flow",
-    }
-
-
-def test_interest_coverage_uses_the_magnitude_of_a_negative_expense() -> None:
-    """The store signs interest expense NEGATIVE for 8,364 companies against 150 positive.
-
-    Reading it as a signed number meant the ``interest > 0`` test almost never fired, every
-    company fell through to the "nothing to cover" default, and 98.3% of the universe scored a
-    perfect 5. A metric that returns the same answer for everyone is broken, not lenient.
-    """
-    # Negative, as the store actually writes it.
-    thin = _rows(20, income={"operating_income": 1000.0,
-                             "interest_expense": -500.0})   # 2x cover: weak
-    thick = _rows(20, income={"operating_income": 1000.0,
-                              "interest_expense": -20.0})   # 50x cover: strong
-    weak = next(m for m in score_company(thin, "psx", sector="Industrials",
-                                         market=MARKET).metrics
-                if m.key == "interest_coverage")
-    strong = next(m for m in score_company(thick, "psx", sector="Industrials",
-                                           market=MARKET).metrics
-                  if m.key == "interest_coverage")
-    assert weak.value is not None and weak.value == 2.0
-    assert strong.value == 50.0
-    assert weak.score is not None and strong.score is not None
-    assert weak.score < strong.score
-
-
-def test_a_metric_is_read_at_the_latest_period_that_reports_it() -> None:
-    """The newest TTM column is null for 19% of inventory and 10% of current assets, and no
-    company has a field null in EVERY column. Reading index 0 alone treated those reporting
-    lags as absent and dropped roughly a third of Indian companies out of liquidity."""
-    st = _rows(20)
-    # Blank the newest two periods of the current-ratio inputs only.
-    for row in st["balance"][:2]:
-        row["current_assets"] = None
-        row["current_liabilities"] = None
-    res = score_company(st, "psx", sector="Industrials", market=MARKET)
-    cr = next(m for m in res.metrics if m.key == "current_ratio")
-    assert cr.value is not None, "should fall back to the newest period that reports it"
-    assert cr.score is not None
-    assert "back" in cr.note or "old" in cr.note, "and must say the figure is not current"
+    counts = {"growth": 4, "stability": 12, "valuation": 8, "working_capital": 5,
+              "cash_flow": 5}
+    for cat, n in counts.items():
+        assert abs(GOOD * CATEGORY_WEIGHT[cat] / 100 * n - CATEGORY_MAX[cat]) < 1e-9, cat
+    assert abs(sum(CATEGORY_MAX.values()) - TOTAL_MAX) < 1e-9
 
 
 def test_the_grade_always_matches_its_own_score() -> None:

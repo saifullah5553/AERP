@@ -17,9 +17,6 @@ const FALLBACK_LABELS: Record<string, string> = {
   returns: "Returns on Capital",
   liquidity: "Liquidity",
   cash_flow: "Cash Flow",
-  fin_growth: "Growth",
-  fin_profitability: "Profitability",
-  fin_capital: "Capital & Stability",
   // Shapes still present in stored files, which are rewritten only as each company is next
   // scored. Until then both live side by side and neither may render as a blank row.
   profitability: "Profitability",
