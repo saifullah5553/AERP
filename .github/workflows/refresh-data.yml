@@ -13,19 +13,17 @@ on:
     # actually STARTED this workflow 3-7 times a day instead of 48 - the runs were dropped,
     # not failed (44 of 48 that did start succeeded). Scheduled Actions are best-effort and
     # the top and bottom of the hour are the most contended slots on the platform, so an
-    # odd minute gets dropped less. It is still best-effort: the only way to guarantee the
-    # cadence is an external workflow_dispatch, which is never dropped
-    # (scripts/dispatch_refresh.ps1).
+    # odd minute gets dropped less. It is still best-effort, and in practice this fires
+    # about four hours late (~01:00 UTC).
     #
     # ONCE A DAY as of 2026-09-18, down from twice an hour and then two-hourly. Each run
     # commits a snapshot, so the cadence IS the repository's growth rate: 48 runs a day is
     # what took it past GitHub's 5 GB limit, and 86% of the repo is this one directory.
     # One run a day is 1/48th of the write volume.
     #
-    # This sets how fresh the SNAPSHOT is, not how fresh the screen is. Live intraday prices
-    # come from the Cloudflare price proxy in the browser, which polls every 20 seconds and
-    # never touches the repository - so a daily snapshot costs nothing for a session you are
-    # actively watching, and only matters for the first paint before the proxy responds.
+    # This IS how fresh prices are on the site. The browser-side price proxy exists in code
+    # but has never been switched on (config.json priceProxy is empty and the Worker is not
+    # deployed), so with one run a day the page shows once-a-day prices.
     - cron: "13 21 * * *"   # ONCE DAILY, 21:13 UTC - an hour before the daily refresh
   workflow_dispatch:
   push:
@@ -37,7 +35,13 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  # NOT "pages". A workflow_dispatch from 2026-10-06 stuck in `queued` on GitHub's side and held
+  # that group for a month: every later run sat pending for 24 hours, was replaced by the next
+  # day's, and never started a job. meta.json and macro_regime.json froze on 6 Oct while the
+  # other workflows stayed green. A new group name is what gets out from behind a stuck run
+  # without needing an API token to cancel it. If this ever happens again, the symptom is a
+  # run that is `pending` with no jobs: rename the group here and in deploy-pages.yml.
+  group: pages-publish
   cancel-in-progress: false
 
 jobs:
@@ -193,64 +197,11 @@ jobs:
       - id: deployment
         uses: actions/deploy-pages@v4
 
-  # Each run asks for the next one, so the cadence does not depend on GitHub's scheduler -
-  # which measurably drops ~90% of what the cron above asks for. A workflow_dispatch is the
-  # documented exception to "the default GITHUB_TOKEN cannot trigger workflows", so this
-  # needs no personal access token and nothing outside GitHub. The cron stays as the thing
-  # that restarts the loop if it ever stops.
-  chain:
-    needs: [build, deploy]
-    if: always() # a failed run must still hand off, or the loop dies on the first bad day
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    permissions:
-      actions: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      REPO: ${{ github.repository }}
-      # Target wall-clock between run STARTS. A run takes ~13 min, so most of this is the
-      # wait. Set it to 0 for back-to-back runs (~13-minute data, same runner cost).
-      CYCLE_MINUTES: "30"
-    steps:
-      - name: Wait out the cycle, then ask for the next run
-        run: |
-          # Every failure reports itself as an ::error:: annotation, because downloading job
-          # logs from the API needs admin rights on the repo and annotations do not. If this
-          # step dies quietly the whole loop stops, so it must say why.
-          set -uo pipefail
-
-          started=$(gh api "repos/$REPO/actions/runs/${{ github.run_id }}" --jq .run_started_at)
-          if [ -z "${started:-}" ]; then
-            echo "::error::chain: could not read run_started_at - not chaining."
-            exit 1
-          fi
-          elapsed=$(( $(date +%s) - $(date -d "$started" +%s) ))
-          remain=$(( CYCLE_MINUTES * 60 - elapsed ))
-          if [ "$remain" -gt 0 ]; then
-            echo "Run started $started (${elapsed}s ago); waiting ${remain}s."
-            sleep "$remain"
-          fi
-
-          # Checked AFTER the wait, not before: the cron can fire while we sleep, and that
-          # run is then the loop. Dispatching anyway would leave two chains, then four - the
-          # interval halving every time until the repo is running Actions continuously.
-          live=$(gh api "repos/$REPO/actions/workflows/refresh-data.yml/runs?per_page=50" \
-                   --jq "[.workflow_runs[]
-                          | select(.id != ${{ github.run_id }})
-                          | select(.status != \"completed\")] | length")
-          live=${live:-0}
-          if [ "$live" -gt 0 ]; then
-            echo "$live other run(s) already pending - they carry the loop. Not chaining."
-            exit 0
-          fi
-
-          # -R is not optional: this job deliberately skips actions/checkout (it only needs
-          # the API), so gh has no git remote to infer the repository from and exits 1.
-          if ! out=$(gh workflow run refresh-data.yml --ref main -R "$REPO" 2>&1); then
-            echo "::error::chain: dispatch failed: ${out}"
-            exit 1
-          fi
-          echo "Next refresh requested."
+  # There was a `chain` job here: each run dispatched the next one, 30 minutes on. It is gone
+  # because the user asked for one refresh a day, and the cron below could not deliver that
+  # while it existed - the cron was only the thing that restarted the loop. Cutting the cron to
+  # two-hourly and then daily changed nothing, and the loop kept committing a full snapshot
+  # every half hour, which is most of why the repository went from 7 GB to nearly 20 GB.
 
   freshness:
     # A SEPARATE job that needs `build` but does not gate `deploy`. The check must be able to

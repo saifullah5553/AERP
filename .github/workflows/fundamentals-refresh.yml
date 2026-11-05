@@ -26,6 +26,8 @@ name: Fundamentals Refresh (all markets)
 on:
   schedule:
     - cron: "40 5 * * *" # daily 05:40 UTC - after the US close and the day's filings
+  push:
+    paths: [".github/workflows/fundamentals-refresh.yml"] # self-test on changes
   workflow_dispatch:
     inputs:
       symbols:
@@ -55,7 +57,10 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    # Sized to fit the scrape budget below: ~10 min of setup and probing, 170 of scraping, and
+    # room to consolidate, rescore and push. At 120 this job was killed mid-scrape on most days
+    # and lost everything it had fetched, so results only landed on the quiet days.
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -117,7 +122,7 @@ jobs:
           python scripts/scrape_fundamentals.py \
             --regions us,india,australia,psx,gcc,dfm \
             --symbols "${{ steps.pick.outputs.symbols }}" \
-            --workers 3 --page-pause 0.5 --work 300 --rest 0
+            --workers 3 --page-pause 0.5 --work 300 --rest 0 --max-minutes 170
 
       - name: Merge into the store, then push it into the snapshot
         if: steps.pick.outputs.symbols != ''
@@ -150,6 +155,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "Store unchanged - nothing to commit."
           else
-            git commit -m "data: refresh fundamentals for companies that reported"
-            git push
+            # Not a bare `git push`: this job runs for hours, so another workflow has usually
+            # pushed by the time it finishes, and a rejected push here loses the whole scrape.
+            bash scripts/commit_snapshot.sh "data: refresh fundamentals for companies that reported"
           fi

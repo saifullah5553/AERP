@@ -388,6 +388,12 @@ def main() -> int:
     ap.add_argument("--symbols", default=None,
                     help="comma list to refresh; re-fetches them even if already downloaded")
     ap.add_argument("--limit", type=int, default=None)
+    # --work is per CYCLE, so it never ended a run: with --rest 0 the loop below simply starts
+    # another cycle until the list is empty. On a long pending list that ran straight into the
+    # job's time limit, GitHub killed the job mid-scrape, and because consolidation is a later
+    # step every company fetched that day was thrown away.
+    ap.add_argument("--max-minutes", type=float, default=None,
+                    help="stop cleanly after this long in total, keeping what was fetched")
     args = ap.parse_args()
 
     from playwright.sync_api import sync_playwright
@@ -456,8 +462,13 @@ def main() -> int:
                         f"| no-data {state['failed']}")
             browser.close()
 
+    deadline = time.time() + args.max_minutes * 60 if args.max_minutes else None
     while state["idx"] < len(todo):
         cycle_end = time.time() + args.work * 60
+        if deadline is not None:
+            if time.time() >= deadline:
+                break
+            cycle_end = min(cycle_end, deadline)
         threads = [threading.Thread(target=worker, args=(cycle_end,), daemon=True)
                    for _ in range(max(1, args.workers))]
         for t in threads:
@@ -466,6 +477,10 @@ def main() -> int:
             t.join()
 
         idx, done = state["idx"], state["done"]
+        if idx < len(todo) and deadline is not None and time.time() >= deadline:
+            log(f"--- time budget reached at {idx}/{len(todo)} (saved {done}) - stopping so "
+                "the run can keep what it fetched ---")
+            break
         if idx < len(todo):
             log(f"--- cycle done at {idx}/{len(todo)} (saved {done}) - resting "
                 f"{args.rest}m so stockanalysis doesn't throttle us ---")

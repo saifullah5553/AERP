@@ -18,8 +18,8 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
-  # Must NOT cancel in progress. This shares the "pages" group with Refresh Demo Data, so
+  group: pages-publish
+  # Must NOT cancel in progress. This shares its group with Refresh Demo Data, so
   # cancelling killed the refresh mid-run: a frontend push at 08:22 UTC on 4 Aug aborted the
   # 08:10 refresh, and since the schedule then dropped every following slot, the published
   # snapshot sat 12 hours stale. A push now waits out the ~13-minute refresh instead.

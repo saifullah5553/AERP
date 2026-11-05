@@ -14,6 +14,8 @@ name: PSX Fundamentals Refresh
 on:
   schedule:
     - cron: "20 2 * * *" # ONCE DAILY, 02:20 UTC (was Mon & Thu)
+  push:
+    paths: [".github/workflows/psx-fundamentals.yml"] # self-test on changes
   workflow_dispatch:
     inputs:
       symbols:
@@ -33,6 +35,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      # The FULL backend requirements. `python -m app.cli` needs pydantic-settings and httpx
+      # among others, and this job installed only playwright and pandas - so pending-results
+      # died on import and the workflow failed in under two minutes on every scheduled run.
+      - run: pip install -r backend/requirements.txt
       - run: pip install playwright pandas && python -m playwright install --with-deps chromium
 
       - name: Unpack existing PSX CSVs
