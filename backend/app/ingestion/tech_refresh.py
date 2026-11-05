@@ -38,7 +38,7 @@ from app.engines.strategy.signal import evaluate as strategy_evaluate
 
 log = get_logger(__name__)
 
-_CHART = "https://query1.finance.yahoo.com/v8/finance/chart/{sym}?range=1y&interval=1d"
+_CHART = "https://{host}.finance.yahoo.com/v8/finance/chart/{sym}?range=1y&interval=1d"
 _UA = "Mozilla/5.0 (compatible; AERP/1.0)"
 MIN_BARS = 60
 # PSX candles come from Yahoo but the exchange's closes decide whether to believe them.
@@ -54,6 +54,7 @@ PSX_KEEP_READ_DAYS = 7
 TECHNICAL_ENGINE = 2
 RETRY_PAUSE_SECONDS = 20
 RETRY_WORKERS = 2
+WHY_SAMPLE = 3
 # Everything a technical read writes onto a row, and so what must go when there is no read.
 _READ_FIELDS = (
     "technical_score", "technical_as_of", "technical_engine", "signal", "signal_label",
@@ -73,13 +74,14 @@ def _f(v: Any) -> float | None:
     return None if f != f else f
 
 
-def fetch_history(sym: str, client: httpx.Client):
+def fetch_history(sym: str, client: httpx.Client, host: str = "query1"):
     """chart-v8 daily OHLCV → (dates, open, high, low, close, volume), or None.
 
     `dates` are ISO strings aligned with the arrays (for signal-inception backtesting).
     `open` is carried so candlestick patterns can be detected from the same fetch."""
     try:
-        resp = client.get(_CHART.format(sym=sym), headers={"User-Agent": _UA}, timeout=20)
+        resp = client.get(_CHART.format(host=host, sym=sym), headers={"User-Agent": _UA},
+                          timeout=20)
         resp.raise_for_status()
         res = resp.json()["chart"]["result"][0]
         ts = res.get("timestamp") or []
@@ -238,6 +240,20 @@ def _on_exchange_closes(symbol: str, yahoo):
     return [dates[i] for i in keep], open_[keep], high[keep], low[keep], close[keep], vol[keep]
 
 
+def _yahoo_says(sym: str, client: httpx.Client) -> str:
+    """What Yahoo actually answered, because fetch_history can only say "nothing".
+
+    HUBC, AHCL, AVN, ALTN and BNL came back on every run from here and on none from CI, retry
+    included, and a job's logs need a token to read. This goes in the annotation instead.
+    """
+    try:
+        resp = client.get(_CHART.format(host="query1", sym=sym), headers={"User-Agent": _UA},
+                          timeout=20)
+        return f"{sym}: HTTP {resp.status_code} {resp.text[:90]!r}"
+    except httpx.HTTPError as exc:
+        return f"{sym}: {type(exc).__name__}"
+
+
 def _read_is_recent(r: dict) -> bool:
     try:
         seen = datetime.fromisoformat(str(r.get("technical_as_of"))[:10]).date()
@@ -342,18 +358,23 @@ def refresh_technicals(
             for sym, h in zip(syms, results, strict=False):
                 if h is not None:
                     hist[sym] = h
-        # Once more, slowly. fetch_history cannot tell a refusal from a symbol with no data, and
-        # the refusals are the ones this recovers.
+        # Once more, slowly, on the other host. fetch_history cannot tell a refusal from a symbol
+        # with no data, and the refusals are the ones this recovers.
         missed = [s for s in syms if s not in hist]
         if missed:
             time.sleep(RETRY_PAUSE_SECONDS)
             with ThreadPoolExecutor(max_workers=RETRY_WORKERS) as pool:
-                results = pool.map(lambda s: fetch_history(s, client), missed)
+                results = pool.map(lambda s: fetch_history(s, client, host="query2"), missed)
                 for sym, h in zip(missed, results, strict=False):
                     if h is not None:
                         hist[sym] = h
             log.info("refresh-technicals: retry recovered %d of %d",
                      sum(1 for s in missed if s in hist), len(missed))
+        still = [s for s in missed if s not in hist and s.endswith(".KA")]
+        if still:
+            samples = [_yahoo_says(s, client) for s in still[:WHY_SAMPLE]]
+            print(f"::warning::refresh-technicals: Yahoo's answer for names it did not serve: "
+                  f"{samples}", flush=True)
     finally:
         client.close()
 

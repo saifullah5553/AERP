@@ -519,6 +519,23 @@ def cmd_refresh_technicals(args: argparse.Namespace) -> None:
     log.info("refresh-technicals: %s", refresh_technicals(out, limit=args.limit))
 
 
+def cmd_repair_price_splits(args: argparse.Namespace) -> None:
+    """Repair split breaks in the price packs, only where a name proves it. Dry run by default."""
+    import json as _json
+    from pathlib import Path
+
+    from app.ingestion.pack_repair import sweep
+
+    out = Path(args.out or "../frontend/public/data")
+    rows = _json.loads((out / "screener.json").read_text(encoding="utf-8"))
+    for region in args.regions.split(","):
+        # Spelled as the pack spells its keys: see price_pack.packed_bars.
+        provider = {str(r["symbol"]).upper().replace("/", "_").replace(":", "_"):
+                    r["provider_symbol"] for r in rows
+                    if r.get("region") == region and r.get("provider_symbol")}
+        log.info("repair-price-splits[%s]: %s", region, sweep(region, provider, apply=args.apply))
+
+
 def cmd_refresh_prices(args: argparse.Namespace) -> None:
     """Patch price fields in the exported snapshot via Yahoo chart v8 (keyless, CI-friendly).
     Does not touch the DB — updates screener.json + company/*.json prices in place."""
@@ -1248,6 +1265,10 @@ def build_parser() -> argparse.ArgumentParser:
     rp.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
     rt = add("refresh-technicals", cmd_refresh_technicals, limit=True)
     rt.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
+    rs = add("repair-price-splits", cmd_repair_price_splits)
+    rs.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
+    rs.add_argument("--regions", default="psx,dfm,gcc,australia,india,us")
+    rs.add_argument("--apply", action="store_true", help="write the repairs; otherwise report them")
     rn = add("refresh-news", cmd_refresh_news, limit=True)
     rn.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
     rn.add_argument("--only-missing", action="store_true", help="only names without news yet")

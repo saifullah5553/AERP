@@ -72,57 +72,19 @@ export function scoreSet(detail: CompanyDetail): ScoreSet {
 // ── Technical intelligence (chart-free) ──────────────────────────────────────
 export interface TechnicalRead {
   trend: "Bullish" | "Bearish" | "Sideways";
-  momentum: "Strong" | "Weak";
-  aboveSma50: boolean | null;
-  aboveSma200: boolean | null;
-  rsi: number | null;
-  rsiCondition: "Overbought" | "Oversold" | "Neutral";
-  volume: "Increasing" | "Decreasing" | "Normal";
-  pattern: string | null;
 }
 
+/** The trend from the daily price-action read. A transition such as uptrend_to_distribution is
+ *  neither, so only the settled labels count. This read `detail.technical`, the block the deleted
+ *  indicator engine left behind, which has not changed since July 2026. */
 export function technicalRead(detail: CompanyDetail): TechnicalRead {
-  const t = detail.technical ?? {};
-  const q = detail.quote ?? {};
-  const close = num(q.price) ?? num(t.sma_20);
-  const sma50 = num(t.sma_50);
-  const sma200 = num(t.sma_200);
-  const rsi = num(t.rsi_14);
-  const mfi = num(t.mfi_14);
-  const macdHist = num(t.macd_hist);
-  const mom = num(t.momentum);
-
-  let trend: TechnicalRead["trend"] = "Sideways";
-  if (close != null && sma50 != null && sma200 != null) {
-    if (close > sma50 && sma50 > sma200) trend = "Bullish";
-    else if (close < sma50 && sma50 < sma200) trend = "Bearish";
-  } else if (close != null && sma50 != null) {
-    trend = close > sma50 ? "Bullish" : "Bearish";
-  }
-
-  const momentumStrong = (macdHist ?? mom ?? 0) > 0 && (rsi ?? 50) >= 50;
-
-  let rsiCondition: TechnicalRead["rsiCondition"] = "Neutral";
-  if (rsi != null) rsiCondition = rsi >= 70 ? "Overbought" : rsi <= 30 ? "Oversold" : "Neutral";
-
-  let volume: TechnicalRead["volume"] = "Normal";
-  if (mfi != null) volume = mfi >= 60 ? "Increasing" : mfi <= 40 ? "Decreasing" : "Normal";
-
-  // Prefer the top chart pattern, else the top candlestick.
-  const chart = detail.patterns.find((p) => String(p.category) === "chart");
-  const candle = detail.patterns.find((p) => String(p.category) === "candlestick");
-  const pattern = (chart ?? candle)?.name != null ? String((chart ?? candle)?.name) : null;
-
-  return {
-    trend,
-    momentum: momentumStrong ? "Strong" : "Weak",
-    aboveSma50: close != null && sma50 != null ? close > sma50 : null,
-    aboveSma200: close != null && sma200 != null ? close > sma200 : null,
-    rsi,
-    rsiCondition,
-    volume,
-    pattern,
-  };
+  const structure = detail.price_action?.structure_daily ?? "";
+  const trend: TechnicalRead["trend"] = structure.endsWith("_uptrend")
+    ? "Bullish"
+    : structure.endsWith("_downtrend")
+      ? "Bearish"
+      : "Sideways";
+  return { trend };
 }
 
 /** Map a chart/candlestick pattern to a plain accumulation/distribution read. */
@@ -364,29 +326,4 @@ export function businessCycle(detail: CompanyDetail): { phase: string; note: str
     phase = "Stable"; note = "Steady growth with no strong cyclical signal.";
   }
   return { phase, note };
-}
-
-// ── Wyckoff phase (model-derived) ────────────────────────────────────────────
-export function wyckoffPhase(detail: CompanyDetail): { phase: string; note: string } | null {
-  const t = detail.technical ?? {};
-  const q = detail.quote ?? {};
-  const close = num(q.price) ?? num(t.sma_20);
-  const s50 = num(t.sma_50);
-  const s200 = num(t.sma_200);
-  const fromHigh = num(t.pct_from_52w_high); // fraction, <= 0
-  if (close == null || s50 == null) return null;
-
-  if (s200 != null && close > s50 && s50 > s200) {
-    return { phase: "Markup", note: "Sustained uptrend above rising moving averages." };
-  }
-  if (s200 != null && close < s50 && s50 < s200) {
-    return { phase: "Markdown", note: "Sustained downtrend below falling moving averages." };
-  }
-  if (fromHigh != null && fromHigh <= -0.25 && close >= s50 * 0.95) {
-    return { phase: "Accumulation", note: "Basing well below the 52-week high — potential accumulation." };
-  }
-  if (fromHigh != null && fromHigh >= -0.05 && close < s50) {
-    return { phase: "Distribution", note: "Rolling over near the highs — potential distribution." };
-  }
-  return { phase: "Consolidation", note: "Range-bound; no decisive Wyckoff phase yet." };
 }

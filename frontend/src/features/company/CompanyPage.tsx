@@ -79,13 +79,12 @@ const LEVEL_TONE: Record<Level, string> = {
 const GRADE_TONE = (g: string) =>
   g.startsWith("A") ? "#22c55e" : g.startsWith("B") ? "#eab308" : g === "—" ? "#64748b" : "#f87171";
 
-type Tab = "income" | "balance" | "cashflow" | "technicals" | "patterns" | "valuation";
+type Tab = "income" | "balance" | "cashflow" | "patterns" | "valuation";
 const TABS: { id: Tab; label: string }[] = [
   { id: "valuation", label: "Valuation" },
   { id: "income", label: "Income" },
   { id: "balance", label: "Balance" },
   { id: "cashflow", label: "Cash Flow" },
-  { id: "technicals", label: "Technicals" },
   { id: "patterns", label: "Patterns" },
 ];
 
@@ -162,15 +161,6 @@ const VALUATION: [string, string, Fmt][] = [
   ["enterprise_value", "Enterprise Value", "compact"], ["book_value_per_share", "Book Value/Sh", "num"],
   ["altman_z", "Altman Z", "num"], ["piotroski_f", "Piotroski F", "num"],
   ["dividend_yield", "Div Yield", "pct"],
-];
-const TECHNICALS: [string, string, Fmt][] = [
-  ["rsi_14", "RSI(14)", "num"], ["macd", "MACD", "num"], ["macd_signal", "MACD Signal", "num"],
-  ["adx_14", "ADX(14)", "num"], ["atr_14", "ATR(14)", "num"], ["sma_50", "SMA 50", "num"],
-  ["sma_200", "SMA 200", "num"], ["ema_50", "EMA 50", "num"], ["supertrend", "SuperTrend", "num"],
-  ["vwap", "VWAP", "num"], ["mfi_14", "MFI(14)", "num"], ["bb_upper", "Boll Upper", "num"],
-  ["bb_lower", "Boll Lower", "num"], ["high_52w", "52w High", "num"], ["low_52w", "52w Low", "num"],
-  ["pct_from_52w_high", "From 52w High", "pct"], ["momentum", "Momentum", "pct"],
-  ["volatility", "Volatility", "pct"], ["trend_strength", "Trend Strength", "num"],
 ];
 
 function growthOf(rows: Row[], key: string): number | null {
@@ -261,7 +251,6 @@ export default function CompanyPage() {
     const regionRegime: CountryRegime | undefined = regime?.countries?.[region];
     return {
       scores,
-      tech,
       cf,
       materials,
       commodity,
@@ -394,7 +383,6 @@ export default function CompanyPage() {
             {tab === "income" && <StatementsTable rows={data.statements.income} fields={INCOME_FIELDS} />}
             {tab === "balance" && <StatementsTable rows={data.statements.balance} fields={BALANCE_FIELDS} />}
             {tab === "cashflow" && <StatementsTable rows={data.statements.cashflow} fields={CASHFLOW_FIELDS} />}
-            {tab === "technicals" && <MetricGrid row={data.technical ?? {}} items={TECHNICALS} />}
             {tab === "patterns" && <PatternsList patterns={data.patterns} />}
           </Card>
         </div>

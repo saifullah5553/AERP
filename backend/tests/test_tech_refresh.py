@@ -237,7 +237,7 @@ def _market(monkeypatch) -> list:
     merged: list = []
     monkeypatch.setattr(price_pack, "merge_series",
                         lambda region, series, **kw: merged.append(region))
-    monkeypatch.setattr(tech_refresh, "fetch_history", lambda sym, client: _yahoo(
+    monkeypatch.setattr(tech_refresh, "fetch_history", lambda sym, client, **kw: _yahoo(
         days, closes if sym == "LUCK.KA" else [125.85] * _N))
     monkeypatch.setattr(tech_refresh, "_benchmark_bars", lambda region: [])
     return merged
@@ -331,7 +331,8 @@ def test_a_failed_fetch_does_not_blank_a_recent_read(tmp_path, monkeypatch) -> N
            "technical_score": 53.27, "technical_as_of": seen}
     (tmp_path / "company").mkdir()
     (tmp_path / "screener.json").write_text(json.dumps([row]), encoding="utf-8")
-    monkeypatch.setattr(tech_refresh, "fetch_history", lambda sym, client: None)
+    monkeypatch.setattr(tech_refresh, "fetch_history", lambda sym, client, **kw: None)
+    monkeypatch.setattr(tech_refresh, "_yahoo_says", lambda sym, client: sym)
     monkeypatch.setattr(tech_refresh, "RETRY_PAUSE_SECONDS", 0)
     result = tech_refresh.refresh_technicals(tmp_path)
     saved = json.loads((tmp_path / "screener.json").read_text(encoding="utf-8"))[0]
@@ -346,10 +347,26 @@ def test_a_failed_fetch_is_retried(tmp_path, monkeypatch) -> None:
     answer = tech_refresh.fetch_history
     calls: list[str] = []
 
-    def flaky(sym, client):
+    def flaky(sym, client, host="query1"):
         calls.append(sym)
-        return None if calls.count(sym) == 1 else answer(sym, client)
+        return None if host == "query1" else answer(sym, client)
 
     monkeypatch.setattr(tech_refresh, "fetch_history", flaky)
     monkeypatch.setattr(tech_refresh, "RETRY_PAUSE_SECONDS", 0)
     assert tech_refresh.refresh_technicals(tmp_path)["updated"] == 1
+
+
+def test_the_summary_follows_a_technical_score_that_moved_on_its_own(tmp_path) -> None:
+    """NVDA's page read "technicals weak (43)" beside 33.89: a composite that agrees between
+    passes no longer forces this file to be written, so the text has to."""
+    from app.ingestion.score_unify import unify
+
+    row, doc = _unify_world(
+        tmp_path,
+        {"provider_symbol": "NVDA", "region": "us", "quality_score": 70.0, "signal": "buy"},
+        {"scores": {"technical": 43.0}, "signal": {"signal_type": "buy"}})
+    path = tmp_path / "company" / "NVDA.json"
+    doc["scores"]["technical"] = 33.89
+    path.write_text(json.dumps(doc), encoding="utf-8")
+    unify(tmp_path)
+    assert "(34)" in json.loads(path.read_text(encoding="utf-8"))["ai_summary"]

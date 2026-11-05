@@ -128,8 +128,11 @@ def unify(data_dir: str | Path) -> dict[str, int]:
             continue
 
         signal = doc.get("signal") if isinstance(doc.get("signal"), dict) else None
+        # The summary is in here because it quotes the technical score, which this pass does not
+        # own: with the composite now agreeing between passes, nothing else forced a write, and
+        # NVDA's page said "technicals weak (43)" beside a score of 33.89.
         before = (scores.get("fundamental"), scores.get("quality"), scores.get("composite"),
-                  (signal or {}).get("signal_type"))
+                  (signal or {}).get("signal_type"), doc.get("ai_summary"))
         # `quality` mirrors `fundamental` rather than keeping the zero-weight dimension: two
         # tiles side by side showing different numbers for the same idea is the confusion
         # this pass exists to remove. The frontend now renders one of them.
@@ -169,7 +172,7 @@ def unify(data_dir: str | Path) -> dict[str, int]:
             pass
 
         if (scores.get("fundamental"), scores.get("quality"), scores.get("composite"),
-                (signal or {}).get("signal_type")) != before:
+                (signal or {}).get("signal_type"), doc.get("ai_summary")) != before:
             try:
                 cf.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
                 files += 1
