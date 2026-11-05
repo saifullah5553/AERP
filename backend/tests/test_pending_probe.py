@@ -56,3 +56,27 @@ def test_throttled_names_old_enough_are_kept_on_the_list(monkeypatch, tmp_path) 
     assert "GOOD" in pending
     assert "OLD" in pending, "a refusal must not hide a company this stale"
     assert "NEW" not in pending
+
+
+def test_a_headline_only_quarter_does_not_count_as_held() -> None:
+    """LUCK's Sep-26 column has revenue but no balance sheet yet, so it must be asked for again."""
+    rec = {"periods": ["2026-09-30", "2026-06-30"], "balance": {"total_equity": [None, 473.0]}}
+    assert pr._newest_complete(rec) == "2026-06-30"
+
+
+def test_a_complete_quarter_is_held() -> None:
+    rec = {"periods": ["2026-09-30", "2026-06-30"], "balance": {"total_equity": [480.0, 473.0]}}
+    assert pr._newest_complete(rec) == "2026-09-30"
+
+
+def test_a_company_with_no_equity_line_still_has_a_held_period() -> None:
+    assert pr._newest_complete({"periods": ["2026-06-30"], "balance": {}}) == "2026-06-30"
+
+
+def test_the_headline_score_may_not_be_years_behind_the_statements() -> None:
+    from app.ingestion.quality_history import outdated
+
+    doc = {"statements_ttm": {"income": [{"fiscal_date": "2026-03-31"}]}}
+    assert outdated([{"date": "2022-12-31"}], doc), "CHMI"
+    assert not outdated([{"date": "2025-09-30"}], doc), "two quarters behind is a fair reading"
+    assert not outdated([{"date": "2026-03-31"}], doc)

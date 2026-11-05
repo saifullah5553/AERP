@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +45,7 @@ CACHE = Path(__file__).resolve().parents[3] / "data" / "fund_cache"
 # worth showing: a five-year arc of fundamental quality says something a single score cannot.
 # Markets still short of 20 simply render fewer points rather than being padded.
 MAX_POINTS = 20
+MAX_SCORE_LAG_DAYS = 300
 
 
 def quarter_key(iso: str) -> str | None:
@@ -81,6 +83,22 @@ _SCORE_FIELDS = ("quality_score", "quality_trend", "quality_change", "quality_gr
                  "quality_confidence", "score_history", "score_history_dates", "score_cats",
                  "score_high", "score_low", "score_avg", "score_percentile",
                  "results_through")
+
+
+def outdated(series: list[dict], doc: dict) -> bool:
+    """Is the newest score too far behind the newest statements to stand as the headline?
+
+    A quarter can fail to score, and the series then ends on the last one that did. One or two
+    quarters back is a fair reading: the source publishes headlines before full statements. But
+    CHMI's stopped at Dec-22 with statements through Mar-26, and a score from 2022 at the top of
+    the page reads as current. No score says something true; that one does not.
+    """
+    rows = (doc.get("statements_ttm") or {}).get("income") or []
+    newest = str((rows[0] if rows else {}).get("fiscal_date") or "")[:10]
+    scored = str(series[-1].get("date") or "")[:10]
+    if not newest or not scored:
+        return False
+    return (date.fromisoformat(newest) - date.fromisoformat(scored)).days > MAX_SCORE_LAG_DAYS
 
 
 def _clear_score(row: dict, doc: dict) -> int:
@@ -355,7 +373,7 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
         # A company whose CSV has not been scraped is now UNRATED. That is the intended trade:
         # no score beats a score that means something different from the one beside it.
         series = _series_from_statements(doc, "statements_ttm", price_on, peers, sector)
-        if not series:
+        if not series or outdated(series, doc):
             # No TTM statements, so no score - and the OLD one has to go with them. Leaving it
             # was the quiet half of the problem: 1,365 rows kept a score the retired annual
             # engine had produced, indistinguishable on the page from one this engine computed,

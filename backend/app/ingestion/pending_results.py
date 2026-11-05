@@ -96,14 +96,27 @@ def newest_at_source(region: str, symbol: str, client: httpx.Client) -> str | No
     return m.group(1) if m else None
 
 
+def _newest_complete(rec: dict) -> str | None:
+    """The newest period with a balance sheet behind it, or the newest at all if none has.
+
+    The source publishes headline figures first: LUCK's Sep-26 column has revenue and profit and
+    no equity, debt or EPS. Such a column cannot be scored, and counting it as held meant it was
+    never asked for again, so the company stayed on a thin quarter after the source had filled it.
+    """
+    periods = rec.get("periods") or []
+    equity = (rec.get("balance") or {}).get("total_equity") or []
+    complete = [p for p, value in zip(periods, equity, strict=False) if p and value is not None]
+    return max(complete) if complete else max((p for p in periods if p), default=None)
+
+
 def held_periods(region: str, store_dir: Path) -> dict[str, str]:
-    """{symbol: newest period we already hold}."""
+    """{symbol: newest complete period we already hold}."""
     store = load_store(region, store_dir)
     out: dict[str, str] = {}
     for symbol, rec in ((store or {}).get("companies") or {}).items():
-        periods = [p for p in (rec.get("periods") or []) if p]
-        if periods:
-            out[str(symbol).upper()] = max(periods)
+        newest = _newest_complete(rec)
+        if newest:
+            out[str(symbol).upper()] = newest
     return out
 
 
