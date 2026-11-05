@@ -63,7 +63,11 @@ jobs:
     # that happened on most days.
     timeout-minutes: 345
     steps:
+      # The tip, not the commit that started this run. Runs queue behind each other for hours, and
+      # a store pushed in the meantime would otherwise never reach the company files.
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
