@@ -173,9 +173,12 @@ def cmd_pending_results(args: argparse.Namespace) -> None:
     # makes it a guarantee that depends on the snapshot being fresh, and this list is what
     # actually spends the scrape budget. Belt and braces on the cheaper side of the trade.
     excluded = load_excluded(args.region)
-    symbols = sorted({str(r["symbol"]) for r in rows
-                      if r.get("region") == args.region and r.get("symbol")
-                      and str(r["symbol"]) not in excluded})
+    # Largest first. The backlog after a reporting season is days of scraping, and this order
+    # is what reaches the probe's time limit and the scraper's: alphabetical left a company's
+    # results waiting on the letter it starts with.
+    size = {str(r["symbol"]): r.get("market_cap") or 0 for r in rows
+            if r.get("region") == args.region and r.get("symbol")}
+    symbols = sorted((s for s in size if s not in excluded), key=lambda s: (-size[s], s))
     if excluded:
         log.info("pending-results: %s has %d excluded symbols; they will not be scraped",
                  args.region, len(excluded))

@@ -57,10 +57,11 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    # Sized to fit the scrape budget below: ~10 min of setup and probing, 170 of scraping, and
-    # room to consolidate, rescore and push. At 120 this job was killed mid-scrape on most days
-    # and lost everything it had fetched, so results only landed on the quiet days.
-    timeout-minutes: 240
+    # Sized to fit the worst case: up to 150 min of probing when the source throttles (25 per
+    # market, MAX_PROBE_SECONDS), 170 of scraping, and room to consolidate, rescore and push. Too
+    # short and GitHub kills the job mid-scrape, and everything fetched that day is lost: at 120
+    # that happened on most days.
+    timeout-minutes: 345
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -111,7 +112,11 @@ jobs:
             exit 1
           fi
           cd ..
-          cat data/pending/*.txt 2>/dev/null | grep -v '^#' | grep -v '^$' | sort -u > /tmp/pending_all.txt
+          # In market order, each list largest company first, and NOT through `sort`: the scrape
+          # stops at its time budget, so this order is what decides who gets fetched today.
+          for REGION in us india australia psx gcc dfm; do
+            cat "data/pending/$REGION.txt" 2>/dev/null || true
+          done | grep -v '^#' | grep -v '^$' | awk '!seen[$0]++' > /tmp/pending_all.txt
           SYMS=$(paste -sd, - < /tmp/pending_all.txt)
           echo "symbols=$SYMS" >> "$GITHUB_OUTPUT"
           echo "Pending across all markets: $(wc -l < /tmp/pending_all.txt) (from $OK of 6 markets)"

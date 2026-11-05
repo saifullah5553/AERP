@@ -377,6 +377,19 @@ def scrape_symbol(page, region: str, sym: str, page_pause: float) -> int:
     return written
 
 
+def requested(all_targets: list[tuple[str, str]], symbols: str) -> list[tuple[str, str]]:
+    """The targets named in a comma-separated list, in the order the list gives them.
+
+    The caller ranks the list, and a run stops at its time budget, so this order decides who gets
+    fetched. A symbol listed in two markets is fetched in both.
+    """
+    rank: dict[str, int] = {}
+    for position, name in enumerate(s.strip().upper() for s in symbols.split(",")):
+        if name:
+            rank.setdefault(name, position)
+    return sorted((t for t in all_targets if t[1] in rank), key=lambda t: rank[t[1]])
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--regions", default="us,india,australia,gcc,psx,dfm")
@@ -402,8 +415,7 @@ def main() -> int:
     if args.symbols:
         # A targeted refresh: these names just reported, so their existing CSVs are stale by
         # definition. Clear them first, otherwise the per-file skip would make this a no-op.
-        wanted = {s.strip().upper() for s in args.symbols.split(",") if s.strip()}
-        todo = [t for t in targets(regions) if t[1] in wanted]
+        todo = requested(targets(regions), args.symbols)
         for region, sym in todo:
             for name in STATEMENTS:
                 (OUT_DIR / region / f"{sym}_{name}.csv").unlink(missing_ok=True)

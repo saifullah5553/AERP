@@ -71,3 +71,24 @@ def test_an_absent_file_reads_as_empty(monkeypatch, tmp_path) -> None:
 
     monkeypatch.setattr(mod, "PENDING_DIR", tmp_path)
     assert read_pending("nowhere") == []
+
+
+def test_the_list_keeps_the_order_it_was_ranked_in(tmp_path, monkeypatch) -> None:
+    from app.ingestion import pending_results as pr
+
+    monkeypatch.setattr(pr, "PENDING_DIR", tmp_path)
+    pr.write_pending("us", {"AAPL", "ZZZ", "MSFT", "UNRANKED"}, order=["MSFT", "AAPL", "ZZZ"])
+    assert pr.read_pending("us") == ["MSFT", "AAPL", "ZZZ", "UNRANKED"]
+
+
+def test_the_scraper_works_the_list_in_the_order_given() -> None:
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "scripts" / "scrape_fundamentals.py"
+    spec = importlib.util.spec_from_file_location("scrape_fundamentals", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    targets = [("us", "AAPL"), ("us", "MSFT"), ("india", "TCS"), ("us", "ZZZ")]
+    assert module.requested(targets, "msft, tcs,AAPL") == [
+        ("us", "MSFT"), ("india", "TCS"), ("us", "AAPL")]

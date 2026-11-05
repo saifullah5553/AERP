@@ -216,8 +216,13 @@ def probe_for_new_quarters(region: str, symbols: list[str], store_dir: Path,
     return pending, seen
 
 
-def write_pending(region: str, symbols: set[str], note: str = "") -> Path:
-    """Write the list the scraper reads. One symbol per line, # comments ignored."""
+def write_pending(region: str, symbols: set[str], note: str = "",
+                  order: list[str] | None = None) -> Path:
+    """Write the list the scraper reads. One symbol per line, # comments ignored.
+
+    In `order` where given, then alphabetically. A list longer than a day's scrape budget is
+    worked from the top, so its order decides who waits.
+    """
     PENDING_DIR.mkdir(parents=True, exist_ok=True)
     path = PENDING_DIR / f"{region}.txt"
     header = [
@@ -227,7 +232,9 @@ def write_pending(region: str, symbols: set[str], note: str = "") -> Path:
     ]
     if note:
         header.append(f"# {note}")
-    path.write_text("\n".join(header + sorted(symbols)) + "\n", encoding="utf-8")
+    rank = {s: i for i, s in enumerate(order or [])}
+    ranked = sorted(symbols, key=lambda s: (rank.get(s, len(rank)), s))
+    path.write_text("\n".join(header + ranked) + "\n", encoding="utf-8")
     log.info("pending[%s]: wrote %d symbols -> %s", region, len(symbols), path)
     return path
 
@@ -260,6 +267,7 @@ def build(data_dir: Path, store_dir: Path, region: str, symbols: list[str],
 
     write_pending(region, pending,
                   f"announced in {days}d: {len(announced & universe)}; "
-                  f"probe found a newer quarter for: {len(pending - announced)}")
+                  f"probe found a newer quarter for: {len(pending - announced)}",
+                  order=[s.upper() for s in symbols])
     return {"announced": len(announced & universe), "pending": len(pending),
             "probed": len(probed)}

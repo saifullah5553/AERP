@@ -383,10 +383,13 @@ def refresh_technicals(
 
     company = out / "company"
     uncharted = []
+    unserved = []     # Yahoo gave us nothing. fetch_history cannot say whether it never will.
     for r in targets:
         if r.get("region") != "psx":
             continue
         sym = r["provider_symbol"]
+        if sym not in hist:
+            unserved.append(str(r.get("symbol")))
         checked = _on_exchange_closes(str(r.get("symbol")), hist.pop(sym, None))
         if checked is not None:
             hist[sym] = checked
@@ -599,9 +602,13 @@ def refresh_technicals(
         _withdraw_read(r, company, regime_map)
     if uncharted:
         names = sorted(str(r.get("symbol")) for r in uncharted)
+        rejected = sorted(set(names) - set(unserved))
         # An annotation, because job logs need a token to read and this count must be visible.
-        print(f"::warning::refresh-technicals: {len(names)} PSX names have no usable chart and "
-              f"carry no signal: {names[:12]}", flush=True)
+        # Split by reason: HUBC went blank for a run with nothing to say which of these it was.
+        print(f"::warning::refresh-technicals: {len(names)} PSX names carry no signal. "
+              f"{len(names) - len(rejected)} not served by Yahoo: "
+              f"{sorted(set(names) & set(unserved))[:40]}. {len(rejected)} failed the check "
+              f"against the exchange: {rejected[:20]}", flush=True)
 
     (out / "screener.json").write_text(json.dumps(rows), encoding="utf-8")
     _update_movers(out, deltas, today)
