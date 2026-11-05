@@ -5,12 +5,20 @@ rebuilds. But chart-v8 returns full daily HISTORY from CI, and the technical sco
 function — so we can recompute the technical leg daily, reblend the composite with the
 committed fundamental/momentum/quality/risk scores + the macro-regime overlay, re-derive the
 signal, and patch the snapshot (screener.json + company/*.json). Also feeds movers.json so
-upgrades/downgrades appear across all markets. PSX is handled by the main pipeline.
+upgrades/downgrades appear across all markets.
+
+PSX GOES THROUGH THE SAME PASS. This file used to skip it on the grounds that "the main pipeline"
+handled it, and the main pipeline had not produced a PSX score since a local run on 10 Aug 2026:
+all 445 technical scores and signals were carried forward unchanged for three months, on the
+retired indicator engine, with no price-action read at all. LUCK showed 82.34 against 53 from
+its real chart, and 275 of 445 signals contradicted their own composite. See
+`_on_exchange_closes` for the only way PSX differs.
 """
 
 from __future__ import annotations
 
 import json
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -33,6 +41,24 @@ log = get_logger(__name__)
 _CHART = "https://query1.finance.yahoo.com/v8/finance/chart/{sym}?range=1y&interval=1d"
 _UA = "Mozilla/5.0 (compatible; AERP/1.0)"
 MIN_BARS = 60
+# PSX candles come from Yahoo but the exchange's closes decide whether to believe them.
+PSX_BAR_TOLERANCE = 0.01   # same tolerance as the daily reconciliation in psx_bars
+PSX_MAX_LAG_DAYS = 5       # a weekend and a holiday; beyond that Yahoo has stopped carrying it
+PSX_MAX_GAP = 0.25         # two sessions at the exchange's 10% limit, with room
+PSX_VOLUME_WINDOW = 20
+# A read this recent outlives a failed fetch. Yahoo refuses some requests on any large pass: HUBC
+# and AVN had a chart on one run and none on the next, and that is not a reason to blank them.
+PSX_KEEP_READ_DAYS = 7
+RETRY_PAUSE_SECONDS = 20
+RETRY_WORKERS = 2
+# Everything a technical read writes onto a row, and so what must go when there is no read.
+_READ_FIELDS = (
+    "technical_score", "technical_as_of", "signal", "signal_label", "signal_since",
+    "price_at_signal", "signal_return_pct", "pa_bias", "pa_phase", "pa_structure", "pa_breakout",
+    "pa_setup", "pa_quality", "rel_volume", "div_rsi_bullish", "div_rsi_bearish",
+    "div_efi_bullish", "div_efi_bearish", "div_latest", "top_candlestick", "top_chart_pattern",
+    "top_pattern", "strategy_action", "strategy_conviction",
+)
 
 
 def _f(v: Any) -> float | None:
@@ -90,6 +116,28 @@ def _reblend(fund, tech, mom, qual, risk) -> tuple[float | None, float, dict]:
     return base, round(total_w, 4), present
 
 
+def blend(fund, tech, mom, qual, risk, regime, de) -> tuple[float | None, float, dict]:
+    """The published composite: (score, coverage, legs present). The one definition of it.
+
+    score_unify calls this too. It used to reblend on its own after this pass, without the regime
+    overlay and without the rule below, and left the signal behind: 777 rows ended up with a
+    signal from a different band to the composite beside it, and technical-only names came back
+    as their raw technical score.
+    """
+    if fund is None and mom is None and qual is None and risk is None:
+        if tech is None:
+            return None, 0.0, {}
+        # Technical-only name: shrink toward neutral so a raw technical score can't masquerade
+        # as a full composite (keeps the expanded tail from flooding the top).
+        return (round(50.0 + (tech - 50.0) * WEIGHTS["technical"], 2), WEIGHTS["technical"],
+                {"technical": tech})
+    base, coverage, present = _reblend(fund, tech, mom, qual, risk)
+    if base is None:
+        return None, 0.0, {}
+    composite, _breakdown = apply_regime_modifier(base, regime, de)
+    return composite, coverage, present
+
+
 def _composite_at(dates, open_, high, low, close, vol, k, legs, regime, de):
     """Recomputed (composite, coverage, present) using only the first k bars, or None.
 
@@ -110,33 +158,24 @@ def _composite_at(dates, open_, high, low, close, vol, k, legs, regime, de):
     return comp, cov, present
 
 
-def _signal_value_at(dates, open_, high, low, close, vol, k, legs, regime, de,
-                     comp_offset=0.0) -> str | None:
-    """The derived signal value using only the first k bars (for inception backtesting).
-
-    ``comp_offset`` is a constant added to the recomputed composite so the series can be
-    calibrated to a committed score (see ``_backtest_psx``): our close-only EOD history
-    scores the technical leg a little differently than the live pipeline (which also folds
-    in today's real OHLC bar), so we anchor the recompute to the shown score and let the
-    real price trajectory decide only *when* the signal changed.
-    """
+def _signal_value_at(dates, open_, high, low, close, vol, k, legs, regime, de) -> str | None:
+    """The derived signal value using only the first k bars (for inception backtesting)."""
     c = _composite_at(dates, open_, high, low, close, vol, k, legs, regime, de)
     if c is None:
         return None
     comp, cov, present = c
-    return derive_signal(comp + comp_offset, cov, present).signal.value
+    return derive_signal(comp, cov, present).signal.value
 
 
 def _signal_since(dates, open_, high, low, close, vol, legs, regime, de, current,
-                  lookback=250, comp_offset=0.0):
+                  lookback=250):
     """Walk back over history to the earliest day the current signal has held → (date, close).
     Real inception, not fabricated — capped at `lookback` trading days."""
     n = len(close)
     floor = max(MIN_BARS - 1, n - 1 - lookback)
     inception = floor
     for j in range(n - 1, floor - 1, -1):
-        s = _signal_value_at(dates, open_, high, low, close, vol, j + 1, legs,
-                             regime, de, comp_offset)
+        s = _signal_value_at(dates, open_, high, low, close, vol, j + 1, legs, regime, de)
         if s != current:  # includes None → treat as boundary
             inception = j + 1
             break
@@ -146,199 +185,95 @@ def _signal_since(dates, open_, high, low, close, vol, legs, regime, de, current
     return d, float(close[idx])
 
 
-def _psx_history(sym: str):
-    """PSX EOD history → (dates, close, volume) for the last ~300 bars, or None.
+def _on_exchange_closes(symbol: str, yahoo):
+    """Yahoo's PSX candles, kept only where they agree with our exchange-reconciled closes.
 
-    From OUR OWN store, not the portal. `dps.psx.com.pk/timeseries/eod/<sym>` serves the
-    KSE-100 index happily and then disconnects without a response for LUCK, ATLH and every
-    other individual stock. The old fetcher swallowed that in a bare `except` and returned
-    None, so `_backtest_psx` skipped every single company: `signal_since`, `price_at_signal`
-    and `signal_return_pct` were silently absent for all of Pakistan while the page showed no
-    error at all. The divergences were fixed this way already; this is the same repair.
+    The pack holds closes and, at best, volume - no opens, highs or lows. Scoring on that is not
+    a milder version of the same read: swings are found on highs and lows, and for OGDC and MEBL
+    the close-only score came out 12 and 10 points away from the real one. So candles come from
+    Yahoo, and the pack decides whether to believe them.
 
-    ohlc_store falls back to the committed close-only pack in CI, so this works on a fresh
-    runner. Volume is zero-filled when only the pack is available - it feeds the composite's
-    volume leg, which degrades rather than breaks.
+    A bar is dropped when the pack contradicts it. A day the pack has no bar for stays: 65 names
+    have a hole from 25 Sep to 4 Nov 2026 and nothing there disagrees with Yahoo.
+
+    Returns None rather than a partial read when the series is unusable:
+
+      * too few bars actually confirmed by the pack, which is also how a series re-based by a
+        split is caught - every shared day disagrees;
+      * a last bar well behind the pack - the names Yahoo stopped carrying;
+      * a newest exchange price further from Yahoo's last close than the daily limit could
+        explain - GIL read 125.85 on Yahoo against 1,000 on the exchange;
+      * no volume at all in the recent window - a flat, untraded line is not a chart.
     """
-    from app.ingestion.ohlc_store import load_bars
+    from app.ingestion.price_pack import packed_bars
 
-    bars = load_bars("psx", sym)
-    if not bars or len(bars) < MIN_BARS:
+    if yahoo is None:
         return None
-    days = sorted(bars)[-300:]
-    dates: list[str] = []
-    closes: list[float] = []
-    vols: list[float] = []
-    for d in days:
-        row = bars[d]
-        try:
-            c = float(row[4]) if row[4] not in (None, "") else None
-        except (TypeError, ValueError):
-            c = None
-        if c is None:
-            continue  # a gap in closes would shift every later bar's date
-        try:
-            v = float(row[5]) if row[5] not in (None, "") else 0.0
-        except (TypeError, ValueError):
-            v = 0.0
-        dates.append(d)
-        closes.append(c)
-        vols.append(v)
-    if len(closes) < MIN_BARS:
+    packed = packed_bars("psx", symbol)
+    if not packed:
         return None
-    return dates, np.array(closes, dtype=float), np.array(vols, dtype=float)
+    dates, open_, high, low, close, vol = yahoo
+    keep, confirmed = [], 0
+    for i, day in enumerate(dates):
+        row = packed.get(day)
+        if row is None or not row[4]:
+            keep.append(i)
+        elif abs(float(close[i]) / float(row[4]) - 1.0) <= PSX_BAR_TOLERANCE:
+            keep.append(i)
+            confirmed += 1
+    if confirmed < MIN_BARS:
+        return None
+    newest = max(packed)
+    lag = (datetime.fromisoformat(newest) - datetime.fromisoformat(dates[keep[-1]])).days
+    if lag > PSX_MAX_LAG_DAYS:
+        return None
+    if abs(float(packed[newest][4]) / float(close[keep[-1]]) - 1.0) > PSX_MAX_GAP:
+        return None
+    if not np.any(vol[keep][-PSX_VOLUME_WINDOW:] > 0):
+        return None
+    return [dates[i] for i in keep], open_[keep], high[keep], low[keep], close[keep], vol[keep]
 
 
-def _psx_divergences(rows) -> int:
-    """Divergences for PSX, from OUR OWN stored bars.
+def _read_is_recent(r: dict) -> bool:
+    try:
+        seen = datetime.fromisoformat(str(r.get("technical_as_of"))[:10]).date()
+    except ValueError:
+        return False
+    return (datetime.now(UTC).date() - seen).days <= PSX_KEEP_READ_DAYS
 
-    The portal path this used to piggyback on is dead for individual stocks - the endpoint
-    serves the KSE-100 index happily and then disconnects without a response for LUCK, ATLH and
-    every other symbol - so PSX showed ZERO divergences on a page whose main audience trades
-    Pakistan. We do not need the portal: ohlc_store holds the full OHLCV locally and falls back
-    to the versioned close-only pack in CI, where the swing finder still works on closing highs
-    and lows and only EFI (which needs volume) drops out.
+
+def _withdraw_read(r: dict, company: Path, regime_map: dict) -> None:
+    """Clear the technical read and signal of a company we cannot chart.
+
+    Leaving the old numbers would be the worse failure: this is how Pakistan came to publish
+    technical scores from 10 August, on a retired engine, for three months. A blank says "no
+    read"; a stale score says something false with full confidence.
     """
-    from app.engines.divergence.engine import summarise as summarise_div
-    from app.ingestion.ohlc_store import load_bars
-
-    done = 0
-    for r in rows:
-        if r.get("region") != "psx" or not r.get("symbol"):
-            continue
-        bars = load_bars("psx", str(r["symbol"]))
-        if len(bars) < MIN_BARS:
-            continue
-        days = sorted(bars)
-
-        def _col(i: int, default=None, _bars=bars, _days=days):
-            # Defaults bind the loop variables: a closure over `bars` would read whichever
-            # company the loop had reached by the time it was called.
-            out = []
-            for d in _days:
-                v = _bars[d][i]
-                try:
-                    out.append(float(v) if v not in (None, "") else default)
-                except (TypeError, ValueError):
-                    out.append(default)
-            return out
-
-        close = _col(4)
-        if any(c is None for c in close):
-            continue
-        high = [h if h is not None else c for h, c in zip(_col(2), close, strict=True)]
-        low = [x if x is not None else c for x, c in zip(_col(3), close, strict=True)]
-        vol = [v if v is not None else 0.0 for v in _col(5, 0.0)]
-        d = summarise_div(days, high, low, close, vol)
-        r["div_rsi_bullish"] = d["rsi_bullish"]
-        r["div_rsi_bearish"] = d["rsi_bearish"]
-        r["div_efi_bullish"] = d["efi_bullish"]
-        r["div_efi_bearish"] = d["efi_bearish"]
-        r["div_latest"] = d["latest"]
-        done += 1
-    return done
-
-
-def _backtest_psx(rows, company, regime_map, today, limit):
-    """Backfill signal_since / return-since for PSX from portal EOD history, keeping the
-    DB-computed composite/signal (we only DATE the shown signal, using the same raw scale)."""
-    psx_rows = [r for r in rows if r.get("region") == "psx" and r.get("provider_symbol")]
-    if limit is not None:
-        psx_rows = psx_rows[:limit]
-    if not psx_rows:
+    fund, qual, risk = (_f(r.get("fundamental_score")), _f(r.get("quality_score")),
+                        _f(r.get("risk_score")))
+    composite, _cov, _present = blend(fund, None, None, qual, risk,
+                                      regime_map.get(r.get("region")),
+                                      _f(r.get("debt_to_equity")))
+    r["composite_score"] = composite
+    for key in _READ_FIELDS:
+        r[key] = None
+    cf = safe_file(company, f"{r['provider_symbol']}.json")
+    if cf is None or not cf.exists():
         return
-    syms = [r.get("symbol") or r["provider_symbol"].replace(".KA", "") for r in psx_rows]
-    # Local reads now, so no thread pool and no network: the portal path this used was dead.
-    hist: dict[str, Any] = {}
-    for r, sym in zip(psx_rows, syms, strict=True):
-        h = _psx_history(sym)
-        if h is not None:
-            hist[r["provider_symbol"]] = h
-    if not hist:
-        log.warning(
-            "psx backtest: no local history for any of %d symbols - signal_since will be "
-            "today's date for the whole market", len(psx_rows)
-        )
-    regime = regime_map.get("psx")
-    updated = 0
-    for r in psx_rows:
-        h = hist.get(r["provider_symbol"])
-        committed = r.get("signal")
-        if not h or not committed:
-            continue
-        dates, close, vol = h
-        # Divergences for PSX too. This market never touches the Yahoo pass - it is not on
-        # Yahoo - so the divergence code above never ran for it and the page showed ZERO
-        # Pakistani names, which is the one market that matters most here. The portal serves
-        # close and volume only, so close stands in for high and low: the swing finder then
-        # works on closing highs and lows, which is a stricter definition than intraday and a
-        # perfectly standard way to read a chart.
-        try:
-            from app.engines.divergence.engine import summarise as _divergences
-
-            _d = _divergences(dates, close, close, close, vol)
-            r["div_rsi_bullish"] = _d["rsi_bullish"]
-            r["div_rsi_bearish"] = _d["rsi_bearish"]
-            r["div_efi_bullish"] = _d["efi_bullish"]
-            r["div_efi_bearish"] = _d["efi_bearish"]
-            r["div_latest"] = _d["latest"]
-        except Exception:  # noqa: BLE001 - a filter must never break the PSX pass
-            pass
-        sc: dict = {}
-        cf = safe_file(company, f"{r['provider_symbol']}.json")
-        if cf is None:
-            continue
-        if cf.exists():
-            try:
-                sc = json.loads(cf.read_text(encoding="utf-8")).get("scores") or {}
-            except (OSError, json.JSONDecodeError):
-                sc = {}
-        fund = _f(sc.get("fundamental"))
-        if fund is None:
-            fund = _f(r.get("fundamental_score"))
-        legs = (fund, _f(sc.get("momentum")), _f(sc.get("quality")), _f(sc.get("risk")))
-        de = _f(r.get("debt_to_equity"))
-
-        # Anchor the EOD recompute to the committed composite: our close-only history scores
-        # the technical leg a touch differently than the live pipeline, so instead of
-        # rejecting every small mismatch we shift the whole recomputed series by a constant
-        # so "today" reproduces the shown score, then let the real price trajectory decide
-        # WHEN the signal last changed. Skip only when even the anchored signal can't match
-        # the shown one (coverage/legs genuinely diverged) or the shift is implausibly large.
-        cur = _composite_at(dates, close, close, close, close, vol, len(close),
-                            legs, regime, de)
-        committed_comp = _f(r.get("composite_score"))
-        if cur is None or committed_comp is None:
-            continue
-        offset = committed_comp - cur[0]
-        if abs(offset) > 40:
-            continue
-        anchored = _signal_value_at(
-            dates, close, close, close, close, vol, len(close), legs, regime, de, offset
-        )
-        if anchored != committed:
-            continue
-        since, price_at = _signal_since(
-            dates, close, close, close, close, vol, legs, regime, de, committed,
-            comp_offset=offset
-        )
-        cur_price = _f(r.get("price")) or float(close[-1])
-        ret = round((cur_price - price_at) / price_at * 100.0, 2) if price_at else None
-        r["signal_since"] = since or today
-        r["price_at_signal"] = round(price_at, 4) if price_at else None
-        r["signal_return_pct"] = ret
-        if cf.exists():
-            try:
-                d = json.loads(cf.read_text(encoding="utf-8"))
-                if isinstance(d.get("signal"), dict):
-                    d["signal"]["signal_since"] = r["signal_since"]
-                    d["signal"]["price_at_signal"] = r["price_at_signal"]
-                    d["signal"]["signal_return_pct"] = ret
-                cf.write_text(json.dumps(d), encoding="utf-8")
-            except (OSError, json.JSONDecodeError):
-                pass
-        updated += 1
-    log.info("PSX signal-since backtest: %d updated", updated)
+    try:
+        d = json.loads(cf.read_text(encoding="utf-8"))
+        if isinstance(d.get("scores"), dict):
+            d["scores"]["technical"] = None
+            d["scores"]["composite"] = composite
+            d["scores"].pop("momentum", None)
+        d.pop("price_action", None)
+        d.pop("strategy", None)
+        d["divergences"] = []
+        d["patterns"] = []
+        d["signal"] = None
+        cf.write_text(json.dumps(d), encoding="utf-8")
+    except (OSError, json.JSONDecodeError):
+        pass
 
 
 # The index whose performance each market is measured against. Relative strength is meaningless
@@ -378,7 +313,7 @@ def _benchmark_bars(region: str) -> list:
 
 def refresh_technicals(
     data_dir: str | Path,
-    skip_regions: tuple[str, ...] = ("psx",),
+    skip_regions: tuple[str, ...] = (),
     workers: int = 8,
     limit: int | None = None,
 ) -> dict[str, int]:
@@ -403,6 +338,18 @@ def refresh_technicals(
             for sym, h in zip(syms, results, strict=False):
                 if h is not None:
                     hist[sym] = h
+        # Once more, slowly. fetch_history cannot tell a refusal from a symbol with no data, and
+        # the refusals are the ones this recovers.
+        missed = [s for s in syms if s not in hist]
+        if missed:
+            time.sleep(RETRY_PAUSE_SECONDS)
+            with ThreadPoolExecutor(max_workers=RETRY_WORKERS) as pool:
+                results = pool.map(lambda s: fetch_history(s, client), missed)
+                for sym, h in zip(missed, results, strict=False):
+                    if h is not None:
+                        hist[sym] = h
+            log.info("refresh-technicals: retry recovered %d of %d",
+                     sum(1 for s in missed if s in hist), len(missed))
     finally:
         client.close()
 
@@ -419,6 +366,8 @@ def refresh_technicals(
             h = hist.get(r.get("provider_symbol"))
             if not h or not r.get("region") or not r.get("symbol"):
                 continue
+            if r["region"] == "psx":
+                continue  # Only refresh_psx_daily writes this pack, and only what reconciles.
             dates, _o, _h, _l, closes, _v = h
             points = {d: c for d, c in zip(dates, closes, strict=False) if d and c}
             if points:
@@ -429,6 +378,17 @@ def refresh_technicals(
         log.warning("price-pack from technicals failed: %s", exc)
 
     company = out / "company"
+    uncharted = []
+    for r in targets:
+        if r.get("region") != "psx":
+            continue
+        sym = r["provider_symbol"]
+        checked = _on_exchange_closes(str(r.get("symbol")), hist.pop(sym, None))
+        if checked is not None:
+            hist[sym] = checked
+        elif not _read_is_recent(r):
+            uncharted.append(r)
+
     today = datetime.now(UTC).date().isoformat()
     updated = 0
     deltas: dict[str, dict] = {}
@@ -484,16 +444,9 @@ def refresh_technicals(
         qual, risk = _f(sc.get("quality")), _f(sc.get("risk"))
         regime = regime_map.get(r.get("region"))
         de = _f(r.get("debt_to_equity"))
-        if fund is None and mom is None and qual is None and risk is None:
-            # Technical-only name: shrink toward neutral so a raw technical score can't
-            # masquerade as a full composite (keeps the expanded tail from flooding the top).
-            composite = round(50.0 + (tech - 50.0) * WEIGHTS["technical"], 2)
-            coverage, present = WEIGHTS["technical"], {"technical": tech}
-        else:
-            base, coverage, present = _reblend(fund, _f(tech), mom, qual, risk)
-            if base is None:
-                continue
-            composite, _bd = apply_regime_modifier(base, regime, de)
+        composite, coverage, present = blend(fund, _f(tech), mom, qual, risk, regime, de)
+        if composite is None:
+            continue
         sig = derive_signal(composite, coverage, present)
 
         # Backtest the real signal-inception date + return-since (fixes "all show today").
@@ -538,8 +491,17 @@ def refresh_technicals(
         old = r.get("composite_score")
         old_sig = r.get("signal")
         new_sig = sig.signal.value
-        _record_signal_move(smoves, r, old_sig, new_sig, sig.label, composite, cur_price, today)
+        # A row's first read has nothing comparable before it, so the change is a re-baseline
+        # and not a move. Without this, the run that brought PSX onto this engine would have
+        # filled the Movers page with 356 "upgrades and downgrades" that happened on no chart.
+        comparable = bool(r.get("technical_as_of"))
+        if comparable:
+            _record_signal_move(smoves, r, old_sig, new_sig, sig.label, composite, cur_price,
+                                today)
         r["technical_score"] = round(tech, 2)
+        # The last bar the read saw, so a frozen chart is a failed check rather than a score
+        # that merely stopped changing. See freshness.check_snapshot.
+        r["technical_as_of"] = dates[-1]
         # RSI and EFI divergences, for the technical filter page. Computed from the SAME daily
         # bars this pass already downloaded, so the filter costs no extra request and refreshes
         # every day the refresh runs. Kept out of the technical score deliberately - see
@@ -567,7 +529,7 @@ def refresh_technicals(
         r["price_at_signal"] = round(price_at, 4) if price_at else None
         r["signal_return_pct"] = ret
 
-        if old is not None and abs(composite - old) >= 1.0:
+        if comparable and old is not None and abs(composite - old) >= 1.0:
             deltas[sym] = {
                 "provider_symbol": sym, "symbol": r.get("symbol"), "name": r.get("name"),
                 "region": r.get("region"), "composite": composite, "prev": old,
@@ -627,9 +589,13 @@ def refresh_technicals(
                 pass
         updated += 1
 
-    # ── PSX signal-inception backtest (portal EOD history — raw scale, matches PSX prices) ──
-    if "psx" in skip_regions:
-        _backtest_psx(rows, out / "company", regime_map, today, limit)
+    for r in uncharted:
+        _withdraw_read(r, company, regime_map)
+    if uncharted:
+        names = sorted(str(r.get("symbol")) for r in uncharted)
+        # An annotation, because job logs need a token to read and this count must be visible.
+        print(f"::warning::refresh-technicals: {len(names)} PSX names have no usable chart and "
+              f"carry no signal: {names[:12]}", flush=True)
 
     (out / "screener.json").write_text(json.dumps(rows), encoding="utf-8")
     _update_movers(out, deltas, today)
@@ -637,7 +603,8 @@ def refresh_technicals(
 
     result = {
         "targets": len(targets), "quoted": len(hist),
-        "updated": updated, "movers": len(deltas), "signal_moves": len(smoves),
+        "updated": updated, "uncharted": len(uncharted), "movers": len(deltas),
+        "signal_moves": len(smoves),
     }
     log.info("refresh-technicals: %s", result)
     return result

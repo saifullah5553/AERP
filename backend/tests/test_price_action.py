@@ -6,6 +6,7 @@ against synthetic bars so the expected answer is not a matter of opinion.
 
 from __future__ import annotations
 
+import numpy as np
 from app.engines.price_action import candles as C
 from app.engines.price_action import structure as S
 from app.engines.price_action import volume as V
@@ -102,6 +103,17 @@ def test_high_volume_is_not_bullish_by_itself() -> None:
     assert "supply" in down
     flat = V.price_volume_verdict(0.1, heavy)
     assert "absorption" in flat
+
+
+def test_volume_survives_a_numpy_array() -> None:
+    """Production hands the engine numpy arrays, and `if volume` on one raises. The except
+    around it hid that, so no market had a volume reading from the day this shipped."""
+    days = [f"2026-01-{i + 1:02d}" for i in range(25)]
+    px = np.linspace(100.0, 110.0, 25)
+    vol = np.array([1_000.0] * 24 + [3_000.0])
+    bars = C.to_bars(days, px, px * 1.01, px * 0.99, px, vol)
+    assert bars[-1].volume == 3_000.0
+    assert V.relative_volume([b.volume for b in bars]).relative == 3.0
 
 
 def test_relative_volume_excludes_today_from_its_own_average() -> None:

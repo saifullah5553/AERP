@@ -25,7 +25,7 @@ def _pack(path: Path, newest: str, symbols: int = 3) -> None:
 
 
 def _world(tmp: Path, price_day="2026-08-21", bar_day="2026-08-21",
-           scored=True, grade="STRONG", score=70.0):
+           scored=True, grade="STRONG", score=70.0, read_day="2026-08-21"):
     data = tmp / "frontend" / "public" / "data"
     (data / "company").mkdir(parents=True)
     rows = []
@@ -34,6 +34,7 @@ def _world(tmp: Path, price_day="2026-08-21", bar_day="2026-08-21",
             rows.append({
                 "provider_symbol": f"{m.upper()}{i}", "region": m, "asset_class": "equity",
                 "price_as_of": price_day,
+                "technical_as_of": read_day,
                 "quality_score": (score if scored else None),
                 "quality_grade": (grade if scored else None),
             })
@@ -64,6 +65,20 @@ def test_stale_bars_in_one_market_fail(tmp_path: Path) -> None:
     bad = [c for c in checks if not c.ok][0]
     assert bad.name == "bars[psx]"
     assert "19d" in bad.detail
+
+
+def test_technicals_frozen_behind_fresh_prices_fail(tmp_path: Path) -> None:
+    """Prices and bars were current for three months while every PSX technical score still came
+    from 10 August. Nothing here looked at the score, so all of it passed."""
+    data = _world(tmp_path)
+    rows = json.loads((data / "screener.json").read_text(encoding="utf-8"))
+    for r in rows:
+        if r["region"] == "psx":
+            r.pop("technical_as_of")
+    (data / "screener.json").write_text(json.dumps(rows), encoding="utf-8")
+    checks, failed = verify(data, repo_root=tmp_path, today=TODAY)
+    assert failed == 1
+    assert [c.name for c in checks if not c.ok] == ["technicals[psx]"]
 
 
 def test_stale_prices_fail(tmp_path: Path) -> None:

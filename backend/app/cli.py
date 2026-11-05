@@ -509,7 +509,7 @@ def cmd_ingest_estimates(args: argparse.Namespace) -> None:
 
 def cmd_refresh_technicals(args: argparse.Namespace) -> None:
     """Daily all-market technical → composite → signal recompute via Yahoo chart-v8 history
-    (keyless, CI-friendly). Patches the snapshot + movers.json; no DB. Non-PSX by default."""
+    (keyless, CI-friendly). Patches the snapshot + movers.json; no DB. All markets."""
     from app.ingestion.tech_refresh import refresh_technicals
 
     out = args.out or "../frontend/public/data"

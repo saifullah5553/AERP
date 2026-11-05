@@ -32,6 +32,7 @@ from typing import Any
 
 from app.core.logging import get_logger
 from app.core.safe_path import safe_file
+from app.engines.composite.signals import derive_signal
 from app.engines.fundamental.adaptive import rating_for
 
 log = get_logger(__name__)
@@ -47,24 +48,22 @@ def _canonical(row: dict) -> float | None:
     return float(value) if isinstance(value, int | float) else None
 
 
-def _recompute_composite(doc_scores: dict, fund: float | None, region_regime: Any) -> float | None:
-    """Reblend using the SAME function the technical pass uses.
+def _num(v: Any) -> float | None:
+    return float(v) if isinstance(v, int | float) else None
+
+
+def _recompute_composite(doc_scores: dict, fund: float | None, regime: Any,
+                         debt_to_equity: float | None) -> tuple[float | None, float, dict]:
+    """Reblend with the SAME function the technical pass uses, regime overlay included.
 
     Imported rather than reimplemented: a second copy of the weighting is how the composite
-    would start disagreeing with itself the first time either changed. The regime modifier is
-    deliberately not applied here - the technical pass owns that and re-applies it on its next
-    run, and guessing at it would produce a third number.
+    would start disagreeing with itself the first time either changed. This did leave the overlay
+    to the technical pass, but this pass runs after it, so the overlay never reached a page.
     """
-    from app.ingestion.tech_refresh import _reblend
+    from app.ingestion.tech_refresh import blend
 
-    def _f(v: Any) -> float | None:
-        return float(v) if isinstance(v, int | float) else None
-
-    base, _coverage, _present = _reblend(
-        fund, _f(doc_scores.get("technical")), _f(doc_scores.get("momentum")),
-        fund, _f(doc_scores.get("risk")),
-    )
-    return base
+    return blend(fund, _num(doc_scores.get("technical")), _num(doc_scores.get("momentum")),
+                 fund, _num(doc_scores.get("risk")), regime, debt_to_equity)
 
 
 def unify(data_dir: str | Path) -> dict[str, int]:
@@ -76,6 +75,12 @@ def unify(data_dir: str | Path) -> dict[str, int]:
     except (OSError, json.JSONDecodeError):
         log.warning("score-unify: no screener to reconcile")
         return {"rows": 0, "aligned": 0, "cleared": 0}
+
+    try:
+        regimes = json.loads((out / "macro_regime.json").read_text(encoding="utf-8")
+                             ).get("countries", {})
+    except (OSError, json.JSONDecodeError):
+        regimes = {}
 
     cdir = out / "company"
     aligned = cleared = files = 0
@@ -122,16 +127,28 @@ def unify(data_dir: str | Path) -> dict[str, int]:
         if not isinstance(scores, dict):
             continue
 
-        before = (scores.get("fundamental"), scores.get("quality"), scores.get("composite"))
+        signal = doc.get("signal") if isinstance(doc.get("signal"), dict) else None
+        before = (scores.get("fundamental"), scores.get("quality"), scores.get("composite"),
+                  (signal or {}).get("signal_type"))
         # `quality` mirrors `fundamental` rather than keeping the zero-weight dimension: two
         # tiles side by side showing different numbers for the same idea is the confusion
         # this pass exists to remove. The frontend now renders one of them.
         scores["fundamental"] = canonical
         scores["quality"] = canonical
-        composite = _recompute_composite(scores, canonical, None)
+        composite, coverage, present = _recompute_composite(
+            scores, canonical, regimes.get(row.get("region")), _num(row.get("debt_to_equity")))
         if composite is not None:
             scores["composite"] = composite
             row["composite_score"] = composite
+            # The signal is the band the composite sits in, so it moves with it. A row with no
+            # signal stays that way: that is a company with no usable chart, not an oversight.
+            if row.get("signal"):
+                derived = derive_signal(composite, coverage, present)
+                row["signal"] = derived.signal.value
+                row["signal_label"] = derived.label
+                if signal is not None:
+                    signal["signal_type"] = derived.signal.value
+                    signal["label"] = derived.label
         elif canonical is None:
             scores["composite"] = None
 
@@ -151,7 +168,8 @@ def unify(data_dir: str | Path) -> dict[str, int]:
         except Exception:  # noqa: BLE001 - a summary must never fail the reconciliation
             pass
 
-        if (scores.get("fundamental"), scores.get("quality"), scores.get("composite")) != before:
+        if (scores.get("fundamental"), scores.get("quality"), scores.get("composite"),
+                (signal or {}).get("signal_type")) != before:
             try:
                 cf.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
                 files += 1

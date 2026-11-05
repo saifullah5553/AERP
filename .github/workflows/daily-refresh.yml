@@ -4,10 +4,8 @@ name: Daily Technical Refresh
 # Yahoo chart-v8 daily history (reachable from CI, unlike yfinance) and reblend with the
 # committed fundamental/momentum/quality/risk. This is what makes signals + Movers update
 # daily across all markets. Patches the snapshot directly (no DB), commits, and deploys.
-# refresh-technicals also backfills real PSX signal-inception dates, anchored to the committed
-# composite. These used to come from the PSX portal's EOD endpoint, which turned out to serve
-# the KSE-100 index and then disconnect for every individual company — so the backfill silently
-# produced nothing for all 453 names. It now reads our own bar store instead: 453/453 dated.
+# PSX goes through the same pass, after refresh-psx-bars has advanced its closes: candles from
+# Yahoo, kept only where they agree with those closes. Nothing else computes PSX technicals.
 on:
   schedule:
     - cron: "15 22 * * *" # ONCE DAILY, 22:15 UTC (after the US close; offset from the others)

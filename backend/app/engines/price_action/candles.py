@@ -57,7 +57,11 @@ def to_bars(dates, open_, high, low, close, volume) -> list[Bar]:
             continue
         v = None
         try:
-            v = float(volume[i]) if volume and volume[i] is not None else None
+            # `is not None`, never truthiness. Production passes numpy arrays, and `if volume`
+            # on an array raises ValueError - which this except then swallowed, so every bar in
+            # every market came through with no volume and the leg sat at its neutral value
+            # from the day the engine shipped.
+            v = float(volume[i]) if volume is not None and volume[i] is not None else None
         except (TypeError, ValueError, IndexError):
             v = None
         out.append(Bar(str(day)[:10], o, h, low_, c, v))

@@ -1,8 +1,8 @@
 """Daily PSX bars, from the exchange's own EOD endpoint.
 
 WHY THIS EXISTS. PSX had no working path to advance its daily bars, and the effect was
-invisible: `refresh_technicals` takes `skip_regions=("psx",)` so PSX never enters the Yahoo
-pass that folds closes into the price pack, and the local OHLC CSVs stopped on 3 August. The
+invisible: PSX was kept out of the Yahoo pass that folds closes into the price pack (it still
+is - only this module writes that pack), and the local OHLC CSVs stopped on 3 August. The
 scheduled portal market-watch keeps PSX PRICES current, so the screener looked perfectly
 healthy while every PSX technical score, divergence and signal date was computed on a chart
 that had not moved for nineteen days. A stale chart and a chart that has not moved look

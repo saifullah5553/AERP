@@ -41,6 +41,7 @@ MARKETS = ("psx", "us", "india", "australia", "gcc", "dfm")
 MAX_AGE_DAYS = {
     "prices": 5,
     "bars": 5,
+    "technicals": 5,
     "snapshot": 2,
 }
 # Coverage floors. A market that suddenly scores half as many companies has broken, even
@@ -92,6 +93,20 @@ def check_snapshot(data_dir: Path, today: datetime.date) -> list[Check]:
         ratio = len(scored) / len(mk)
         out.append(Check(f"scored[{m}]", ratio >= MIN_SCORED_RATIO,
                          f"{len(scored)}/{len(mk)} ({ratio:.0%})"))
+
+    # 2b. The charts, per market. Every other check here passed for the three months Pakistan
+    # published technical scores from 10 August: the prices were fresh, the bars were fresh, and
+    # nothing looked at whether the score had been computed from them. So the read records the
+    # last bar it saw, and a row with no such date counts as stale.
+    for m in MARKETS:
+        mk = [r for r in eq if r.get("region") == m]
+        if not mk:
+            continue
+        ages = [_age(r.get("technical_as_of"), today) for r in mk]
+        current = sum(1 for a in ages if a is not None and a <= MAX_AGE_DAYS["technicals"])
+        ratio = current / len(mk)
+        out.append(Check(f"technicals[{m}]", ratio >= MIN_SCORED_RATIO,
+                         f"{current}/{len(mk)} ({ratio:.0%}) read a recent bar"))
 
     # 3. The label may never contradict the number it sits beside.
     from app.engines.fundamental.adaptive import rating_for
