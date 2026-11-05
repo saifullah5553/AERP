@@ -32,6 +32,10 @@ class Zone:
     last_touch: str
     strength: str        # "major" | "minor"
     evidence: str
+    # What the level WAS, whatever it is now. `kind` flips once price crosses a zone, which is
+    # right for reading the chart and useless for asking whether it broke: by the time price has
+    # cleared a resistance zone that zone is labelled support.
+    origin: str          # "resistance" (built from swing highs) | "support" (swing lows)
 
     @property
     def mid(self) -> float:
@@ -210,6 +214,7 @@ def zones(points: list[Swing], close: list[float], high: list[float], low: list[
                 last_touch=max(d for _, d in group), strength=strength,
                 evidence=f"{touches} swing {'highs' if kind == 'high' else 'lows'} clustered "
                          f"between {lo:,.2f} and {hi:,.2f}{flip}",
+                origin=want,
             ))
         out.extend(scored)
 

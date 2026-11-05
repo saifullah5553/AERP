@@ -6,6 +6,8 @@ name: Daily Technical Refresh
 # daily across all markets. Patches the snapshot directly (no DB), commits, and deploys.
 # PSX goes through the same pass, after refresh-psx-bars has advanced its closes: candles from
 # Yahoo, kept only where they agree with those closes. Nothing else computes PSX technicals.
+# Raise TECHNICAL_ENGINE in tech_refresh.py whenever scoring changes: the next run then re-baselines
+# every row instead of publishing the difference as upgrades and downgrades.
 on:
   schedule:
     - cron: "15 22 * * *" # ONCE DAILY, 22:15 UTC (after the US close; offset from the others)

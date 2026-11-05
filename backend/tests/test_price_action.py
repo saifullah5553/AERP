@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import numpy as np
 from app.engines.price_action import candles as C
+from app.engines.price_action import engine as E
 from app.engines.price_action import structure as S
 from app.engines.price_action import volume as V
 from app.engines.price_action.engine import analyse
@@ -227,3 +228,144 @@ def test_widening_lead_is_reported_but_not_scored() -> None:
     assert "base +" not in scoring and "base -" not in scoring, (
         "the slope must not adjust the score - it measured negative, not positive"
     )
+
+
+def _zone(origin: str, kind: str, low: float = 99.0, high: float = 100.0) -> S.Zone:
+    return S.Zone(low=low, high=high, kind=kind, touches=3, last_touch="2026-01-01",
+                  strength="major", evidence="", origin=origin)
+
+
+def _session(closes: list[float], volumes: list[float | None], wick: float = 0.3) -> list[C.Bar]:
+    """Bars around each close. The open is the previous close, so a break bar starts below."""
+    out, prev = [], closes[0]
+    for i, (close, volume) in enumerate(zip(closes, volumes, strict=True)):
+        out.append(C.Bar(f"2026-{1 + i // 28:02d}-{1 + i % 28:02d}", prev,
+                         max(prev, close) + wick, min(prev, close) - wick, close, volume))
+        prev = close
+    return out
+
+
+def _read(bars: list[C.Bar], zone: S.Zone) -> E.BreakRead:
+    vols = [b.volume if b.volume is not None else 0.0 for b in bars]
+    return E._breakout(bars, [zone], V.relative_volume(vols))
+
+
+_FLAT = [95.0] * 30
+_QUIET = [1_000.0] * 30
+# A cleared resistance zone, labelled as what it is now: support.
+_CLEARED = ("resistance", "support")
+
+
+def test_a_close_through_resistance_on_heavy_volume_is_confirmed() -> None:
+    res = _read(_session([*_FLAT, 103.0], [*_QUIET, 3_000.0]), _zone(*_CLEARED))
+    assert res.status == "confirmed_breakout"
+
+
+def test_a_breakout_on_light_volume_is_suspect() -> None:
+    res = _read(_session([*_FLAT, 103.0], [*_QUIET, 500.0]), _zone(*_CLEARED))
+    assert res.status == "breakout_suspect_low_volume"
+
+
+def test_a_breakout_on_ordinary_volume_is_only_forming() -> None:
+    res = _read(_session([*_FLAT, 103.0], [*_QUIET, 1_100.0]), _zone(*_CLEARED))
+    assert res.status == "breakout_forming"
+
+
+def test_a_breakout_is_never_confirmed_on_price_alone() -> None:
+    res = _read(_session([*_FLAT, 103.0], [None] * 31), _zone(*_CLEARED))
+    assert res.status == "breakout_forming"
+
+
+def test_a_close_through_support_on_heavy_volume_is_a_confirmed_breakdown() -> None:
+    bars = _session([*([105.0] * 30), 96.0], [*_QUIET, 3_000.0])
+    assert _read(bars, _zone("support", "resistance")).status == "confirmed_breakdown"
+
+
+def test_a_breakdown_on_ordinary_volume_is_only_forming() -> None:
+    bars = _session([*([105.0] * 30), 96.0], [*_QUIET, 1_100.0])
+    assert _read(bars, _zone("support", "resistance")).status == "breakdown_forming"
+
+
+def test_a_bounce_off_support_is_not_a_breakout() -> None:
+    """The reason origin exists. Ignoring the label alone would call this a breakout."""
+    bars = _session([*([99.5] * 30), 103.0], [*_QUIET, 3_000.0])
+    assert _read(bars, _zone("support", "support")).status == "no_breakout"
+
+
+def test_a_pullback_through_old_resistance_is_not_a_breakout() -> None:
+    """SKWD: 61.67, down to 57.96 through a 58.45-59.02 level, back to 62.22. Price came from
+    above, so this is a pullback that held and light volume says nothing against it."""
+    closes = [*([61.5] * 25), 60.1, 58.6, 58.0, 58.5, 59.1, 61.1, 60.9, 62.2]
+    bars = _session(closes, [1_000.0] * (len(closes) - 1) + [700.0])
+    res = _read(bars, _zone("resistance", "support", low=58.45, high=59.02))
+    assert res.status == "no_breakout"
+
+
+def test_only_the_latest_approach_decides_the_direction_of_a_break() -> None:
+    """CDRO: under the level on the 23rd, clear above it on the 27th, broke on the 28th."""
+    closes = [*([9.4] * 25), 8.99, 9.21, 9.64, 9.05, 8.52, 8.65, 8.52, 8.69, 8.95]
+    vols = [1_000.0] * len(closes)
+    vols[28] = 3_000.0
+    res = _read(_session(closes, vols, wick=0.05),
+                _zone("support", "resistance", low=9.145, high=9.25))
+    assert res.status == "confirmed_breakdown"
+    assert res.volume.relative is not None and res.volume.relative > 2
+
+
+def test_a_rejection_under_old_support_is_not_a_breakdown() -> None:
+    closes = [*([92.0] * 25), 94.0, 99.8, 100.2, 99.5, 96.0]
+    bars = _session(closes, [1_000.0] * (len(closes) - 1) + [3_000.0])
+    res = _read(bars, _zone("support", "resistance"))
+    assert res.status == "no_breakout"
+
+
+def test_reclaiming_lost_support_is_still_a_bear_trap() -> None:
+    closes = [*([105.0] * 25), 96.0, 96.0, 96.0, 103.0]
+    bars = _session(closes, [1_000.0] * len(closes))
+    assert _read(bars, _zone("support", "support")).status == "failed_breakdown"
+
+
+def test_a_run_through_old_swing_highs_is_not_a_bear_trap() -> None:
+    """This shape used to land in failed_breakdown, worth 16 points and a "bear trap" setup."""
+    closes = [*([96.0] * 25), 103.0]
+    bars = _session(closes, [*([1_000.0] * 25), 3_000.0])
+    assert _read(bars, _zone(*_CLEARED)).status == "confirmed_breakout"
+
+
+def test_quiet_days_after_a_break_do_not_undo_its_volume() -> None:
+    closes = [*_FLAT, 103.0, 103.5, 104.0, 104.5]
+    bars = _session(closes, [*_QUIET, 3_000.0, 400.0, 400.0, 400.0], wick=0.1)
+    res = _read(bars, _zone(*_CLEARED))
+    assert res.status == "confirmed_breakout"
+    assert res.volume.relative == 3.0
+
+
+def test_the_break_bar_cannot_be_its_own_retest() -> None:
+    closes = [*_FLAT, 103.0, 104.0]
+    bars = _session(closes, [*_QUIET, 3_000.0, 1_000.0], wick=0.1)
+    assert bars[-2].low < 100.0, "the fixture must be a bar that started below the level"
+    assert _read(bars, _zone(*_CLEARED)).status == "confirmed_breakout"
+
+
+def test_a_pullback_to_the_level_that_holds_is_a_retest() -> None:
+    closes = [*_FLAT, 103.0, 100.4, 103.0]
+    bars = _session(closes, [*_QUIET, 3_000.0, 1_000.0, 1_000.0], wick=0.1)
+    assert _read(bars, _zone(*_CLEARED)).status == "breakout_retest_held"
+
+
+def test_a_break_older_than_the_window_is_not_news() -> None:
+    closes = [*_FLAT, *([103.0] * 15)]
+    bars = _session(closes, [1_000.0] * len(closes))
+    assert _read(bars, _zone(*_CLEARED)).status == "no_breakout"
+
+
+def test_a_real_range_breakout_comes_through_the_whole_engine() -> None:
+    """End to end, with zones the engine found itself: the path that could never fire."""
+    n = 120
+    closes = [95.0 + 4.0 * float(np.sin(i / 3.0)) for i in range(n)] + [104.0]
+    px = np.array(closes)
+    vol = np.array([1_000.0] * n + [3_000.0])
+    days = [f"2026-{1 + i // 28:02d}-{1 + i % 28:02d}" for i in range(n + 1)]
+    res = analyse(days, px, px * 1.002, px * 0.998, px, vol)
+    assert res.breakout_status == "confirmed_breakout"
+    assert "heavy volume" in res.summary

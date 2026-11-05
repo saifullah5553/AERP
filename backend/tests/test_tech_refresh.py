@@ -216,6 +216,7 @@ def _snapshot(tmp_path, prior_read: str | None) -> list[dict]:
              "fundamental_score": 60.0}]
     if prior_read:
         rows[0]["technical_as_of"] = prior_read
+        rows[0]["technical_engine"] = tech_refresh.TECHNICAL_ENGINE
     (tmp_path / "company").mkdir()
     for r in rows:
         doc = {"scores": {"fundamental": r["fundamental_score"]}, "signal": {}}
@@ -263,6 +264,14 @@ def test_psx_is_read_every_run_and_a_broken_chart_keeps_no_old_signal(tmp_path,
 
 def test_a_first_read_is_a_rebaseline_not_a_move(tmp_path, monkeypatch) -> None:
     _snapshot(tmp_path, prior_read=None)
+    _market(monkeypatch)
+    assert tech_refresh.refresh_technicals(tmp_path)["movers"] == 0
+
+
+def test_a_read_from_an_older_engine_is_not_comparable(tmp_path, monkeypatch) -> None:
+    rows = _snapshot(tmp_path, prior_read="2026-11-03")
+    rows[0]["technical_engine"] = tech_refresh.TECHNICAL_ENGINE - 1
+    (tmp_path / "screener.json").write_text(json.dumps(rows), encoding="utf-8")
     _market(monkeypatch)
     assert tech_refresh.refresh_technicals(tmp_path)["movers"] == 0
 

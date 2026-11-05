@@ -49,11 +49,15 @@ PSX_VOLUME_WINDOW = 20
 # A read this recent outlives a failed fetch. Yahoo refuses some requests on any large pass: HUBC
 # and AVN had a chart on one run and none on the next, and that is not a reason to blank them.
 PSX_KEEP_READ_DAYS = 7
+# Raise this whenever the scoring itself changes. A score from an older engine is not comparable
+# with a new one, so the first read under a new version is a re-baseline and records no mover.
+TECHNICAL_ENGINE = 2
 RETRY_PAUSE_SECONDS = 20
 RETRY_WORKERS = 2
 # Everything a technical read writes onto a row, and so what must go when there is no read.
 _READ_FIELDS = (
-    "technical_score", "technical_as_of", "signal", "signal_label", "signal_since",
+    "technical_score", "technical_as_of", "technical_engine", "signal", "signal_label",
+    "signal_since",
     "price_at_signal", "signal_return_pct", "pa_bias", "pa_phase", "pa_structure", "pa_breakout",
     "pa_setup", "pa_quality", "rel_volume", "div_rsi_bullish", "div_rsi_bearish",
     "div_efi_bullish", "div_efi_bearish", "div_latest", "top_candlestick", "top_chart_pattern",
@@ -491,10 +495,11 @@ def refresh_technicals(
         old = r.get("composite_score")
         old_sig = r.get("signal")
         new_sig = sig.signal.value
-        # A row's first read has nothing comparable before it, so the change is a re-baseline
-        # and not a move. Without this, the run that brought PSX onto this engine would have
-        # filled the Movers page with 356 "upgrades and downgrades" that happened on no chart.
-        comparable = bool(r.get("technical_as_of"))
+        # A row's first read on this engine has nothing comparable before it, so the change is a
+        # re-baseline and not a move. Without this, the run that brought PSX onto this engine
+        # would have filled the Movers page with 356 "upgrades and downgrades" that happened on
+        # no chart.
+        comparable = r.get("technical_engine") == TECHNICAL_ENGINE
         if comparable:
             _record_signal_move(smoves, r, old_sig, new_sig, sig.label, composite, cur_price,
                                 today)
@@ -502,6 +507,7 @@ def refresh_technicals(
         # The last bar the read saw, so a frozen chart is a failed check rather than a score
         # that merely stopped changing. See freshness.check_snapshot.
         r["technical_as_of"] = dates[-1]
+        r["technical_engine"] = TECHNICAL_ENGINE
         # RSI and EFI divergences, for the technical filter page. Computed from the SAME daily
         # bars this pass already downloaded, so the filter costs no extra request and refreshes
         # every day the refresh runs. Kept out of the technical score deliberately - see

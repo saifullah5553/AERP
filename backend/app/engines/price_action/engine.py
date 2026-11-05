@@ -44,6 +44,8 @@ from app.engines.price_action import volume as V
 # Weekly structure needs roughly a year of weeks to say anything; daily structure needs enough
 # bars for swings to confirm. Below this the honest output is "cannot be determined".
 MIN_BARS = 40
+# How far back to look for the side a break arrived from: about a trading month.
+APPROACH_WINDOW = 20
 
 
 @dataclass(slots=True)
@@ -109,8 +111,52 @@ def _iso(day: str) -> tuple[int, int, int]:
     return date(int(day[:4]), int(day[5:7]), int(day[8:10])).isocalendar()
 
 
+@dataclass(slots=True)
+class BreakRead:
+    status: str
+    points: float                # share of the 20 points
+    note: str
+    volume: V.VolumeRead         # the session the verdict rests on: the break's, if there is one
+
+
+def _break_bar(bars: list[C.Bar], lookback: int, zone: S.Zone, above: bool,
+               margin: float) -> int | None:
+    """Index of the bar that closed through `zone` and has stayed through it, or None.
+
+    Walks back from the latest close. None in two cases, both of which are not a break:
+
+      * price has been through the level for the whole window - that break is too old to judge;
+      * price arrived from the side it has left on. SKWD sat at 61.67, pulled back into an old
+        58.45-59.02 level, closed under it and bounced. That is a pullback holding, not a
+        breakout, and calling it one marked a healthy uptrend down for "light volume".
+
+    The test is the side price was MOST RECENTLY clear of, not whether it was ever there. CDRO
+    closed under its level once on the 23rd, rallied clear above on the 27th, and broke down on
+    the 28th on 2.9x volume: only the latest approach says which way the level was crossed.
+    """
+    level = zone.high if above else zone.low
+    first = max(0, len(bars) - lookback)
+    i = len(bars) - 1
+    while i > first and (bars[i - 1].close > level if above else bars[i - 1].close < level):
+        i -= 1
+    if i <= first:
+        return None
+    for bar in reversed(bars[max(0, i - APPROACH_WINDOW):i]):
+        if bar.close > zone.high * (1 + margin):
+            return None if above else i
+        if bar.close < zone.low * (1 - margin):
+            return i if above else None
+    return i
+
+
+def _volume_on(bars: list[C.Bar], index: int) -> V.VolumeRead:
+    """That session's volume against the sessions before it."""
+    return V.relative_volume([b.volume if b.volume is not None else 0.0
+                              for b in bars[:index + 1]])
+
+
 def _breakout(bars: list[C.Bar], zones: list[S.Zone], vol: V.VolumeRead,
-              lookback: int = 10) -> tuple[str, float, str]:
+              lookback: int = 10) -> BreakRead:
     """Breakout / breakdown status, its share of the 20 points, and the evidence.
 
     A move through a level is not a breakout. The test is a CLOSE through it, and then what
@@ -118,10 +164,9 @@ def _breakout(bars: list[C.Bar], zones: list[S.Zone], vol: V.VolumeRead,
     beyond a level intraday is the single most common false positive on any chart.
     """
     if not bars or not zones:
-        return "no_breakout", 10.0, "no tested level nearby to break"
+        return BreakRead("no_breakout", 10.0, "no tested level nearby to break", vol)
 
-    last = bars[-1]
-    price = last.close
+    price = bars[-1].close
     recent = bars[-lookback:]
     # A break has to CLEAR the level, not graze it. Without a margin, price oscillating around
     # a zone edge - which is what price does at a level, by definition - registered as a break
@@ -130,43 +175,63 @@ def _breakout(bars: list[C.Bar], zones: list[S.Zone], vol: V.VolumeRead,
     # The margin is proportional so it means the same thing on a 5 rupee share and a 500 one.
     margin = 0.015
 
-    res = [z for z in zones if z.kind == "resistance"]
-    sup = [z for z in zones if z.kind == "support"]
+    # BY ORIGIN, NOT BY CURRENT LABEL. A zone is labelled relative to price, so once price had
+    # closed through resistance that zone was already called support and these two loops could
+    # never run: no company in any market showed a breakout or a breakdown from the day this
+    # shipped. Nor can the label simply be ignored, because then a bounce off support reads as a
+    # breakout. What makes it a breakout is that the level was built from swing HIGHS.
+    res = [z for z in zones if z.origin == "resistance"]
+    sup = [z for z in zones if z.origin == "support"]
 
     # A level is "broken" when the latest close is beyond it but recent bars traded below/above,
-    # i.e. the break happened inside the window we can still see the consequences of.
+    # i.e. the break happened inside the window we can still see the consequences of. The volume
+    # that counts is the BREAK's, not today's: three quiet days holding above a level are the
+    # market accepting it, not evidence against the session that broke it.
     for zone in sorted(res, key=lambda z: -z.mid):
-        if price > zone.high * (1 + margin) and any(b.close <= zone.high
-                                                     for b in recent[:-1]):
-            through = (price / zone.high - 1) * 100
-            after = [b for b in recent if b.close > zone.high]
-            held = len(after) >= 2
-            retested = any(b.low <= zone.high * 1.005 for b in after) and held
-            if vol.relative is not None and vol.relative >= 1.5 and retested:
-                return ("breakout_retest_held", 20.0,
-                        f"closed {through:.1f}% above the {zone.low:,.2f}-{zone.high:,.2f} zone "
-                        f"on {vol.relative:.1f}x volume, came back to it and held")
-            if vol.relative is not None and vol.relative >= 1.5:
-                return ("confirmed_breakout", 17.0,
-                        f"closed {through:.1f}% above {zone.high:,.2f} "
-                        f"on {vol.relative:.1f}x volume")
-            if vol.relative is not None and vol.relative <= 0.8:
-                return ("breakout_suspect_low_volume", 9.0,
-                        f"closed above {zone.high:,.2f} but on {vol.relative:.1f}x volume - "
-                        "no weight behind it")
-            return ("breakout_forming", 13.0,
-                    f"closed {through:.1f}% above {zone.high:,.2f} on ordinary volume")
+        if price <= zone.high * (1 + margin):
+            continue
+        index = _break_bar(bars, lookback, zone, True, margin)
+        if index is None:
+            continue
+        on_break = _volume_on(bars, index)
+        ratio = on_break.relative
+        through = (price / zone.high - 1) * 100
+        # Only bars AFTER the break can retest it. The break bar usually opens below the level,
+        # so counting its own low would call nearly every two-day-old breakout retested.
+        since = bars[index + 1:]
+        retested = any(b.low <= zone.high * 1.005 for b in since)
+        if ratio is not None and ratio >= 1.5 and retested:
+            return BreakRead("breakout_retest_held", 20.0,
+                             f"closed {through:.1f}% above the {zone.low:,.2f}-{zone.high:,.2f} "
+                             f"zone on {ratio:.1f}x volume, came back to it and held", on_break)
+        if ratio is not None and ratio >= 1.5:
+            return BreakRead("confirmed_breakout", 17.0,
+                             f"closed {through:.1f}% above {zone.high:,.2f} on {ratio:.1f}x "
+                             "volume", on_break)
+        if ratio is not None and ratio <= 0.8:
+            return BreakRead("breakout_suspect_low_volume", 9.0,
+                             f"closed above {zone.high:,.2f} but on {ratio:.1f}x volume - "
+                             "no weight behind it", on_break)
+        return BreakRead("breakout_forming", 13.0,
+                         f"closed {through:.1f}% above {zone.high:,.2f} on ordinary volume",
+                         on_break)
 
     for zone in sorted(sup, key=lambda z: z.mid):
-        if price < zone.low * (1 - margin) and any(b.close >= zone.low
-                                                   for b in recent[:-1]):
-            through = (1 - price / zone.low) * 100
-            if vol.relative is not None and vol.relative >= 1.5:
-                return ("confirmed_breakdown", 3.0,
-                        f"closed {through:.1f}% below {zone.low:,.2f} on {vol.relative:.1f}x "
-                        "volume - real selling")
-            return ("breakdown_forming", 6.0,
-                    f"closed below {zone.low:,.2f} on unremarkable volume - unconfirmed")
+        if price >= zone.low * (1 - margin):
+            continue
+        index = _break_bar(bars, lookback, zone, False, margin)
+        if index is None:
+            continue
+        on_break = _volume_on(bars, index)
+        ratio = on_break.relative
+        through = (1 - price / zone.low) * 100
+        if ratio is not None and ratio >= 1.5:
+            return BreakRead("confirmed_breakdown", 3.0,
+                             f"closed {through:.1f}% below {zone.low:,.2f} on {ratio:.1f}x "
+                             "volume - real selling", on_break)
+        return BreakRead("breakdown_forming", 6.0,
+                         f"closed below {zone.low:,.2f} on unremarkable volume - unconfirmed",
+                         on_break)
 
     # FAILURES are checked against every zone, whatever it is currently labelled, and require a
     # full round trip ACROSS the band. Splitting by label made these near-tautological: a zone
@@ -178,15 +243,16 @@ def _breakout(bars: list[C.Bar], zones: list[S.Zone], vol: V.VolumeRead,
         cleared_above = [b for b in recent[:-1] if b.close > zone.high * (1 + margin)]
         cleared_below = [b for b in recent[:-1] if b.close < zone.low * (1 - margin)]
         if cleared_above and price < zone.low * (1 - margin):
-            return ("failed_breakout", 4.0,
-                    f"closed clear above {zone.high:,.2f} and is now back below "
-                    f"{zone.low:,.2f} - a trap unless it is reclaimed")
+            return BreakRead("failed_breakout", 4.0,
+                             f"closed clear above {zone.high:,.2f} and is now back below "
+                             f"{zone.low:,.2f} - a trap unless it is reclaimed", vol)
         if cleared_below and price > zone.high * (1 + margin):
-            return ("failed_breakdown", 16.0,
-                    f"lost {zone.low:,.2f} on a closing basis and has reclaimed "
-                    f"{zone.high:,.2f} - a bear trap, which is a bullish tell")
+            return BreakRead("failed_breakdown", 16.0,
+                             f"lost {zone.low:,.2f} on a closing basis and has reclaimed "
+                             f"{zone.high:,.2f} - a bear trap, which is a bullish tell", vol)
 
-    return "no_breakout", 10.0, "price is inside its range; no level has been broken"
+    return BreakRead("no_breakout", 10.0, "price is inside its range; no level has been broken",
+                     vol)
 
 
 def _phase(struct: S.Structure, vol_trend: str, breakout: str,
@@ -371,11 +437,12 @@ def analyse(dates, open_, high, low, close, volume,
     level_zones = S.zones(daily_swings, closes, highs, lows, price)
     vol = V.relative_volume(vols)
     vol_trend = V.trend(vols)
-    status, breakout_points, breakout_note = _breakout(bars, level_zones, vol)
+    read_break = _breakout(bars, level_zones, vol)
+    status, breakout_points, breakout_note = read_break.status, read_break.points, read_break.note
 
     pct = ((price / bars[-2].close - 1) * 100) if len(bars) > 1 and bars[-2].close else None
     verdict = V.price_volume_verdict(
-        pct, vol,
+        pct, read_break.volume,
         breakout=status.startswith("breakout") or status == "confirmed_breakout",
         breakdown=status.startswith("breakdown") or status == "confirmed_breakdown")
     climax_note = V.climax(closes, highs, lows, vols, vol)
@@ -389,7 +456,7 @@ def analyse(dates, open_, high, low, close, volume,
     candle_notes = C.read(bars)
     struct_points = _structure_points(daily_struct)
     level_points, level_note = _level_points(level_zones, price)
-    volume_points = _volume_points(vol, vol_trend, status)
+    volume_points = _volume_points(read_break.volume, vol_trend, status)
 
     # RELATIVE STRENGTH replaces the candle score. A single bar's shape carried 15 points and
     # earned none of them: the detectors had real defects (three_black_crows fired on 10% of
