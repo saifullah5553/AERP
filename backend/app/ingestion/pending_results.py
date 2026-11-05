@@ -43,6 +43,15 @@ SA_PREFIX = {
 }
 _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+# A company we could not ask about, but whose newest period is at least this old, is treated as
+# pending: a full quarter plus a filing window has passed, so a fetch is justified without the
+# probe's answer. Below this it stays out, because it may simply have nothing new.
+ASSUME_DUE_AFTER_DAYS = 120
+# Per-market ceiling on probing, so a throttled source cannot eat the whole job's time limit.
+MAX_PROBE_SECONDS = 1500
+COOLDOWN_SECONDS = 30.0
+MAX_COOLDOWN_SECONDS = 120.0
+PROBE_ATTEMPTS = 4
 # The newest reported period, as the page states it in its own payload.
 _DATEKEY = re.compile(r'datekey:\["(\d{4}-\d{2}-\d{2})"')
 
@@ -65,6 +74,10 @@ def announced_recently(data_dir: Path, region: str, days: int = 5) -> set[str]:
     return out
 
 
+class Throttled(Exception):
+    """The source refused to answer. That is NOT the same as "nothing new"."""
+
+
 def newest_at_source(region: str, symbol: str, client: httpx.Client) -> str | None:
     """The newest period the source reports for this company, or None if it has no page."""
     prefix = SA_PREFIX.get(region)
@@ -75,6 +88,8 @@ def newest_at_source(region: str, symbol: str, client: httpx.Client) -> str | No
                        f"/financials/income-statement/?p=trailing")
     except httpx.HTTPError:
         return None
+    if r.status_code in (403, 429):
+        raise Throttled(str(r.status_code))
     if r.status_code != 200:
         return None
     m = _DATEKEY.search(r.text)
@@ -113,6 +128,16 @@ def due_for_probe(held: str | None, today: date, min_age_days: int = MIN_AGE_DAY
     return (today - end).days >= min_age_days
 
 
+def assume_due(held: str | None, today: date) -> bool:
+    """Stale enough to fetch even though the source would not confirm a newer period."""
+    if not held:
+        return True
+    try:
+        return (today - date.fromisoformat(str(held)[:10])).days >= ASSUME_DUE_AFTER_DAYS
+    except ValueError:
+        return True
+
+
 def probe_for_new_quarters(region: str, symbols: list[str], store_dir: Path,
                            pause: float = 0.25, workers: int = 6
                            ) -> tuple[set[str], dict[str, str]]:
@@ -120,6 +145,12 @@ def probe_for_new_quarters(region: str, symbols: list[str], store_dir: Path,
 
     This is the definitive test, and the reason it exists: an announcement can be missed, worded
     unusually, or fall out of a rolling feed. A period we do not have cannot be any of those.
+
+    A throttled answer is not an answer. This used to read a 429 as "no newer period", so when
+    the source rate-limited the probe the list silently shrank: on 5 Nov 2026 it reported 94 US
+    companies pending while Apple, Microsoft, JPMorgan and every other name that answered had a
+    quarter we did not hold. All workers now wait out a shared cooldown, and whatever could not
+    be checked is counted, reported, and treated as due if it is old enough.
     """
     held = held_periods(region, store_dir)
     today = datetime.now(UTC).date()
@@ -129,12 +160,37 @@ def probe_for_new_quarters(region: str, symbols: list[str], store_dir: Path,
 
     pending: set[str] = set()
     seen: dict[str, str] = {}
+    unknown: set[str] = set()
     lock = threading.Lock()
+    deadline = time.time() + MAX_PROBE_SECONDS
+    gate = {"resume": 0.0, "cooldown": COOLDOWN_SECONDS}
 
     def one(symbol: str, client: httpx.Client) -> None:
-        newest = newest_at_source(region, symbol, client)
-        time.sleep(pause)
+        newest = None
+        for _ in range(PROBE_ATTEMPTS):
+            wait = gate["resume"] - time.time()
+            if wait > 0:
+                time.sleep(wait)
+            if time.time() >= deadline:
+                break
+            try:
+                newest = newest_at_source(region, symbol, client)
+            except Throttled:
+                with lock:
+                    if time.time() >= gate["resume"]:
+                        gate["resume"] = time.time() + gate["cooldown"]
+                        gate["cooldown"] = min(gate["cooldown"] * 2, MAX_COOLDOWN_SECONDS)
+                continue
+            gate["cooldown"] = COOLDOWN_SECONDS
+            time.sleep(pause)
+            if not newest:
+                return
+            break
+        else:
+            newest = None
         if not newest:
+            with lock:
+                unknown.add(symbol)
             return
         with lock:
             seen[symbol] = newest
@@ -149,6 +205,14 @@ def probe_for_new_quarters(region: str, symbols: list[str], store_dir: Path,
 
     log.info("pending[%s]: %d of %d probed have a quarter we do not hold",
              region, len(pending), len(due))
+    if unknown:
+        stale = {s.upper() for s in unknown if assume_due(held.get(s.upper()), today)}
+        pending |= stale
+        # A warning annotation, because job logs need a token to read and this must be visible.
+        print(f"::warning::pending[{region}]: source would not answer for {len(unknown)} of "
+              f"{len(due)}; {len(stale)} are old enough to fetch anyway", flush=True)
+        log.warning("pending[%s]: could not check %d of %d; %d assumed due",
+                    region, len(unknown), len(due), len(stale))
     return pending, seen
 
 

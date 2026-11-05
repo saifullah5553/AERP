@@ -153,6 +153,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The tip, not this run's starting commit. By now `build` has committed a new
+          # snapshot, and checking the commit it started from inspected the previous one, so
+          # a run that had just fixed everything still failed for what it replaced.
+          ref: main
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

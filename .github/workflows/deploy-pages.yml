@@ -33,7 +33,11 @@ jobs:
       run:
         working-directory: frontend
     steps:
+      # The tip, not the push's commit. This queues behind the refresh, so building the commit
+      # that triggered it republished the older snapshot over the one just deployed.
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
