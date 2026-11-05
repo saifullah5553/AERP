@@ -65,7 +65,10 @@ $symbols = $symbols | Select-Object -First $maxSymbols
   --max-minutes $scrapeMinutes 2>&1 | Select-String -Pattern "COMPLETE|time budget" |
   ForEach-Object { Log $_.Line }
 
-# 4. Merge into the store, and publish only the store.
+# 4. Merge into the store, and publish only the store. Pull it again first: the scrape took hours
+# and CI may have pushed since, and pushing the copy from step 1 would put that back.
+& $py "scripts	ip_files.py" pull @store 2>&1 | ForEach-Object { Log $_ }
+if ($LASTEXITCODE -ne 0) { Log "could not read the tip - not publishing"; Pop-Location; exit 1 }
 Push-Location "backend"
 & $py -m app.cli consolidate-fundamentals --regions ($regions -join ",") --no-apply 2>&1 |
   Select-String -Pattern "fundamentals_store:" | ForEach-Object { Log $_.Line }

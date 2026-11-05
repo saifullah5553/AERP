@@ -133,38 +133,16 @@ jobs:
             --symbols "${{ steps.pick.outputs.symbols }}" \
             --workers 3 --page-pause 0.5 --work 300 --rest 0 --max-minutes 170
 
-      - name: Merge into the store, then push it into the snapshot
+      # One step, on the tip as it stands now. This job runs for hours, and whatever it checked out
+      # at the start is out of date by here. See publish_on_tip.sh for what that cost.
+      # NOT data/pending in the paths: it is gitignored, and `git add` on an ignored path is a fatal
+      # error, not a skip. That alone failed this job in 59 seconds every run - after the missing
+      # dependency had already emptied the symbol list and skipped the real work. The lists are
+      # rebuilt from scratch at the start of every run, so nothing is lost.
+      - name: Merge into the store, rescore, and publish, all on the current tip
         if: steps.pick.outputs.symbols != ''
-        working-directory: backend
-        run: |
-          set -e
-          python -m app.cli consolidate-fundamentals
-          # Consolidating alone changes NOTHING a user can see. The score reads statements_ttm
-          # inside the company files, so freshly scraped results sat in the store while the
-          # dashboard kept showing last quarter. That is exactly what happened: FFC has carried
-          # Q2 2026 at the source for days and every PSX company still scored to Mar-26.
-          python -m app.cli apply-fundamentals --data-dir ../frontend/public/data
-          # Applying the statements is not the end of it. The fundamental score and the DCF
-          # fair value are both computed FROM statements_ttm, so without these two the new
-          # quarter lands in the company files and every published score still describes the
-          # old one. refresh-quality recomputes the score and the valuation; the history pass
-          # adds the new quarter to the per-quarter series the ledger ranks on.
-          python -m app.cli refresh-quality --out ../frontend/public/data || true
-          python -m app.cli refresh-quality-history --out ../frontend/public/data || true
-
-      - name: Commit if anything changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # NOT data/pending: it is gitignored, and `git add` on an ignored path is a fatal
-          # error, not a skip. That alone failed this job in 59 seconds every run - after the
-          # missing dependency had already emptied the symbol list and skipped the real work.
-          # The lists are rebuilt from scratch at the start of every run, so nothing is lost.
-          git add data/fundamentals_ttm frontend/public/data/company
-          if git diff --cached --quiet; then
-            echo "Store unchanged - nothing to commit."
-          else
-            # Not a bare `git push`: this job runs for hours, so another workflow has usually
-            # pushed by the time it finishes, and a rejected push here loses the whole scrape.
-            bash scripts/commit_snapshot.sh "data: refresh fundamentals for companies that reported"
-          fi
+          bash scripts/publish_on_tip.sh "data: refresh fundamentals for companies that reported" \
+            "bash scripts/rescore_fundamentals.sh" data/fundamentals_ttm frontend/public/data/company
