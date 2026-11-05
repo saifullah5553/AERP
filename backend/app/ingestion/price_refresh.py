@@ -199,8 +199,12 @@ def _pe_ttm(price: Any, eps_ttm: float | None) -> float | None:
 
 
 def _add_psx_quotes(rows: list[dict], quotes: dict[str, dict]) -> None:
-    """Populate `quotes` (keyed by provider_symbol) for PSX names from the official
-    dps.psx.com.pk/market-watch table (live close/change/volume for the whole market)."""
+    """Populate `quotes` (keyed by provider_symbol) for PSX names from the exchange's public
+    /screener page: price and % change for the whole market in one request.
+
+    It carries no daily volume, so volume comes from the newest bar in our own pack, which the
+    bar refresh fills from Yahoo. That is the previous session's figure until the next run.
+    """
     psx_map = {
         r.get("symbol"): r.get("provider_symbol")
         for r in rows
@@ -209,54 +213,36 @@ def _add_psx_quotes(rows: list[dict], quotes: dict[str, dict]) -> None:
     if not psx_map:
         return
     try:
-        from app.ingestion.psx_market import parse_market_watch, parse_symbols
+        from app.ingestion.psx_market import fetch_public_market
 
-        resp = httpx.get(
-            "https://dps.psx.com.pk/market-watch", headers={"User-Agent": _UA}, timeout=25
-        )
-        resp.raise_for_status()
-        marketrows = parse_market_watch(resp.text)
+        market = fetch_public_market()
     except Exception as exc:  # noqa: BLE001 - network optional
-        log.warning("PSX market-watch fetch failed: %s", exc)
+        log.error("PSX public pages failed - PSX prices NOT refreshed: %s", exc)
+        return
+    if not market.quotes:
+        # Loud on purpose. An empty parse raised nothing for six weeks: the old endpoint began
+        # answering with an HTML error page and every PSX price froze while the run stayed green.
+        log.error("PSX /screener returned no rows - PSX prices NOT refreshed")
         return
 
-    # Sector per symbol from /symbols (title-cased), so PSX names get proper sectors.
-    sectors: dict[str, str] = {}
-    try:
-        sresp = httpx.get(
-            "https://dps.psx.com.pk/symbols", headers={"User-Agent": _UA}, timeout=25
-        )
-        sresp.raise_for_status()
-        for s, meta in parse_symbols(sresp.text).items():
-            if meta.sector:
-                sectors[s] = meta.sector.title()
-    except Exception as exc:  # noqa: BLE001 - network optional
-        log.warning("PSX /symbols fetch failed: %s", exc)
-    for mr in marketrows:
-        ps = psx_map.get(mr.symbol)
-        if not ps:
+    from app.ingestion.price_pack import packed_bars
+
+    as_of = (market.as_of or datetime.now(tz=_PSX_TZ).date()).isoformat()
+    for symbol, ps in psx_map.items():
+        q = market.quotes.get(str(symbol).upper())
+        if q is None:
             continue
-        price = mr.close if mr.close is not None else mr.ldcp
-        if price is None:
-            continue
-        prev = mr.ldcp
-        change = mr.change
-        change_pct = mr.change_pct
-        if change is None and prev not in (None, 0):
-            change = round(price - prev, 4)
-        if change_pct is None and prev not in (None, 0):
-            change_pct = round((price - prev) / prev * 100.0, 4)
+        prev = q.prev_close
+        change = round(q.price - prev, 4) if prev is not None else None
+        bars = packed_bars("psx", str(symbol))
+        volume = bars[max(bars)][5] if bars else None
         quotes[ps] = {
-            "price": price, "prev_close": prev, "change": change, "change_pct": change_pct,
-            "day_open": mr.open, "day_high": mr.high, "day_low": mr.low, "volume": mr.volume,
-            "sector": sectors.get(mr.symbol),
-            # The market-watch table has no date column - it is whatever session the exchange is
-            # showing right now, so date it in Karachi. Without a stamp all 453 PSX rows were
-            # invisible to the staleness check, which is the one market we cannot re-fetch from
-            # anywhere else.
-            "as_of": datetime.now(tz=_PSX_TZ).date().isoformat(),
+            "price": q.price, "prev_close": prev, "change": change, "change_pct": q.change_pct,
+            "day_open": None, "day_high": None, "day_low": None, "volume": volume,
+            "sector": None, "as_of": as_of,
         }
-    log.info("PSX market-watch: %d symbols patched", sum(1 for k in quotes if k.endswith(".KA")))
+    log.info("PSX public pages: %d symbols patched, session %s",
+             sum(1 for k in quotes if k.endswith(".KA")), as_of)
 
 
 def refresh_prices(
@@ -294,8 +280,8 @@ def refresh_prices(
     finally:
         client.close()
 
-    # PSX prices from the official market-watch (Yahoo has no PSX). Patched directly here so
-    # PSX stays robust even if the DB-based ingest hiccups. One fetch for the whole market.
+    # PSX prices from the exchange's public /screener page. Patched directly here so PSX
+    # stays robust even if the DB-based ingest hiccups. One fetch for the whole market.
     _add_psx_quotes(rows, quotes)
 
     updated = 0

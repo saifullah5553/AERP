@@ -34,10 +34,6 @@ _UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like
 # keeps interval=1d honest: the same request returns 14,271 daily closes back to 1970.
 _YAHOO = ("https://query1.finance.yahoo.com/v8/finance/chart/{sym}"
           "?period1=0&period2={until}&interval=1d")
-# The exchange's own end-of-day series. dps.psx.com.pk is already the source of PSX quotes, so
-# this adds a route, not a dependency.
-_PSX_EOD = "https://dps.psx.com.pk/timeseries/eod/KSE100"
-
 # Yahoo-served indices, by the symbol they are actually published under.
 YAHOO_INDICES = ("^GSPC", "^NSEI", "^AXJO", "^TASI.SR", "DFMGI.AE")
 PSX_INDEX = "^KSE100"
@@ -76,33 +72,25 @@ def _from_yahoo(symbol: str, client: httpx.Client) -> dict[str, float]:
     return out
 
 
-def _from_psx(client: httpx.Client) -> dict[str, float]:
-    """{date: close} for the KSE-100, from the exchange's own EOD endpoint.
+def _from_psx() -> dict[str, float]:
+    """{session: close} for the KSE-100, from the exchange's public /indices page.
 
-    Rows arrive as [epoch, close, volume, ...]. Dated in Karachi, because a PSX session that
-    closes at 15:30 PKT is 10:30 UTC - the same day either way, but only by luck of the hour,
-    and the ledger compares these dates against trade dates that were derived locally.
+    One point per run: the EOD series this used to read was closed to direct requests around
+    24 Sep 2026, and Yahoo does not carry the index, so history accumulates from here.
     """
-    try:
-        resp = client.get(_PSX_EOD, headers={"User-Agent": _UA}, timeout=30)
-        resp.raise_for_status()
-        rows = (resp.json() or {}).get("data") or []
-    except Exception as exc:  # noqa: BLE001
-        log.warning("index %s: PSX portal fetch failed (%s)", PSX_INDEX, exc)
-        return {}
+    from app.ingestion.psx_market import PSXPortalClient, parse_as_of, parse_indices
 
-    out: dict[str, float] = {}
-    for row in rows:
-        if not isinstance(row, list | tuple) or len(row) < 2:
-            continue
-        try:
-            stamp, close = float(row[0]), float(row[1])
-        except (TypeError, ValueError):
-            continue
-        if close <= 0:
-            continue
-        out[datetime.fromtimestamp(stamp + 5 * 3600, tz=UTC).date().isoformat()] = close
-    return out
+    try:
+        html = PSXPortalClient().indices()
+    except Exception as exc:  # noqa: BLE001
+        log.error("index %s: exchange page failed (%s)", PSX_INDEX, exc)
+        return {}
+    session = parse_as_of(html)
+    current = (parse_indices(html).get("KSE100") or {}).get("current")
+    if session is None or not current:
+        log.error("index %s: no level on the exchange page - NOT advanced", PSX_INDEX)
+        return {}
+    return {session.isoformat(): current}
 
 
 def refresh_indices() -> dict[str, Any]:
@@ -116,7 +104,7 @@ def refresh_indices() -> dict[str, Any]:
             got = _from_yahoo(symbol, client)
             if got:
                 series[symbol] = got
-        psx = _from_psx(client)
+        psx = _from_psx()
         if psx:
             series[PSX_INDEX] = psx
     finally:

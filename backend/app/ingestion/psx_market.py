@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import httpx
 from sqlalchemy import select
@@ -56,6 +56,16 @@ class PSXPortalClient:
 
     def eod(self, symbol: str) -> str:
         return self._client.get(f"/timeseries/eod/{symbol}").text
+
+    def screener(self) -> str:
+        resp = self._client.get("/screener")
+        resp.raise_for_status()
+        return resp.text
+
+    def indices(self) -> str:
+        resp = self._client.get("/indices")
+        resp.raise_for_status()
+        return resp.text
 
 
 # --------------------------------------------------------------------------- #
@@ -148,6 +158,116 @@ def parse_market_watch(html: str) -> list[MarketRow]:
             )
         )
     return rows
+
+
+# --------------------------------------------------------------------------- #
+# The public pages
+# --------------------------------------------------------------------------- #
+# Around 24 Sep 2026 the exchange closed /market-watch, /symbols and /timeseries/* to direct
+# requests: 404 from a plain client, 403 with an XHR header. That is access control, so it is
+# not worked around here. /screener and /indices are ordinary public pages, and between them
+# carry every listed company's price and change, the index levels and the session timestamp.
+@dataclass(slots=True)
+class PublicQuote:
+    symbol: str
+    price: float
+    change_pct: float | None
+    market_cap: float | None
+
+    @property
+    def prev_close(self) -> float | None:
+        """The last session's close, implied by the exchange's own price and % change."""
+        if self.change_pct is None or self.change_pct <= -100:
+            return None
+        return self.price / (1 + self.change_pct / 100)
+
+
+@dataclass(slots=True)
+class PublicMarket:
+    as_of: date | None
+    quotes: dict[str, PublicQuote]
+    indices: dict[str, dict[str, float | None]]
+
+
+_TR = re.compile(r"<tr[^>]*>(.*?)</tr>", re.S)
+_TD = re.compile(r"<td([^>]*)>(.*?)</td>", re.S)
+_TH = re.compile(r"<th[^>]*>(.*?)</th>", re.S)
+_TAG = re.compile(r"<[^>]+>")
+_ORDER = re.compile(r'data-order="([^"]*)"')
+_AS_OF = re.compile(r"As of\s+([A-Z][a-z]{2})\s+(\d{1,2}),\s+(\d{4})")
+
+
+def _cell(attrs: str, body: str) -> float | None:
+    """A numeric cell. `data-order` holds the full precision; the text is rounded for show."""
+    found = _ORDER.search(attrs)
+    return _num(found.group(1) if found else _TAG.sub("", body))
+
+
+def parse_screener(html: str) -> list[PublicQuote]:
+    """Every listed company from the public /screener page.
+
+    Columns are located by HEADER, not position: a reordered table should fail loudly as "no
+    rows" rather than quietly read market cap as price.
+    """
+    heads = [_TAG.sub("", h).strip().upper() for h in _TH.findall(html)]
+    try:
+        i_cap = next(i for i, h in enumerate(heads) if h.startswith("MARKET CAP"))
+        i_price = heads.index("PRICE")
+        i_chg = next(i for i, h in enumerate(heads) if h.startswith("CHANGE"))
+    except (StopIteration, ValueError):
+        return []
+    out: list[PublicQuote] = []
+    for row in _TR.findall(html):
+        cells = _TD.findall(row)
+        if len(cells) <= max(i_cap, i_price, i_chg):
+            continue
+        # From the <strong>, not the cell: flagged names carry a badge beside the symbol ("GIL XD",
+        # "PASL NC") and reading the whole cell filed them under a key nothing matches.
+        name = re.search(r"<strong>(.*?)</strong>", cells[0][1], re.S)
+        symbol = _TAG.sub("", name.group(1) if name else cells[0][1]).strip().upper()
+        price = _cell(*cells[i_price])
+        if not symbol or not price or price <= 0:
+            continue
+        out.append(PublicQuote(symbol, price, _cell(*cells[i_chg]), _cell(*cells[i_cap])))
+    return out
+
+
+def parse_indices(html: str) -> dict[str, dict[str, float | None]]:
+    """Index levels from the public /indices table: {code: {high, low, current, change}}."""
+    out: dict[str, dict[str, float | None]] = {}
+    for row in _TR.findall(html):
+        code = re.search(r'data-code="([^"]+)"', row)
+        cells = _TD.findall(row)
+        if not code or len(cells) < 5:
+            continue
+        out[code.group(1)] = {
+            "high": _cell(*cells[1]), "low": _cell(*cells[2]),
+            "current": _cell(*cells[3]), "change": _cell(*cells[4]),
+        }
+    return out
+
+
+def parse_as_of(html: str) -> date | None:
+    """The session the page describes, from its "As of Nov 5, 2026 2:30 PM" stamp.
+
+    Used instead of today's date because a run early on a Saturday morning is still showing
+    Friday's session, and stamping that as Saturday would invent a trading day.
+    """
+    found = _AS_OF.search(html)
+    if not found:
+        return None
+    try:
+        return datetime.strptime(" ".join(found.groups()), "%b %d %Y").date()
+    except ValueError:
+        return None
+
+
+def fetch_public_market(client: PSXPortalClient | None = None) -> PublicMarket:
+    """One read of the exchange's public pages. Raises if either page will not load."""
+    client = client or PSXPortalClient()
+    indices_html = client.indices()
+    quotes = {q.symbol: q for q in parse_screener(client.screener())}
+    return PublicMarket(parse_as_of(indices_html), quotes, parse_indices(indices_html))
 
 
 @dataclass(slots=True)

@@ -144,17 +144,33 @@ def _clean(bars: list) -> list[float]:
     return out
 
 
+def _on_shared_dates(bars: list, benchmark_bars: list) -> tuple[list, list]:
+    """Keep only the days both series traded, so a window covers one stretch of calendar.
+
+    Counting bars from the right is only right when neither series has a hole. The KSE-100 has
+    one (no source for 24 Sep - 2 Oct 2026), and counting across it would compare a stock over
+    one quarter with its index over a longer one and call the difference relative strength.
+    """
+    def day(b: object) -> object:
+        return getattr(b, "date", None) or (b.get("date") if isinstance(b, dict) else None)
+
+    if not all(day(b) for b in bars) or not all(day(b) for b in benchmark_bars):
+        return bars, benchmark_bars
+    shared = {day(b) for b in bars} & {day(b) for b in benchmark_bars}
+    return [b for b in bars if day(b) in shared], [b for b in benchmark_bars if day(b) in shared]
+
+
 def read(bars: list, benchmark_bars: list | None) -> RelativeRead:
     """Compare the security's move with its market's over the same windows.
 
-    Both series are trimmed to the same length from the RIGHT, so the comparison covers the
-    same recent period even when one series starts earlier or carries a different number of
-    holidays. Aligning from the left would measure two different stretches of calendar and call
-    the difference relative strength.
+    The series are matched on date first, then trimmed to the same length from the RIGHT, so
+    the comparison covers one recent period even when one series starts earlier, carries a
+    different number of holidays, or has a gap.
     """
     if not benchmark_bars:
         return RelativeRead()
 
+    bars, benchmark_bars = _on_shared_dates(bars, benchmark_bars)
     stock = _clean(bars)
     index = _clean(benchmark_bars)
     n = min(len(stock), len(index))

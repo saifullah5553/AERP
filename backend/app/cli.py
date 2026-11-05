@@ -205,24 +205,10 @@ def cmd_verify_freshness(args: argparse.Namespace) -> None:
 
 
 def cmd_refresh_psx_bars(args: argparse.Namespace) -> None:
-    """Advance the PSX daily bars from the exchange EOD endpoint."""
-    import json as _json
-    from pathlib import Path as _P
+    """Advance the PSX daily bars: exchange prices, plus reconciled Yahoo history and volume."""
+    from app.ingestion.psx_bars import refresh_psx_daily
 
-    from app.ingestion.psx_bars import refresh_from_market_watch, refresh_psx_bars
-
-    # One request for the whole market first: it keeps every symbol current and cannot trip
-    # the per-symbol cooldown.
-    log.info("refresh-psx-bars: %s", refresh_from_market_watch())
-
-    if args.backfill:
-        # Only when asked. Per-symbol history is paced, capped and stalest-first, so it fills
-        # gaps across several runs instead of burning the quota in one.
-        data_dir = _P(args.out or "../frontend/public/data")
-        rows = _json.loads((data_dir / "screener.json").read_text(encoding="utf-8"))
-        syms = sorted({str(r["symbol"]) for r in rows
-                       if r.get("region") == "psx" and r.get("symbol")})
-        log.info("refresh-psx-bars(backfill): %s", refresh_psx_bars(syms, limit=args.limit))
+    log.info("refresh-psx-bars: %s", refresh_psx_daily())
 
 
 def cmd_init_db(args: argparse.Namespace) -> None:
