@@ -32,6 +32,7 @@ from typing import Any
 from app.core.logging import get_logger
 from app.ingestion.model_portfolio import SIZE_BY_REGION
 from app.ingestion.quarterly_score_backtest import Prices, _add_months
+from app.ingestion.us_book import load_book
 
 log = get_logger(__name__)
 
@@ -181,9 +182,82 @@ def capped_picks(ranked: list[tuple[str, float]], names: dict[str, dict], top_n:
     return set(picks)
 
 
+def _follow_book(book: list[dict], held: dict[str, dict], quarters: list[dict],
+                 names: dict[str, dict], prices: Prices, index_series: dict[str, float],
+                 today: str, index: int) -> None:
+    """Trade the dated rebalances, in the same terms as a reconstructed quarter.
+
+    A step waits until its close exists: on the day it is written the pack ends a session short,
+    and a position with no entry price is a hole in the record that nothing would fill later.
+    """
+    for step in book:
+        day, picks = step["trade_on"], step["picks"]
+        if day > today or not any(prices.on_or_after(symbol, day) for symbol in picks):
+            continue
+        index += 1
+        held_at_start = list(held)
+        exits, entries = [], []
+        for symbol in held_at_start:
+            if symbol in picks:
+                continue
+            pos = held.pop(symbol)
+            sold = prices.on_or_after(symbol, day)
+            exit_px = sold[1] if sold else None
+            ret = None
+            if exit_px and pos.get("entry_price"):
+                ret = round((exit_px / pos["entry_price"] - 1) * 100, 2)
+            exits.append({
+                "symbol": symbol, "name": (names.get(symbol) or {}).get("name"),
+                "sector": (names.get(symbol) or {}).get("sector"),
+                "entry_quarter": pos["entry_quarter"], "entry_date": pos["entry_date"],
+                "entry_price": pos.get("entry_price"),
+                "exit_date": sold[0] if sold else day, "exit_price": exit_px, "return_pct": ret,
+                "held_quarters": index - pos["entry_index"],
+            })
+        for symbol, score in picks.items():
+            if symbol in held:
+                continue
+            bought = prices.on_or_after(symbol, day)
+            held[symbol] = {"entry_quarter": step["label"],
+                            "entry_results_for": step["results_for"],
+                            "entry_date": bought[0] if bought else day,
+                            "entry_price": bought[1] if bought else None, "entry_index": index}
+            entries.append({
+                "symbol": symbol, "name": (names.get(symbol) or {}).get("name"),
+                "sector": (names.get(symbol) or {}).get("sector"), "score": round(score, 2),
+                "entry_date": held[symbol]["entry_date"],
+                "entry_price": held[symbol]["entry_price"],
+            })
+        sessions = [d for d in ([e["entry_date"] for e in entries]
+                                + [x["exit_date"] for x in exits]) if d]
+        traded_on = min(sessions) if sessions else day
+        previous = quarters[-1]["traded_on"] if quarters else None
+        returns = []
+        if previous:
+            returns = [r * 100 for r in (prices.ret(s, previous, traded_on)
+                                         for s in held_at_start) if r is not None]
+        closed = [x["return_pct"] for x in exits if x["return_pct"] is not None]
+        quarters.append({
+            "results_for": step["results_for"], "quarter": step["label"], "traded_on": traded_on,
+            "period_from": previous,
+            "period_days": ((date.fromisoformat(traded_on) - date.fromisoformat(previous)).days
+                            if previous else None),
+            "universe": step.get("pool") or len(picks),
+            "entries": sorted(entries, key=lambda e: -(e["score"] or 0)),
+            "exits": sorted(exits, key=lambda e: (e["return_pct"] is None,
+                                                  -(e["return_pct"] or 0))),
+            "closed_avg_return_pct": round(sum(closed) / len(closed), 2) if closed else None,
+            "closed_winners": sum(1 for r in closed if r > 0), "closed_count": len(closed),
+            "portfolio_return_pct": round(sum(returns) / len(returns), 2) if returns else None,
+            "held_through": len(returns),
+            "index_return_pct": _index_move(index_series, previous, traded_on),
+        })
+
+
 def build_region(rows: list[dict], region: str, prices: Prices,
                  top_n: int = TOP_N, quarters: int = QUARTERS,
-                 narrow: Callable[[list, str, str], list] | None = None) -> dict[str, Any]:
+                 narrow: Callable[[list, str, str], list] | None = None,
+                 book: list[dict] | None = None) -> dict[str, Any]:
     """The ledger for one market: the last `quarters` rebalances, with entries and exits."""
     index_series = _index_closes(region)
     scored = [r for r in rows if r.get("region") == region and r.get("score_history")]
@@ -226,6 +300,9 @@ def build_region(rows: list[dict], region: str, prices: Prices,
         # that actually traded, and `traded_on` is restated to one further down.
         target = _add_months(date.fromisoformat(quarter_end), LAG_MONTHS).isoformat()
         traded_on = target
+        # From the first dated rebalance on, the record decides: see us_book.
+        if book and target >= book[0]["trade_on"]:
+            continue
         # A rebalance two months after a quarter that has not finished reporting cannot have
         # happened. US names with an August fiscal year-end bucket into Sep-26, whose trade
         # date is in November - showing it as a quarter with no holdings and no return reads
@@ -368,6 +445,9 @@ def build_region(rows: list[dict], region: str, prices: Prices,
                 out_quarters[-1]["traded_on"] if (i > 0 and out_quarters) else None,
                 traded_on),
         })
+
+    if book:
+        _follow_book(book, held, out_quarters, names, prices, index_series, today, len(walk))
 
     # Whatever is still held at the end is an OPEN position, marked to the newest close. Shown
     # separately from realised returns, because an unrealised gain is not a result.
@@ -563,8 +643,10 @@ def build(data_dir: str | Path, top_n: int = TOP_N,
         # history while the portfolio ran top-15 described a rule nobody was following, and was
         # one of three reasons the two pages could not agree on a single holding.
         size = SIZE_BY_REGION.get(region, top_n)
+        us = region == "us"
         ledger[region] = build_region(rows, region, prices, size, quarters,
-                                      _us_filter(rows, prices, out) if region == "us" else None)
+                                      _us_filter(rows, prices, out) if us else None,
+                                      load_book() if us else None)
     doc = {"markets": ledger, "top_n": top_n, "lag_months": LAG_MONTHS,
            "max_sector_share": MAX_SECTOR_SHARE, "reconstructed": True}
     (out / "rebalance_ledger.json").write_text(json.dumps(doc), encoding="utf-8")

@@ -525,6 +525,22 @@ def cmd_refresh_us_domicile(args: argparse.Namespace) -> None:
     log.info("refresh-us-domicile: %s symbols", refresh_domicile())
 
 
+def cmd_us_book_rebalance(args: argparse.Namespace) -> None:
+    """Record a US rebalance from a Zacks screen. Prints the picks; writes only with --apply."""
+    import json as _json
+    from pathlib import Path
+
+    from app.ingestion.reporting_basis import load_basis
+    from app.ingestion.us_book import add_rebalance, read_screen, select
+    from app.ingestion.us_universe import load_domicile
+
+    rows = _json.loads((Path(args.out) / "screener.json").read_text(encoding="utf-8"))
+    picks, pool = select(rows, read_screen(Path(args.zacks)), load_domicile(), load_basis())
+    log.info("us-book-rebalance: %s qualified, picks %s", pool, picks)
+    if args.apply:
+        add_rebalance(picks, pool, args.trade_on, args.results_for, args.label)
+
+
 def cmd_build_us_basis(args: argparse.Namespace) -> None:
     """Rebuild the reporting basis from the Ratios CSVs on this machine."""
     import gzip
@@ -1293,6 +1309,13 @@ def build_parser() -> argparse.ArgumentParser:
     rt.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
     add("refresh-us-domicile", cmd_refresh_us_domicile)
     add("build-us-basis", cmd_build_us_basis)
+    book = add("us-book-rebalance", cmd_us_book_rebalance)
+    book.add_argument("--zacks", required=True, help="CSV of ticker,f0,f1,f2,analysts in percent")
+    book.add_argument("--trade-on", required=True)
+    book.add_argument("--results-for", required=True)
+    book.add_argument("--label", required=True)
+    book.add_argument("--out", default="../frontend/public/data")
+    book.add_argument("--apply", action="store_true")
     rs = add("repair-price-splits", cmd_repair_price_splits)
     rs.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
     rs.add_argument("--regions", default="psx,dfm,gcc,australia,india,us")
