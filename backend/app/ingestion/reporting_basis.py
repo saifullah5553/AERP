@@ -30,6 +30,7 @@ from __future__ import annotations
 import bisect
 import csv
 import json
+import re
 import statistics
 from collections.abc import Callable
 from datetime import datetime
@@ -45,6 +46,7 @@ HOME = "United States"
 # A US company's factor sits inside this about 94% of the time, on share classes and timing.
 NORMAL_BAND = (0.8, 1.25)
 _MILLION = 1_000_000.0
+_PERIOD_END = re.compile(r"[A-Z][a-z]{2} \d{1,2}, \d{4}")
 
 
 class Basis:
@@ -119,6 +121,8 @@ def read_ratios(path: Path) -> tuple[dict[str, dict[str, float | None]], dict[st
     else:
         ends = table.get("Period Ending") or []
     wanted = ("PE Ratio", "PS Ratio", "PB Ratio", "Market Capitalization", "Last Close Price")
+    if "Market Capitalization" not in table and "Market Cap" in table:
+        table["Market Capitalization"] = table["Market Cap"]
 
     def column(j: int) -> dict[str, float | None]:
         return {k: _number((table.get(k) or [])[j]) if j < len(table.get(k) or []) else None
@@ -127,10 +131,11 @@ def read_ratios(path: Path) -> tuple[dict[str, dict[str, float | None]], dict[st
     out: dict[str, dict[str, float | None]] = {}
     current: dict[str, float | None] = {}
     for j, end in enumerate(ends):
-        try:
-            day = datetime.strptime(end.strip(), "%b %d, %Y").date().isoformat()
-        except ValueError:
+        # An older layout reads "Jul '26 Jul 31, 2026". Skipping those dropped 119 filers, TSM too.
+        found = _PERIOD_END.search(end)
+        if not found:
             continue
+        day = datetime.strptime(found.group(), "%b %d, %Y").date().isoformat()
         if j == 0 and head[1:2] == ["Current"]:
             current = column(j)
             continue
@@ -173,7 +178,9 @@ def entry_for(record: dict, closes: dict[str, float], ratios: dict[str, dict],
         factor = quarter_factor(row, closes[days[cut]], shares, at(income, "net_income", i),
                                 at(income, "revenue", i), at(balance, "total_equity", i))
         if factor:
-            factors[day] = round(factor, 4)
+            # Significant figures, not decimals: after a big reverse split the factor can be
+            # 0.00004, and four decimals would store a zero or be out by half.
+            factors[day] = float(f"{factor:.5g}")
     if not factors:
         return None
     typical = statistics.median(factors.values())

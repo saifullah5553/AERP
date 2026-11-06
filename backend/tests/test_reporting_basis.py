@@ -45,6 +45,34 @@ def test_the_ratios_csv_reads_a_period_ending_row(tmp_path: Path) -> None:
     assert quarters["2026-06-30"]["PE Ratio"] == 18.0 and current["PE Ratio"] == 20.0
 
 
+def test_the_older_layout_is_read_too(tmp_path: Path) -> None:
+    """TSM and 118 others: a label before each date, and a shorter name for the cap."""
+    path = tmp_path / "TSM_Ratios.csv"
+    path.write_text("\n".join([
+        "Fiscal Quarter,Current,Q2 2026,Period Ending,"
+        "\"Jul '26 Jul 31, 2026\",\"Jun '26 Jun 30, 2026\"",
+        'Market Cap,"1,947","2,476"',
+        "Last Close Price,10.00,9.00",
+        "PE Ratio,20.00,18.00",
+    ]) + "\n", encoding="utf-8")
+
+    quarters, current = read_ratios(path)
+
+    assert list(quarters) == ["2026-06-30"]
+    assert quarters["2026-06-30"]["PE Ratio"] == 18.0
+    assert current["Market Capitalization"] == 1947.0
+
+
+def test_a_factor_after_a_big_reverse_split_is_not_rounded_away() -> None:
+    company = record(net=1.0, shares=1_000_000.0)
+    closes = {"2026-06-30": 100.0}
+    row = {"2026-06-30": {"PE Ratio": 4.0}}
+
+    entry = entry_for(company, closes, row, {}, "China")
+
+    assert entry["factors"]["2026-06-30"] == 4e-08
+
+
 def test_the_factor_recovers_the_exchange_rate() -> None:
     """Worth 7,000 in the accounts' currency, quoted at 1,000 dollars."""
     row = {"PE Ratio": 20.0, "PS Ratio": 2.0, "PB Ratio": 4.0}

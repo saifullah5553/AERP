@@ -257,10 +257,22 @@ def _complete(df, statement: str) -> bool:
     return all(labels & group for group in groups)
 
 
+# How a page's rows are counted while it renders. A statement is one big table once it has loaded.
+LARGEST_TABLE = ("Math.max(0, ...[...document.querySelectorAll('table')]"
+                 ".map(t => t.querySelectorAll('tbody tr').length))")
+# A Ratios page is cut into sections sharing one grid: HSBC's come as 3, 5, 6 and 6 rows. Waiting
+# for one table of MIN_ROWS timed out on every bank and most short pages, and recorded them as
+# "without usable data": 455 of 1,089 on 2026-11-06, led by HSBC, RY, TD and HDB. So count the grid.
+GRID_ROWS = ("Math.max(0, ...Object.values([...document.querySelectorAll('table')]"
+             ".reduce((g, t) => {const w = t.querySelectorAll('thead th').length;"
+             "g[w] = (g[w] || 0) + t.querySelectorAll('tbody tr').length; return g;}, {})))")
+
+
 def scrape_table(page, url: str, attempts: int = 3, statement: str | None = None):
+    rows_js = GRID_ROWS if statement == "Ratios" else LARGEST_TABLE
     for n in range(attempts):
         _wait_out_cooldown()
-        df = _scrape_once(page, url)
+        df = _scrape_once(page, url, rows_js)
         if df is not None and len(df) >= MIN_ROWS and (
             statement is None or _complete(df, statement)
         ):
@@ -271,7 +283,7 @@ def scrape_table(page, url: str, attempts: int = 3, statement: str | None = None
     return None
 
 
-def _scrape_once(page, url: str):
+def _scrape_once(page, url: str, rows_js: str = LARGEST_TABLE):
     """Return a DataFrame of the statement table, or None."""
     import pandas as pd
 
@@ -287,11 +299,7 @@ def _scrape_once(page, url: str):
         # with the most rows. Wait for a table that is actually big enough to BE a statement:
         # waiting only for "a table" returns instantly on the static summary, which is how the
         # condensed version got saved in the first place.
-        page.wait_for_function(
-            "n => [...document.querySelectorAll('table')]"
-            ".some(t => t.querySelectorAll('tbody tr').length >= n)",
-            arg=MIN_ROWS, timeout=20000,
-        )
+        page.wait_for_function(f"n => {rows_js} >= n", arg=MIN_ROWS, timeout=20000)
         # ...then wait for the row count to STOP growing. Waiting only for "enough rows" grabs
         # the table mid-render: it captured Indian balance sheets that stopped at Total Assets,
         # with the whole liabilities-and-equity half missing, and they passed the row check
@@ -300,10 +308,7 @@ def _scrape_once(page, url: str):
         # from the quality gate.
         prev = -1
         for _ in range(12):
-            count = page.evaluate(
-                "() => Math.max(0, ...[...document.querySelectorAll('table')]"
-                ".map(t => t.querySelectorAll('tbody tr').length))"
-            )
+            count = page.evaluate(f"() => {rows_js}")
             if count == prev:
                 break
             prev = count
