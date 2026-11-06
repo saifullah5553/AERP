@@ -106,7 +106,7 @@ def psx_portfolio_backtest(
         for sym, st in statements.items():
             if price(sym, day) is None or price(sym, nxt) is None:
                 continue
-            q = assess_quality(_pit_statements(st, day))
+            q = assess_quality(_pit_statements(st, day), region=region)
             if q.eligible and q.score is not None:
                 scored.append((q.score, sym))
         scored.sort(reverse=True)

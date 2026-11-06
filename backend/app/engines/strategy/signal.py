@@ -64,8 +64,9 @@ def _in_uptrend(close: np.ndarray) -> bool:
 def evaluate(
     statements: dict[str, list[dict]],
     high: np.ndarray, low: np.ndarray, close: np.ndarray, volume: np.ndarray,
+    sector: str | None = None, region: str | None = None, industry: str | None = None,
 ) -> StrategySignal:
-    quality = assess_quality(statements)
+    quality = assess_quality(statements, sector=sector, region=region, industry=industry)
 
     # Gate first: only businesses that are strong OR credibly improving earn a look at the
     # chart. No technical setup rescues a deteriorating business.

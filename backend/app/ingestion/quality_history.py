@@ -189,7 +189,8 @@ def _price_lookup(region: str, symbol: str):
 
 def _series_from_statements(doc: dict, key: str = "statements",
                             price_on=None, peers: dict | None = None,
-                            sector: str | None = None) -> list[dict] | None:
+                            sector: str | None = None, region: str | None = None,
+                            industry: str | None = None) -> list[dict] | None:
     """Score at successive past points by progressively hiding newer periods."""
     st = doc.get(key) or {}
     inc = st.get("income") or []
@@ -217,8 +218,11 @@ def _series_from_statements(doc: dict, key: str = "statements",
                         break
                 market = {"price": px,
                           "market_cap": (px * float(shares)) if shares else None}
-        res = assess_quality(view, market=market, peers=peers,
-                             sector=sector)
+        # Region and industry are not optional here, whatever the signature says. With no region
+        # the engine falls back to Pakistan's thresholds, and this is the pass that sets the
+        # published score: every market was scored as Pakistan, and JPMorgan read 57 not 72.
+        res = assess_quality(view, market=market, peers=peers, sector=sector,
+                             region=region, industry=industry)
         if res.score is not None:
             last_res = res
             out.append({
@@ -372,7 +376,8 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
         #
         # A company whose CSV has not been scraped is now UNRATED. That is the intended trade:
         # no score beats a score that means something different from the one beside it.
-        series = _series_from_statements(doc, "statements_ttm", price_on, peers, sector)
+        series = _series_from_statements(doc, "statements_ttm", price_on, peers, sector,
+                                         region=r.get("region"), industry=r.get("industry"))
         if not series or outdated(series, doc):
             # No TTM statements, so no score - and the OLD one has to go with them. Leaving it
             # was the quiet half of the problem: 1,365 rows kept a score the retired annual

@@ -149,6 +149,8 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          timeout: 1800000 # 30 min. The default 10 timed out twice on a site this size.
 
   freshness:
     # A SEPARATE job that needs `build` but does not gate `deploy`. The check must be able to

@@ -495,7 +495,9 @@ def refresh_technicals(
         # Reuses this same OHLC fetch, so it costs no extra network.
         strategy: dict | None = None
         try:
-            strategy = strategy_evaluate(statements, high, low, close, vol).as_dict()
+            strategy = strategy_evaluate(statements, high, low, close, vol,
+                                         sector=r.get("sector"), region=r.get("region"),
+                                         industry=r.get("industry")).as_dict()
         except Exception:  # noqa: BLE001 - the strategy must never break the refresh
             strategy = None
         if strategy:
