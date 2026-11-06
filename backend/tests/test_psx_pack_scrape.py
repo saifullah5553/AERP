@@ -1,4 +1,4 @@
-"""The PSX job scrapes for over an hour. Its CSVs go onto the archive as the tip holds it by then."""
+"""The PSX job scrapes for over an hour, so its CSVs go onto the archive the tip holds by then."""
 
 from __future__ import annotations
 
