@@ -96,6 +96,26 @@ def newest_at_source(region: str, symbol: str, client: httpx.Client) -> str | No
     return m.group(1) if m else None
 
 
+def company_sizes(rows: list[dict], region: str, store_dir: Path) -> dict[str, float]:
+    """{symbol: size}, for deciding who is scraped first: the market cap, or price x shares.
+
+    The published cap comes from the DCF, which stops early for banks. JPMorgan, Wells Fargo and
+    Goldman had none, ranked as zero, and queued alphabetically behind 1,800 smaller companies.
+    This is for ordering only. The score reads the published cap, so it is not filled in here.
+    """
+    store = (load_store(region, store_dir) or {}).get("companies") or {}
+    sizes: dict[str, float] = {}
+    for row in rows:
+        symbol = row.get("symbol")
+        if row.get("region") != region or not symbol:
+            continue
+        symbol = str(symbol)
+        shares = (store.get(symbol.upper(), {}).get("income") or {}).get("weighted_shares") or []
+        latest = next((count for count in shares if count), 0)
+        sizes[symbol] = row.get("market_cap") or (row.get("price") or 0) * latest
+    return sizes
+
+
 def _newest_complete(rec: dict) -> str | None:
     """The newest period with a balance sheet behind it, or the newest at all if none has.
 

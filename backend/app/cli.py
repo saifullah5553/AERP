@@ -164,7 +164,7 @@ def cmd_pending_results(args: argparse.Namespace) -> None:
     from pathlib import Path
 
     from app.ingestion.exclusions import load_excluded
-    from app.ingestion.pending_results import build
+    from app.ingestion.pending_results import build, company_sizes
 
     data_dir = Path(args.data_dir or "../frontend/public/data")
     rows = _json.loads((data_dir / "screener.json").read_text(encoding="utf-8"))
@@ -176,8 +176,7 @@ def cmd_pending_results(args: argparse.Namespace) -> None:
     # Largest first. The backlog after a reporting season is days of scraping, and this order
     # is what reaches the probe's time limit and the scraper's: alphabetical left a company's
     # results waiting on the letter it starts with.
-    size = {str(r["symbol"]): r.get("market_cap") or 0 for r in rows
-            if r.get("region") == args.region and r.get("symbol")}
+    size = company_sizes(rows, args.region, Path(args.store_dir))
     symbols = sorted((s for s in size if s not in excluded), key=lambda s: (-size[s], s))
     if excluded:
         log.info("pending-results: %s has %d excluded symbols; they will not be scraped",

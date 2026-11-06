@@ -80,3 +80,25 @@ def test_the_headline_score_may_not_be_years_behind_the_statements() -> None:
     assert outdated([{"date": "2022-12-31"}], doc), "CHMI"
     assert not outdated([{"date": "2025-09-30"}], doc), "two quarters behind is a fair reading"
     assert not outdated([{"date": "2026-03-31"}], doc)
+
+
+def test_a_bank_with_no_published_cap_still_ranks_by_its_size(monkeypatch) -> None:
+    """JPM has no cap because the DCF stops early for banks, and it is not a small company."""
+    store = {"companies": {
+        "JPM": {"income": {"weighted_shares": [None, 2_731_000_000.0]}},
+        "TINY": {"income": {"weighted_shares": [1_000_000.0]}},
+    }}
+    monkeypatch.setattr(pr, "load_store", lambda region, store_dir: store)
+    rows = [
+        {"symbol": "JPM", "region": "us", "price": 337.34, "market_cap": None},
+        {"symbol": "MID", "region": "us", "price": 10.0, "market_cap": 5e9},
+        {"symbol": "TINY", "region": "us", "price": 2.0, "market_cap": None},
+        {"symbol": "NOSHARES", "region": "us", "price": 2.0, "market_cap": None},
+        {"symbol": "RELIANCE", "region": "india", "price": 1313.0, "market_cap": 1e13},
+    ]
+
+    sizes = pr.company_sizes(rows, "us", "unused")
+
+    assert sorted(sizes, key=lambda s: -sizes[s]) == ["JPM", "MID", "TINY", "NOSHARES"]
+    assert sizes["JPM"] == 337.34 * 2_731_000_000.0
+    assert sizes["NOSHARES"] == 0
