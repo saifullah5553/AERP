@@ -23,6 +23,7 @@ are absent, and their absence flatters the record.
 from __future__ import annotations
 
 import json
+from collections import Counter
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
@@ -60,6 +61,19 @@ MIN_COVERAGE = 0.70
 # A quarter we cannot price near its own trade date is one we cannot reconstruct. It is dropped,
 # not recorded with a date four years out.
 MAX_FILL_LAG_DAYS = 45
+# No sector may fill more of a portfolio than this. Scored for its own country and industry, the
+# US top 15 was 14 financials: one bet, not fifteen. The rule walks down the ranking instead.
+MAX_SECTOR_SHARE = 0.40
+# The exchange splits what the cap has to treat as one bet. Banks, insurers and investment
+# companies are separate PSX sectors and one "Financial Services" everywhere else.
+SECTOR_GROUPS = {
+    "Commercial Banks": "Financial Services", "Insurance": "Financial Services",
+    "Inv. Banks / Inv. Cos. / Securities Cos.": "Financial Services",
+    "Leasing Companies": "Financial Services", "Modarabas": "Financial Services",
+    "Textile Composite": "Textile", "Textile Spinning": "Textile", "Textile Weaving": "Textile",
+    "Oil & Gas Exploration Companies": "Energy", "Oil & Gas Marketing Companies": "Energy",
+    "Refinery": "Energy",
+}
 
 REGION_LABELS = {
     # Dubai, added once its CSVs landed. A market absent from this map is absent from the
@@ -128,6 +142,33 @@ def _quarter_label(iso: str) -> str:
     return f"{['Mar', 'Jun', 'Sep', 'Dec'][(month - 1) // 3]} {str(year)[2:]}"
 
 
+def capped_picks(ranked: list[tuple[str, float]], names: dict[str, dict], top_n: int,
+                 share: float = MAX_SECTOR_SHARE) -> set[str]:
+    """The top scorers, passing over a name once its sector is full.
+
+    A market too narrow to fill the portfolio under the cap fills the rest by rank: holding fewer
+    names than the rule says would be a bigger departure from it than holding one sector too many.
+    """
+    limit = max(1, int(top_n * share))
+    picks: list[str] = []
+    held: Counter[str] = Counter()
+    for symbol, _ in ranked:
+        if len(picks) == top_n:
+            break
+        sector = (names.get(symbol) or {}).get("sector")
+        group = SECTOR_GROUPS.get(sector, sector)
+        if group and held[group] >= limit:
+            continue
+        picks.append(symbol)
+        held[group] += 1
+    for symbol, _ in ranked:
+        if len(picks) == top_n:
+            break
+        if symbol not in picks:
+            picks.append(symbol)
+    return set(picks)
+
+
 def build_region(rows: list[dict], region: str, prices: Prices,
                  top_n: int = TOP_N, quarters: int = QUARTERS) -> dict[str, Any]:
     """The ledger for one market: the last `quarters` rebalances, with entries and exits."""
@@ -185,7 +226,7 @@ def build_region(rows: list[dict], region: str, prices: Prices,
         # different universes.
         ranked = [kv for kv in sorted(by_quarter[quarter_end].items(), key=lambda kv: -kv[1])
                   if prices.series(kv[0])]
-        picks = {s for s, _ in ranked[:top_n]}
+        picks = capped_picks(ranked, names, top_n)
 
         entries, exits = [], []
 
@@ -496,7 +537,7 @@ def build(data_dir: str | Path, top_n: int = TOP_N,
         size = SIZE_BY_REGION.get(region, top_n)
         ledger[region] = build_region(rows, region, prices, size, quarters)
     doc = {"markets": ledger, "top_n": top_n, "lag_months": LAG_MONTHS,
-           "reconstructed": True}
+           "max_sector_share": MAX_SECTOR_SHARE, "reconstructed": True}
     (out / "rebalance_ledger.json").write_text(json.dumps(doc), encoding="utf-8")
     summary = {r: {"quarters": len(v["quarters"]), "trades": v["realised_trades"],
                    "avg": v["realised_avg_return_pct"]} for r, v in ledger.items()}

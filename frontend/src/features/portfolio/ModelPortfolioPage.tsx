@@ -210,7 +210,8 @@ export default function ModelPortfolioPage() {
         <div className="rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-[11px] text-slate-300">
           Holds the highest <b>fundamental quality</b> names, rebalanced once a quarter as
           results land: new top scorers are added, names that fall out are dropped. Pakistan
-          holds 20, other markets 15, equal weight.
+          holds 20, Dubai 10, other markets 15, equal weight. No sector may fill more than 40%
+          of a market's holdings, past quarters included.
           {" "}
           <b>Each holding is dated to the rebalance its results imply</b>, not to the day the
           portfolio was built — Mar-26 results are acted on at the end of May, two months later,

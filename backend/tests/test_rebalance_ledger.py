@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.ingestion.rebalance_ledger import build_region
+from app.ingestion.rebalance_ledger import build_region, capped_picks
 
 
 class FakePrices:
@@ -118,3 +118,43 @@ def test_a_market_with_no_history_renders_empty_rather_than_breaking() -> None:
     # OHLC path - but the label has to say what is in it, now that Dubai is a separate market
     # sitting beside it and "GCC" would read as covering both.
     assert led["label"] == "Saudi (Tadawul)"
+
+
+def test_no_sector_fills_more_than_its_share() -> None:
+    """Fifteen slots hold six of a sector, however well the seventh scores."""
+    ranked = [(f"BANK{i}", 99.0 - i) for i in range(10)]
+    ranked += [(f"TECH{i}", 50.0 - i) for i in range(6)]
+    ranked += [(f"MINE{i}", 40.0 - i) for i in range(6)]
+    names = {s: {"sector": "Financial Services" if s.startswith("BANK") else s[:4]}
+             for s, _ in ranked}
+
+    picks = capped_picks(ranked, names, 15)
+
+    assert len(picks) == 15
+    assert sum(s.startswith("BANK") for s in picks) == 6
+    assert {f"BANK{i}" for i in range(6)} <= picks
+
+
+def test_pakistan_banks_and_insurers_count_as_one_sector() -> None:
+    ranked = [("BANK", 90.0), ("INSURER", 89.0), ("INVEST", 88.0), ("CEMENT", 87.0),
+              ("SUGAR", 86.0)]
+    names = {"BANK": {"sector": "Commercial Banks"}, "INSURER": {"sector": "Insurance"},
+             "INVEST": {"sector": "Inv. Banks / Inv. Cos. / Securities Cos."},
+             "CEMENT": {"sector": "Cement"}, "SUGAR": {"sector": "Sugar & Allied Industries"}}
+
+    picks = capped_picks(ranked, names, 3, share=0.40)
+
+    assert picks == {"BANK", "CEMENT", "SUGAR"}
+
+
+def test_a_market_too_narrow_for_the_cap_still_fills_the_portfolio() -> None:
+    ranked = [(f"BANK{i}", 99.0 - i) for i in range(5)]
+    names = {s: {"sector": "Financial Services"} for s, _ in ranked}
+
+    assert capped_picks(ranked, names, 4) == {"BANK0", "BANK1", "BANK2", "BANK3"}
+
+
+def test_a_company_with_no_sector_is_not_capped() -> None:
+    ranked = [(f"X{i}", 99.0 - i) for i in range(5)]
+
+    assert len(capped_picks(ranked, {}, 5)) == 5
