@@ -18,6 +18,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -53,11 +54,19 @@ def pull(specs: list[str]) -> int:
     return 0
 
 
-def push(message_file: str, named: list[str]) -> int:
+def push(message_file: str, named: list[str],
+         prepare: Callable[[str], None] | None = None) -> int:
+    """Commit the named files onto the tip.
+
+    `prepare` is called with the tip each attempt is built on, for a file that must be rebuilt from
+    that exact tip: without it, a retry would put an older copy over whatever just landed.
+    """
     with tempfile.TemporaryDirectory() as scratch:
         index = {"GIT_INDEX_FILE": str(Path(scratch) / "index")}
         for _ in range(ATTEMPTS):
             tip = fetch_tip()
+            if prepare:
+                prepare(tip)
             git("read-tree", tip, env=index)
             for name in named:
                 blob = git("hash-object", "-w", f"--path={name}", name)
