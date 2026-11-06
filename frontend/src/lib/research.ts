@@ -27,10 +27,16 @@ export function investmentGrade(composite: number | null): string {
   return "C";
 }
 
-export function marketCondition(composite: number | null): Condition {
+/** The header badge. The composite is mostly fundamentals, so on its own it called 2,364 companies
+ *  Bullish while their daily chart was in a downtrend, NVDA among them. A good business in a falling
+ *  chart is not bullish, so a trend running the other way takes the badge back to Neutral. */
+export function marketCondition(
+  composite: number | null,
+  trend: TechnicalRead["trend"],
+): Condition {
   if (composite == null) return "Neutral";
-  if (composite >= 55) return "Bullish";
-  if (composite <= 45) return "Bearish";
+  if (composite >= 55) return trend === "Bearish" ? "Neutral" : "Bullish";
+  if (composite <= 45) return trend === "Bullish" ? "Neutral" : "Bearish";
   return "Neutral";
 }
 

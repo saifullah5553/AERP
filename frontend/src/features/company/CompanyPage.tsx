@@ -256,7 +256,7 @@ export default function CompanyPage() {
       commodity,
       regionCondition,
       grade: investmentGrade(scores.overall),
-      condition: marketCondition(scores.overall),
+      condition: marketCondition(scores.overall, tech.trend),
       fundStrength: strengthLabel(scores.fundamental),
       patternSignal: patternRead(data),
       risks: riskAnalysis(data, { regionCondition, commodity }),
