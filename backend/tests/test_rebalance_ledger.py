@@ -121,18 +121,18 @@ def test_a_market_with_no_history_renders_empty_rather_than_breaking() -> None:
 
 
 def test_no_sector_fills_more_than_its_share() -> None:
-    """Fifteen slots hold six of a sector, however well the seventh scores."""
+    """Fifteen slots hold three of a sector, however well the fourth scores."""
     ranked = [(f"BANK{i}", 99.0 - i) for i in range(10)]
-    ranked += [(f"TECH{i}", 50.0 - i) for i in range(6)]
-    ranked += [(f"MINE{i}", 40.0 - i) for i in range(6)]
+    for n, sector in enumerate(("TECH", "MINE", "FOOD", "AUTO")):
+        ranked += [(f"{sector}{i}", 50.0 - n - i) for i in range(3)]
     names = {s: {"sector": "Financial Services" if s.startswith("BANK") else s[:4]}
              for s, _ in ranked}
 
     picks = capped_picks(ranked, names, 15)
 
     assert len(picks) == 15
-    assert sum(s.startswith("BANK") for s in picks) == 6
-    assert {f"BANK{i}" for i in range(6)} <= picks
+    assert sum(s.startswith("BANK") for s in picks) == 3
+    assert {f"BANK{i}" for i in range(3)} <= picks
 
 
 def test_pakistan_banks_and_insurers_count_as_one_sector() -> None:

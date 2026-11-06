@@ -63,7 +63,7 @@ MIN_COVERAGE = 0.70
 MAX_FILL_LAG_DAYS = 45
 # No sector may fill more of a portfolio than this. Scored for its own country and industry, the
 # US top 15 was 14 financials: one bet, not fifteen. The rule walks down the ranking instead.
-MAX_SECTOR_SHARE = 0.40
+MAX_SECTOR_SHARE = 0.25
 # The exchange splits what the cap has to treat as one bet. Banks, insurers and investment
 # companies are separate PSX sectors and one "Financial Services" everywhere else.
 SECTOR_GROUPS = {
