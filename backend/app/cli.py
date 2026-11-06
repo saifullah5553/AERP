@@ -518,6 +518,13 @@ def cmd_refresh_technicals(args: argparse.Namespace) -> None:
     log.info("refresh-technicals: %s", refresh_technicals(out, limit=args.limit))
 
 
+def cmd_refresh_us_domicile(args: argparse.Namespace) -> None:
+    """Rebuild data/symbols/us_domicile.csv from the exchange's public listing."""
+    from app.ingestion.us_universe import refresh_domicile
+
+    log.info("refresh-us-domicile: %s symbols", refresh_domicile())
+
+
 def cmd_repair_price_splits(args: argparse.Namespace) -> None:
     """Repair split breaks in the price packs, only where a name proves it. Dry run by default."""
     import json as _json
@@ -1264,6 +1271,7 @@ def build_parser() -> argparse.ArgumentParser:
     rp.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
     rt = add("refresh-technicals", cmd_refresh_technicals, limit=True)
     rt.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
+    add("refresh-us-domicile", cmd_refresh_us_domicile)
     rs = add("repair-price-splits", cmd_repair_price_splits)
     rs.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
     rs.add_argument("--regions", default="psx,dfm,gcc,australia,india,us")

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from collections.abc import Callable, Iterable
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
@@ -66,6 +67,9 @@ MAX_FILL_LAG_DAYS = 45
 MAX_SECTOR_SHARE = 0.25
 # The exchange splits what the cap has to treat as one bet. Banks, insurers and investment
 # companies are separate PSX sectors and one "Financial Services" everywhere else.
+# A held name stays until it falls out of this many of the ranking. Without it the US turned over
+# 55% of the book each quarter on small moves in score, which is not how a fundamental book runs.
+HOLD_BUFFER_BY_REGION = {"us": 30}
 SECTOR_GROUPS = {
     "Commercial Banks": "Financial Services", "Insurance": "Financial Services",
     "Inv. Banks / Inv. Cos. / Securities Cos.": "Financial Services",
@@ -143,18 +147,26 @@ def _quarter_label(iso: str) -> str:
 
 
 def capped_picks(ranked: list[tuple[str, float]], names: dict[str, dict], top_n: int,
-                 share: float = MAX_SECTOR_SHARE) -> set[str]:
+                 share: float = MAX_SECTOR_SHARE, keep: Iterable[str] = (),
+                 buffer: int = 0) -> set[str]:
     """The top scorers, passing over a name once its sector is full.
 
     A market too narrow to fill the portfolio under the cap fills the rest by rank: holding fewer
     names than the rule says would be a bigger departure from it than holding one sector too many.
+
+    With a `buffer`, names in `keep` that are still within that many of the ranking are taken
+    first, so a holding is not sold for slipping from 15th to 16th. They still count to the limit.
     """
     limit = max(1, int(top_n * share))
     picks: list[str] = []
     held: Counter[str] = Counter()
-    for symbol, _ in ranked:
+    kept = set(keep)
+    staying = [item for item in ranked[:buffer] if item[0] in kept]
+    for symbol, _ in [*staying, *ranked]:
         if len(picks) == top_n:
             break
+        if symbol in picks:
+            continue
         sector = (names.get(symbol) or {}).get("sector")
         group = SECTOR_GROUPS.get(sector, sector)
         if group and held[group] >= limit:
@@ -170,7 +182,8 @@ def capped_picks(ranked: list[tuple[str, float]], names: dict[str, dict], top_n:
 
 
 def build_region(rows: list[dict], region: str, prices: Prices,
-                 top_n: int = TOP_N, quarters: int = QUARTERS) -> dict[str, Any]:
+                 top_n: int = TOP_N, quarters: int = QUARTERS,
+                 narrow: Callable[[list, str, str], list] | None = None) -> dict[str, Any]:
     """The ledger for one market: the last `quarters` rebalances, with entries and exits."""
     index_series = _index_closes(region)
     scored = [r for r in rows if r.get("region") == region and r.get("score_history")]
@@ -226,7 +239,10 @@ def build_region(rows: list[dict], region: str, prices: Prices,
         # different universes.
         ranked = [kv for kv in sorted(by_quarter[quarter_end].items(), key=lambda kv: -kv[1])
                   if prices.series(kv[0])]
-        picks = capped_picks(ranked, names, top_n)
+        if narrow:
+            ranked = narrow(ranked, quarter_end, target)
+        picks = capped_picks(ranked, names, top_n, keep=held,
+                             buffer=HOLD_BUFFER_BY_REGION.get(region, 0))
 
         entries, exits = [], []
 
@@ -501,6 +517,16 @@ def _has_bars(region: str) -> bool:
     return (PACK_DIR / f"{region}.json.gz").exists()
 
 
+def _us_filter(rows: list[dict], prices: Prices, out: Path) -> Callable[[list, str, str], list]:
+    """Only what a US portfolio could actually hold: see us_universe."""
+    from app.ingestion.us_universe import Investable, load_domicile, qualified
+
+    provider = {r.get("symbol"): r.get("provider_symbol") for r in rows
+                if r.get("region") == "us" and r.get("provider_symbol")}
+    check = Investable(out / "company", provider, load_domicile(), prices.on_or_after)
+    return lambda ranked, quarter_end, day: qualified(ranked, quarter_end, day, check)
+
+
 def build(data_dir: str | Path, top_n: int = TOP_N,
           quarters: int = QUARTERS) -> dict[str, Any]:
     out = Path(data_dir)
@@ -535,7 +561,8 @@ def build(data_dir: str | Path, top_n: int = TOP_N,
         # history while the portfolio ran top-15 described a rule nobody was following, and was
         # one of three reasons the two pages could not agree on a single holding.
         size = SIZE_BY_REGION.get(region, top_n)
-        ledger[region] = build_region(rows, region, prices, size, quarters)
+        ledger[region] = build_region(rows, region, prices, size, quarters,
+                                      _us_filter(rows, prices, out) if region == "us" else None)
     doc = {"markets": ledger, "top_n": top_n, "lag_months": LAG_MONTHS,
            "max_sector_share": MAX_SECTOR_SHARE, "reconstructed": True}
     (out / "rebalance_ledger.json").write_text(json.dumps(doc), encoding="utf-8")
