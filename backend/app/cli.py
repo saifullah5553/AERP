@@ -525,6 +525,26 @@ def cmd_refresh_us_domicile(args: argparse.Namespace) -> None:
     log.info("refresh-us-domicile: %s symbols", refresh_domicile())
 
 
+def cmd_build_us_basis(args: argparse.Namespace) -> None:
+    """Rebuild the reporting basis from the Ratios CSVs on this machine."""
+    import gzip
+    import json as _json
+    from pathlib import Path
+
+    from app.ingestion import reporting_basis as rb
+    from app.ingestion.us_universe import load_domicile
+
+    root = Path(__file__).resolve().parents[2] / "data"
+    store = _json.loads(gzip.decompress((root / "fundamentals_ttm/us.json.gz").read_bytes()))
+    pack = _json.loads(gzip.decompress((root / "prices/us.json.gz").read_bytes()))
+    previous = (_json.loads(rb.BASIS_JSON.read_text(encoding="utf-8"))
+                if rb.BASIS_JSON.exists() else {})
+    table = rb.build(store["companies"], pack, root / "fundamentals_csv/us", load_domicile(),
+                     previous)
+    rb.BASIS_JSON.write_text(_json.dumps(table, separators=(",", ":")), encoding="utf-8")
+    log.info("build-us-basis: %d listings", len(table))
+
+
 def cmd_repair_price_splits(args: argparse.Namespace) -> None:
     """Repair split breaks in the price packs, only where a name proves it. Dry run by default."""
     import json as _json
@@ -1272,6 +1292,7 @@ def build_parser() -> argparse.ArgumentParser:
     rt = add("refresh-technicals", cmd_refresh_technicals, limit=True)
     rt.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
     add("refresh-us-domicile", cmd_refresh_us_domicile)
+    add("build-us-basis", cmd_build_us_basis)
     rs = add("repair-price-splits", cmd_repair_price_splits)
     rs.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
     rs.add_argument("--regions", default="psx,dfm,gcc,australia,india,us")

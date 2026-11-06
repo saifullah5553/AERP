@@ -401,6 +401,8 @@ def main() -> int:
     ap.add_argument("--symbols", default=None,
                     help="comma list to refresh; re-fetches them even if already downloaded")
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--pages", default=None,
+                    help="comma list of statement pages to fetch, e.g. Ratios; others are untouched")
     # --work is per CYCLE, so it never ended a run: with --rest 0 the loop below simply starts
     # another cycle until the list is empty. On a long pending list that ran straight into the
     # job's time limit, GitHub killed the job mid-scrape, and because consolidation is a later
@@ -408,6 +410,12 @@ def main() -> int:
     ap.add_argument("--max-minutes", type=float, default=None,
                     help="stop cleanly after this long in total, keeping what was fetched")
     args = ap.parse_args()
+    if args.pages:
+        # Also narrows the clear below, so a Ratios-only pass cannot delete a statement it will
+        # not fetch again.
+        wanted = {name.strip() for name in args.pages.split(",")}
+        for name in set(STATEMENTS) - wanted:
+            del STATEMENTS[name]
 
     from playwright.sync_api import sync_playwright
 

@@ -24,6 +24,7 @@ import httpx
 from app.core.logging import get_logger
 from app.core.safe_path import safe_file
 from app.ingestion.ohlc_store import load_bars
+from app.ingestion.reporting_basis import load_basis
 
 log = get_logger(__name__)
 
@@ -342,7 +343,9 @@ def refresh_prices(
                 quote[k] = q[k]
         # P/E (TTM) from the fresh price ÷ trailing EPS (last-4-quarters, else latest annual).
         eps_ttm = _eps_ttm(detail)
-        pe = _pe_ttm(q["price"], eps_ttm)
+        # Provider symbols only match the table for US listings: others carry a suffix.
+        pe = _pe_ttm(q["price"] * load_basis().factor(sym, datetime.now(UTC).date().isoformat()),
+                     eps_ttm)
         pe_by_sym[sym] = pe
         quote["eps_ttm"] = eps_ttm
         quote["pe_ttm"] = pe

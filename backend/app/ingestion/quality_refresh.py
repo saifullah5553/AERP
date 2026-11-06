@@ -14,12 +14,14 @@ tech_refresh to decide BUY vs HOLD vs WATCH if it passes.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.core.logging import get_logger
 from app.core.safe_path import safe_file
 from app.core.snapshot_lock import snapshot_lock
 from app.engines.strategy.quality import assess_quality
+from app.ingestion.reporting_basis import load_basis
 
 log = get_logger(__name__)
 
@@ -107,6 +109,20 @@ def _market_cap(statements: dict, price: float | None) -> float | None:
     return round(shares * price, 2)
 
 
+def _quote_fair_values(row: dict, doc: dict, book: float) -> None:
+    """Fair values worked out in the accounts' terms, shown beside a dollar quote."""
+    def quoted(value: object) -> object:
+        return round(value / book, 4) if isinstance(value, int | float) else value
+
+    row["dcf_fair_value"] = quoted(row.get("dcf_fair_value"))
+    for block in (doc.get("valuation"), doc.get("dcf")):
+        if isinstance(block, dict):
+            block["fair_value"] = quoted(block.get("fair_value"))
+    for method in (doc.get("valuation") or {}).get("methods") or []:
+        if isinstance(method, dict) and "fair_value" in method:
+            method["fair_value"] = quoted(method["fair_value"])
+
+
 def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
     out = Path(data_dir)
     cdir = out / "company"
@@ -157,7 +173,14 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
             no_data += 1
             continue
 
-        r["market_cap"] = _market_cap(statements, r.get("price"))
+        # Statements are read against the price in THEIR terms, and everything published beside
+        # the quote is put back into dollars. Both are the plain quote for a dollar filer.
+        today = datetime.now(UTC).date().isoformat()
+        book = load_basis().factor(str(r.get("symbol")), today) if r.get("region") == "us" else 1.0
+        price = r.get("price")
+        book_price = price * book if isinstance(price, int | float) else price
+        r["market_cap"] = (load_basis().usd_cap(str(r.get("symbol")), price)
+                           or _market_cap(statements, price))
 
         # Valuation needs a quote. Passing the row's own price keeps the two in step - a score
         # computed against a different company's price would be worse than no score.
@@ -169,8 +192,8 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
                            region=r.get("region"),
                            industry=r.get("industry"),
                            market={
-            "price": r.get("price"),
-            "market_cap": r.get("market_cap"),
+            "price": book_price,
+            "market_cap": _market_cap(statements, book_price),
         }, peers=_peers_for(r, medians))
         r["quality_score"] = q.score
         r["quality_passed"] = q.passed
@@ -214,7 +237,7 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
         try:
             from app.engines.valuation.dcf import value as dcf_value
 
-            dcf = dcf_value(statements, r.get("price"), r.get("region") or "",
+            dcf = dcf_value(statements, book_price, r.get("region") or "",
                             symbol=r.get("symbol"))
             r["dcf_fair_value"] = dcf.fair_value
             r["dcf_upside_pct"] = dcf.upside_pct
@@ -224,7 +247,7 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
             # two agreeing is evidence - and falls back to the DCF alone otherwise.
             from app.engines.valuation.multi import blend as blend_value
 
-            mv = blend_value(statements, r.get("price"), r.get("region") or "",
+            mv = blend_value(statements, book_price, r.get("region") or "",
                              r.get("sector"), r.get("symbol"), _MULTIPLES,
                              industry=r.get("industry"))
             # Prefer the blend on two methods - or on ONE, where the DCF is not a method this
@@ -251,6 +274,8 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
                 "equity_value": dcf.equity_value, "shares": dcf.shares,
                 "assumptions": dcf.assumptions, "reason": dcf.reason,
             }
+            if book != 1.0:
+                _quote_fair_values(r, doc, book)
         except Exception as exc:  # noqa: BLE001 - a valuation must not fail the scoring pass
             log.debug("dcf failed for %s: %s", r.get("symbol"), exc)
 

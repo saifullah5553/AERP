@@ -519,11 +519,13 @@ def _has_bars(region: str) -> bool:
 
 def _us_filter(rows: list[dict], prices: Prices, out: Path) -> Callable[[list, str, str], list]:
     """Only what a US portfolio could actually hold: see us_universe."""
+    from app.ingestion.reporting_basis import load_basis
     from app.ingestion.us_universe import Investable, load_domicile, qualified
 
     provider = {r.get("symbol"): r.get("provider_symbol") for r in rows
                 if r.get("region") == "us" and r.get("provider_symbol")}
-    check = Investable(out / "company", provider, load_domicile(), prices.on_or_after)
+    check = Investable(out / "company", provider, load_domicile(), prices.on_or_after,
+                       load_basis())
     return lambda ranked, quarter_end, day: qualified(ranked, quarter_end, day, check)
 
 

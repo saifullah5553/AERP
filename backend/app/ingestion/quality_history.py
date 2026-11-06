@@ -37,6 +37,7 @@ from app.engines.strategy.fundamental_quality import grade_for
 from app.engines.strategy.quality import assess_quality
 from app.ingestion.ohlc_store import load_bars
 from app.ingestion.quality_refresh import _peer_margins, _peers_for
+from app.ingestion.reporting_basis import load_basis
 
 log = get_logger(__name__)
 
@@ -361,6 +362,9 @@ def _refresh(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
         # columns for every market; the yfinance cache carries at most 12 raw quarters and only
         # for names it managed to fetch; the annual statements give one point a year.
         price_on = _price_lookup(str(r.get("region") or ""), str(r.get("symbol") or ""))
+        if r.get("region") == "us":
+            # The accounts may not be in dollars, or per ADS: see reporting_basis.
+            price_on = load_basis().on_books(str(r.get("symbol") or ""), price_on)
         peers = _peers_for(r, medians)
         sector = r.get("sector")
         # ONE SOURCE: the quarterly TTM series scraped from stockanalysis. No annual fallback,

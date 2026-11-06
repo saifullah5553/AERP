@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import csv
 import json
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Container, Iterable
 from datetime import date
 from pathlib import Path
 
@@ -106,11 +106,13 @@ class Investable:
     """
 
     def __init__(self, company: Path, provider: dict[str, str], domicile: dict[str, str],
-                 price_on: Callable[[str, str], tuple[str, float] | None]) -> None:
+                 price_on: Callable[[str, str], tuple[str, float] | None],
+                 off_basis: Container[str] = ()) -> None:
         self.company = company
         self.provider = provider
         self.domicile = domicile
         self.price_on = price_on
+        self.off_basis = off_basis
         self._income: dict[str, dict[str, dict]] = {}
 
     def _rows(self, symbol: str) -> dict[str, dict]:
@@ -134,6 +136,9 @@ class Investable:
 
     def __call__(self, symbol: str, quarter_end: str, trade_day: str) -> bool:
         if self.domicile and self.domicile.get(_key(symbol)) != HOME:
+            return False
+        # Listed as American, but its accounts do not agree with a dollar price: IH, FINV, TME.
+        if symbol in self.off_basis:
             return False
         row = self._rows(symbol).get(quarter_end)
         if not row:
