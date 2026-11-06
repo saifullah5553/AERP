@@ -1,4 +1,4 @@
-"""Save this month's Zacks consensus for every US listing, to build the history nobody sells cheaply.
+"""Save this month's Zacks consensus for every US listing, to build a history of our own.
 
 Zacks serves today's estimates and nothing older, so a rule built on them cannot be tested on the
 past. A snapshot taken every month can test it from here on. Runs as the Scheduled Task "AERP Zacks
@@ -63,8 +63,9 @@ def fetch(client: httpx.Client, url: str) -> dict | None:
 
 def read(client: httpx.Client, symbol: str) -> dict:
     ticker = symbol.replace("-", ".")
-    forecast = fetch(client, f"https://api.nasdaq.com/api/analyst/{ticker}/earnings-forecast") or {}
-    peg = (fetch(client, f"https://api.nasdaq.com/api/analyst/{ticker}/peg-ratio") or {}).get("data")
+    base = f"https://api.nasdaq.com/api/analyst/{ticker}"
+    forecast = fetch(client, f"{base}/earnings-forecast") or {}
+    peg = (fetch(client, f"{base}/peg-ratio") or {}).get("data")
     quote = fetch(client, f"https://quote-feed.zacks.com/index?t={ticker}") or {}
     data = forecast.get("data") or {}
     peg = peg or {}
@@ -84,13 +85,13 @@ def read(client: httpx.Client, symbol: str) -> dict:
 def main() -> int:
     symbols = universe()
     print(f"{len(symbols)} symbols", flush=True)
-    with httpx.Client(headers=HEADERS, timeout=25, follow_redirects=True) as client:
-        with ThreadPoolExecutor(WORKERS) as pool:
-            rows = []
-            for i, row in enumerate(pool.map(lambda s: read(client, s), symbols), 1):
-                rows.append(row)
-                if i % 500 == 0:
-                    print(i, sum(1 for r in rows if r["years"]), flush=True)
+    rows = []
+    with (httpx.Client(headers=HEADERS, timeout=25, follow_redirects=True) as client,
+          ThreadPoolExecutor(WORKERS) as pool):
+        for i, row in enumerate(pool.map(lambda s: read(client, s), symbols), 1):
+            rows.append(row)
+            if i % 500 == 0:
+                print(i, sum(1 for r in rows if r["years"]), flush=True)
     day = datetime.now(UTC).date().isoformat()
     answered = sum(1 for r in rows if r["years"])
     OUT.mkdir(parents=True, exist_ok=True)
