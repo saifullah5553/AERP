@@ -93,6 +93,20 @@ def _peers_for(row: dict, medians: dict[str, dict[str, float]]) -> dict[str, flo
     return None
 
 
+def _market_cap(statements: dict, price: float | None) -> float | None:
+    """Shares x price, for every company we hold both for.
+
+    It used to come out of the DCF, which stops early for banks, loss-makers and short histories,
+    so half of every market published no cap: JPMorgan, Wells Fargo and Goldman among them.
+    """
+    from app.engines.valuation.dcf import latest_shares
+
+    shares = latest_shares(statements.get("income") or [])
+    if not shares or not isinstance(price, int | float) or price <= 0:
+        return None
+    return round(shares * price, 2)
+
+
 def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str, int]:
     out = Path(data_dir)
     cdir = out / "company"
@@ -142,6 +156,8 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
         if not (statements.get("income") or []):
             no_data += 1
             continue
+
+        r["market_cap"] = _market_cap(statements, r.get("price"))
 
         # Valuation needs a quote. Passing the row's own price keeps the two in step - a score
         # computed against a different company's price would be worse than no score.
@@ -226,9 +242,6 @@ def _refresh_quality(data_dir: str | Path, limit: int | None = None) -> dict[str
                 "spread_pct": mv.spread_pct, "bucket": mv.bucket, "reason": mv.reason,
             }
             r["beta"] = (dcf.assumptions or {}).get("beta")
-            # Market cap at last: shares x the live price. It was absent from every
-            # row in the platform, which is what forced book-weighted WACC.
-            r["market_cap"] = (dcf.assumptions or {}).get("market_cap")
             doc["dcf"] = {
                 "fair_value": dcf.fair_value, "upside_pct": dcf.upside_pct,
                 "verdict": dcf.verdict, "wacc": dcf.wacc,

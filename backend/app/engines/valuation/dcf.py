@@ -134,6 +134,13 @@ def _series(rows: list[dict], key: str) -> list[float]:
     return _clean(out)
 
 
+def latest_shares(income: list[dict]) -> float | None:
+    """The newest share count we hold, newest-first statements. None if there is none."""
+    return next((r.get("weighted_shares") for r in income or []
+                 if isinstance(r.get("weighted_shares"), int | float)
+                 and r.get("weighted_shares")), None)
+
+
 def value(statements: dict[str, list[dict]], price: float | None, region: str,
           symbol: str | None = None) -> DCFResult:
     """Fair value per share for one company, or a stated refusal."""
@@ -193,9 +200,7 @@ def value(statements: dict[str, list[dict]], price: float | None, region: str,
     cash_now = next((r.get("cash_and_equivalents") for r in balance
                      if isinstance(r.get("cash_and_equivalents"), int | float)), 0.0) or 0.0
 
-    shares_now = next((r.get("weighted_shares") for r in income
-                       if isinstance(r.get("weighted_shares"), int | float)
-                       and r.get("weighted_shares")), None)
+    shares_now = latest_shares(income)
     market_cap = (shares_now * price) if (shares_now and price and price > 0) else None
     equity_weight = market_cap if market_cap else equity_book
     assumptions["equity_weight_basis"] = "market cap" if market_cap else "book equity"
