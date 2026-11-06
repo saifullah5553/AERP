@@ -57,7 +57,10 @@ STEP_WINDOW = 15
 SAMPLE_EVERY = 25
 MIN_SAMPLE = 10
 MATCH_TOLERANCE = 0.03
-MAX_AGREEMENT_BEFORE = 0.70
+# Wrong on at least a tenth of the sample. It was 0.70, and that passed the big names as clean: our
+# history only starts in 2021, so AMZN's double-adjusted stretch before its 2022 split was 20% of it
+# (agreement 0.80, then 1.00 once repaired) and it published a false 19x day.
+MAX_AGREEMENT_BEFORE = 0.90
 MIN_AGREEMENT_AFTER = 0.90
 
 
