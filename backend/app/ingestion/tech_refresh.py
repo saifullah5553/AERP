@@ -74,6 +74,46 @@ def _f(v: Any) -> float | None:
     return None if f != f else f
 
 
+def _local_day(stamp: int, offset: int) -> str:
+    """The session's date on the exchange's own calendar.
+
+    Not the UTC date. Sydney opens at 23:00 UTC the day before during daylight saving, so filing
+    bars by UTC put every summer session a day early: Mondays on Sundays, and no Fridays at all.
+    """
+    return datetime.fromtimestamp(stamp + offset, UTC).date().isoformat()
+
+
+def _with_session_close(closes: list, highs: list | None, ts: list, meta: dict) -> list:
+    """Fill the close of the newest session when Yahoo has left it null.
+
+    For hours after a market shuts, Yahoo serves that day's bar with its open, high, low and volume
+    but no close, and carries the close in `meta`. Dropping the bar read Saudi, Dubai and most of
+    India a session behind on the day-end run. The market time must fall on that session's date:
+    PSX's meta stopped in July 2024, and a close from there on a bar from today would be invented.
+    """
+    price, traded = meta.get("regularMarketPrice"), meta.get("regularMarketTime")
+    if closes[-1] is not None or price is None or not traded or len(ts) != len(closes):
+        return closes
+    if not highs or highs[-1] is None:
+        return closes
+    offset = meta.get("gmtoffset") or 0
+    if _local_day(ts[-1], offset) != _local_day(traded, offset):
+        return closes
+    return [*closes[:-1], price]
+
+
+def _session_open_since(meta: dict, now: float) -> int | None:
+    """When the session in progress began, or None if the market is shut.
+
+    A session still trading is not a bar yet: it has part of a day's volume and a close that will
+    change. The scheduled run starts hours late and lands mid-session in Sydney, and the engine
+    judges a breakout on the volume of its break bar.
+    """
+    period = (meta.get("currentTradingPeriod") or {}).get("regular") or {}
+    start, end = period.get("start"), period.get("end")
+    return start if start and end and start <= now < end else None
+
+
 def fetch_history(sym: str, client: httpx.Client, host: str = "query1"):
     """chart-v8 daily OHLCV → (dates, open, high, low, close, volume), or None.
 
@@ -90,11 +130,15 @@ def fetch_history(sym: str, client: httpx.Client, host: str = "query1"):
         highs, lows, closes, vols = q.get("high"), q.get("low"), q.get("close"), q.get("volume")
         if not closes:
             return None
+        meta = res.get("meta") or {}
+        closes = _with_session_close(closes, highs, ts, meta)
+        trading_since = _session_open_since(meta, time.time())
         bars = [
             (highs[i], lows[i], closes[i], vols[i] if vols else None,
              ts[i] if i < len(ts) else None, opens[i] if opens else None)
             for i in range(len(closes))
             if closes[i] is not None
+            and not (trading_since and i < len(ts) and ts[i] >= trading_since)
         ]
         if len(bars) < MIN_BARS:
             return None
@@ -103,9 +147,8 @@ def fetch_history(sym: str, client: httpx.Client, host: str = "query1"):
         low = np.array([b[1] if b[1] is not None else b[2] for b in bars], dtype=float)
         vol = np.array([b[3] if b[3] is not None else 0.0 for b in bars], dtype=float)
         open_ = np.array([b[5] if b[5] is not None else b[2] for b in bars], dtype=float)
-        dates = [
-            datetime.fromtimestamp(b[4], UTC).date().isoformat() if b[4] else "" for b in bars
-        ]
+        offset = meta.get("gmtoffset") or 0
+        dates = [_local_day(b[4], offset) if b[4] else "" for b in bars]
         return dates, open_, high, low, close, vol
     except Exception:  # noqa: BLE001 - one bad symbol shouldn't stop the batch
         return None

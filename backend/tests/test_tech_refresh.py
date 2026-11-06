@@ -370,3 +370,111 @@ def test_the_summary_follows_a_technical_score_that_moved_on_its_own(tmp_path) -
     path.write_text(json.dumps(doc), encoding="utf-8")
     unify(tmp_path)
     assert "(34)" in json.loads(path.read_text(encoding="utf-8"))["ai_summary"]
+
+
+# --- what Yahoo actually serves. Shapes are from 2222.SR, BHP.AX and LUCK.KA on 6 Nov 2026. ---
+DAY = 86_400
+RIYADH_NOV5_OPEN = 1_793_862_000        # 2026-11-05 07:00 UTC
+SYDNEY_NOV6_OPEN = 1_793_919_600        # 2026-11-05 23:00 UTC, which is 10:00 on the 6th in Sydney
+
+
+class _Chart:
+    def __init__(self, payload: dict) -> None:
+        self.payload = payload
+
+    def get(self, *args, **kwargs):
+        return self
+
+    def raise_for_status(self) -> None:
+        pass
+
+    def json(self) -> dict:
+        return {"chart": {"result": [self.payload]}}
+
+
+def _chart(last_open: int, meta: dict, tail: list[dict]) -> _Chart:
+    """Sixty finished sessions ending the day before `last_open`, then `tail`."""
+    ts = [last_open - DAY * n for n in range(60, 0, -1)]
+    rows = [{"o": 10.0, "h": 11.0, "l": 9.0, "c": 10.5, "v": 1000.0} for _ in ts]
+    ts += [row["t"] for row in tail]
+    rows += tail
+    return _Chart({"meta": meta, "timestamp": ts, "indicators": {"quote": [{
+        "open": [r["o"] for r in rows], "high": [r["h"] for r in rows],
+        "low": [r["l"] for r in rows], "close": [r["c"] for r in rows],
+        "volume": [r["v"] for r in rows]}]}})
+
+
+def test_a_finished_session_yahoo_left_without_a_close_is_still_read() -> None:
+    """2222.SR: 5 Nov has a range and volume, a null close, and 26.16 in the meta."""
+    chart = _chart(RIYADH_NOV5_OPEN,
+                   {"gmtoffset": 10800, "regularMarketPrice": 26.16,
+                    "regularMarketTime": RIYADH_NOV5_OPEN + 5 * 3600},
+                   [{"t": RIYADH_NOV5_OPEN, "o": 26.12, "h": 26.18, "l": 26.02, "c": None,
+                     "v": 6915453.0}])
+
+    dates, _open, high, _low, close, vol = tech_refresh.fetch_history("2222.SR", chart)
+
+    assert dates[-1] == "2026-11-05"
+    assert close[-1] == 26.16
+    assert high[-1] == 26.18 and vol[-1] == 6915453.0
+
+
+def test_a_close_from_another_day_is_not_put_on_this_bar() -> None:
+    """LUCK.KA's meta stopped on 23 Jul 2024 at 907.65, and its newest bar is empty."""
+    chart = _chart(RIYADH_NOV5_OPEN,
+                   {"gmtoffset": 18000, "regularMarketPrice": 907.65,
+                    "regularMarketTime": 1_721_764_800},
+                   [{"t": RIYADH_NOV5_OPEN, "o": 415.0, "h": 416.0, "l": 410.0, "c": None,
+                     "v": 1000.0}])
+
+    dates, *_rest, close, _vol = tech_refresh.fetch_history("LUCK.KA", chart)
+
+    assert dates[-1] == "2026-11-04"
+    assert close[-1] == 10.5
+
+
+def test_an_empty_bar_is_not_filled_even_on_the_right_day() -> None:
+    chart = _chart(RIYADH_NOV5_OPEN,
+                   {"gmtoffset": 10800, "regularMarketPrice": 26.16,
+                    "regularMarketTime": RIYADH_NOV5_OPEN + 3600},
+                   [{"t": RIYADH_NOV5_OPEN, "o": None, "h": None, "l": None, "c": None,
+                     "v": None}])
+
+    assert tech_refresh.fetch_history("2222.SR", chart)[0][-1] == "2026-11-04"
+
+
+def test_sydney_sessions_carry_sydney_dates() -> None:
+    """A session opening at 23:00 UTC on the 5th is the 6th, and Mondays are not Sundays."""
+    chart = _chart(SYDNEY_NOV6_OPEN, {"gmtoffset": 39600},
+                   [{"t": SYDNEY_NOV6_OPEN, "o": 56.5, "h": 57.3, "l": 55.7, "c": 57.1,
+                     "v": 5809913.0}])
+
+    assert tech_refresh.fetch_history("BHP.AX", chart)[0][-1] == "2026-11-06"
+
+
+def test_a_session_still_trading_is_not_read(monkeypatch) -> None:
+    """BHP at 13:39 in Sydney: a null row at the open, then a live row. Neither is a bar yet."""
+    live = SYDNEY_NOV6_OPEN + 13_140
+    meta = {"gmtoffset": 39600, "regularMarketPrice": 57.17, "regularMarketTime": live,
+            "currentTradingPeriod": {"regular": {"start": SYDNEY_NOV6_OPEN,
+                                                 "end": SYDNEY_NOV6_OPEN + 21_120}}}
+    chart = _chart(SYDNEY_NOV6_OPEN, meta, [
+        {"t": SYDNEY_NOV6_OPEN, "o": 56.5, "h": 57.3, "l": 55.7, "c": None, "v": 5809913.0},
+        {"t": live, "o": 56.5, "h": 57.3, "l": 55.7, "c": 57.17, "v": 5809913.0},
+    ])
+    monkeypatch.setattr(tech_refresh.time, "time", lambda: live + 60)
+
+    dates, *_rest, close, _vol = tech_refresh.fetch_history("BHP.AX", chart)
+
+    assert dates[-1] == "2026-11-05"
+    assert close[-1] == 10.5
+
+
+def test_the_last_session_is_kept_once_the_market_has_shut(monkeypatch) -> None:
+    meta = {"gmtoffset": 39600, "currentTradingPeriod": {"regular": {
+        "start": SYDNEY_NOV6_OPEN, "end": SYDNEY_NOV6_OPEN + 21_120}}}
+    chart = _chart(SYDNEY_NOV6_OPEN, meta, [
+        {"t": SYDNEY_NOV6_OPEN, "o": 56.5, "h": 57.3, "l": 55.7, "c": 57.1, "v": 5809913.0}])
+    monkeypatch.setattr(tech_refresh.time, "time", lambda: SYDNEY_NOV6_OPEN + 30_000)
+
+    assert tech_refresh.fetch_history("BHP.AX", chart)[0][-1] == "2026-11-06"

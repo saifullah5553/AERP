@@ -178,7 +178,9 @@ def fetch_closes(symbol: str, client: httpx.Client) -> dict[str, float] | None:
         resp = client.get(_DAILY.format(sym=symbol), headers={"User-Agent": _UA}, timeout=40)
         resp.raise_for_status()
         result = resp.json()["chart"]["result"][0]
-        days = [datetime.fromtimestamp(ts, UTC).date().isoformat() for ts in result["timestamp"]]
+        offset = (result.get("meta") or {}).get("gmtoffset") or 0
+        days = [datetime.fromtimestamp(ts + offset, UTC).date().isoformat()
+                for ts in result["timestamp"]]
         closes = result["indicators"]["quote"][0]["close"]
     except Exception:  # noqa: BLE001 - one bad symbol must not stop the sweep
         return None

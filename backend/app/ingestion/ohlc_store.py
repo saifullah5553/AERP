@@ -194,6 +194,8 @@ def bars_from_chart(res: dict) -> list[dict]:
     closes = quote.get("close") or []
     opens, highs = quote.get("open") or [], quote.get("high") or []
     lows, vols = quote.get("low") or [], quote.get("volume") or []
+    # The exchange's calendar, not UTC's: Sydney opens on the previous UTC day in summer.
+    offset = (res.get("meta") or {}).get("gmtoffset") or 0
 
     def at(seq, i):
         return seq[i] if i < len(seq) else None
@@ -203,7 +205,7 @@ def bars_from_chart(res: dict) -> list[dict]:
         if close is None or i >= len(ts) or ts[i] is None:
             continue
         out.append({
-            "date": datetime.fromtimestamp(ts[i], UTC).date().isoformat(),
+            "date": datetime.fromtimestamp(ts[i] + offset, UTC).date().isoformat(),
             "open": at(opens, i), "high": at(highs, i), "low": at(lows, i),
             "close": close, "volume": at(vols, i),
         })
