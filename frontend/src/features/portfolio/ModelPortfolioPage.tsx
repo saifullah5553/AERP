@@ -5,6 +5,8 @@ import { api, type ModelPortfolio, type PortfolioHolding } from "@/lib/api";
 import { fmtNumber, fmtQuarterEnd } from "@/lib/format";
 import { Th, useSortable } from "@/lib/useSortable";
 
+import { ScoringNote } from "./ScoringNote";
+
 const MARKETS: { key: string; label: string }[] = [
   { key: "all", label: "All Markets" },
   { key: "psx", label: "Pakistan" },
@@ -178,6 +180,7 @@ export default function ModelPortfolioPage() {
 
   return (
     <div className="flex h-full flex-col bg-base-900 text-slate-200">
+      <ScoringNote />
       <header className="flex flex-wrap items-center gap-3 border-b border-base-600 bg-base-900 px-5 py-3">
         <Link to="/" className="text-sm text-slate-400 hover:text-accent">← Dashboard</Link>
         <span className="text-lg font-bold text-slate-100">Model Portfolio</span>

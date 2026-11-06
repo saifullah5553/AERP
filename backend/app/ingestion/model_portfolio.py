@@ -193,6 +193,12 @@ def _rebalance(data_dir: str | Path, force: bool = False) -> dict[str, Any]:
     out = Path(data_dir)
     path = out / PORTFOLIO
     doc = _load(path)
+    # One engine. Once the ledger owns the holdings this pass must leave them alone: it keys on
+    # exact fiscal dates, so the US read 2026-04-30 against the ledger's 2026-06-30, looked due
+    # on every run, and swapped holdings using only the companies with an April quarter end.
+    if doc.get("reconstructed") and not force:
+        log.info("model-portfolio: holdings come from the ledger - not rebalancing")
+        return {"skipped": "ledger owns the holdings"}
     today = datetime.now(UTC).date().isoformat()
     qtr = _quarter(today)
     rows: list[dict] = json.loads((out / "screener.json").read_text(encoding="utf-8"))

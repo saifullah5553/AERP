@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { api, type LedgerMarket, type LedgerQuarter, type RebalanceLedger , type LedgerPosition } from "@/lib/api";
 import { fmtNumber } from "@/lib/format";
 import { Th, useSortable } from "@/lib/useSortable";
+import { ScoringNote } from "@/features/portfolio/ScoringNote";
 
 // Display order only. The list of markets comes from the ledger itself - a hardcoded array is
 // how Dubai built eighteen quarters of history that no page ever showed. Anything the backend
@@ -301,6 +302,7 @@ export default function BuySellPage() {
 
   return (
     <div className="flex h-full flex-col bg-base-900 text-slate-200">
+      <ScoringNote />
       <header className="flex flex-wrap items-center gap-3 border-b border-base-600 bg-base-900 px-5 py-3">
         <Link to="/" className="text-sm text-slate-400 hover:text-accent">← Dashboard</Link>
         <span className="text-lg font-bold text-slate-100">Quarterly History</span>
