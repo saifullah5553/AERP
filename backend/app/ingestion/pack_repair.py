@@ -23,6 +23,18 @@ THE REFERENCE NEEDS CARE TOO. Yahoo serves US history split-adjusted and much of
 so `agreement` works out which it is, per split, from whether the price actually steps there.
 Accepting a match against either reading was wrong: IBKR's double-adjusted 7.86 matched Yahoo's
 adjusted 30.6 divided by the split again, and it passed as clean while the ledger showed +713%.
+
+A STEP WITH NO SPLIT. Yahoo records nothing for most of what is left, so `rejoin` asks a narrower
+question: did Yahoo's own close make the same move on that day? Tadawul's 2282 stored 0.651 then
+66.1 on 18 October 2023, while Yahoo ran at 65 to 72 throughout. That one row was +615.88% of
+Saudi's record, and without it the market compounded +9%. A step Yahoo also shows is left alone.
+`proven` still decides.
+
+EVERY STRETCH, NOT ONE SEAM. A bonus of 1.25 is too small to trip a step test, so a company with
+several sits on a staircase: 1020 reads 0.64, 0.80, 1.00 of Yahoo through 2021 to 2026, each stretch
+adjusted twice. Where Yahoo has absorbed every split and agrees with us today, its closes ARE the
+continuous series and `overlay` takes them. Agreeing today is what rules out a different basis;
+VIVIANA's Yahoo still steps at its bonus, so it stays out and our closes stand.
 """
 
 from __future__ import annotations
@@ -54,6 +66,10 @@ RATIO_TOLERANCE = 0.12
 MAX_DAYS_BEFORE_SPLIT = 420
 MAX_DAYS_AFTER_SPLIT = 10
 STEP_WINDOW = 15
+# Sessions each side of a step that must also exist in the reference.
+MIN_SIDE = 3
+# How far back "agrees with us today" looks.
+RECENT_SESSIONS = 60
 SAMPLE_EVERY = 25
 MIN_SAMPLE = 10
 MATCH_TOLERANCE = 0.03
@@ -108,6 +124,68 @@ def repair(closes: dict[str, float], splits: list[Split]) -> Result:
             fixed[day] = fixed[day] * match.ratio
         applied.append((days[i], match.ratio))
     return Result(fixed, applied, unexplained)
+
+
+def _offset(closes: dict[str, float], reference: dict[str, float],
+            days: list[str]) -> float | None:
+    """Our close against the reference over these days, or None on too few to judge."""
+    ratios = [closes[d] / reference[d] for d in days if closes.get(d) and reference.get(d)]
+    return median(ratios) if len(ratios) >= MIN_SIDE else None
+
+
+def rejoin(closes: dict[str, float], reference: dict[str, float]) -> Result:
+    """Rescale everything before each step that exists only in our series."""
+    days = sorted(closes)
+    fixed = dict(closes)
+    applied: list[tuple[str, float]] = []
+    unexplained: list[tuple[str, float, float]] = []
+    # Newest first, as in `repair`, so each step is measured with the later ones already joined.
+    for i in range(len(days) - 1, 0, -1):
+        before, after = fixed[days[i - 1]], fixed[days[i]]
+        if not before or not after or abs(after / before - 1.0) < MIN_STEP:
+            continue
+        old = _offset(fixed, reference, days[max(0, i - STEP_WINDOW):i])
+        new = _offset(fixed, reference, days[i:i + STEP_WINDOW])
+        if old is None or new is None:
+            unexplained.append((days[i], before, after))
+            continue
+        gap = new / old
+        # The reference moved too, so it happened: the offset either side has not changed.
+        if abs(gap - 1.0) < MIN_STEP or abs(gap / (after / before) - 1.0) > RATIO_TOLERANCE:
+            continue
+        for day in days[:i]:
+            fixed[day] = fixed[day] * gap
+        applied.append((days[i], gap))
+    return Result(fixed, applied, unexplained)
+
+
+def overlay(closes: dict[str, float], reference: dict[str, float]) -> dict[str, float]:
+    """Our older days on the reference, where they differ. A day it lacks moves with its neighbour.
+
+    The recent sessions stay ours, as does any day already close enough: PSX closes come from the
+    exchange, and BOP's 30.94 is not to be replaced by Yahoo's 30.16.
+    """
+    shared = [d for d in sorted(closes) if closes[d] and reference.get(d)]
+    recent = set(sorted(closes)[-RECENT_SESSIONS:])
+    fixed = {}
+    for day, close in closes.items():
+        target = reference.get(day)
+        if day in recent or (target and abs(close / target - 1.0) <= MATCH_TOLERANCE):
+            fixed[day] = close
+        elif target:
+            fixed[day] = target
+        else:
+            near = shared[min(bisect_left(shared, day), len(shared) - 1)]
+            fixed[day] = close * reference[near] / closes[near]
+    return fixed
+
+
+def continuous(closes: dict[str, float], reference: dict[str, float],
+               splits: list[Split]) -> bool:
+    """Can the reference stand in for us: on our basis today, with every split absorbed?"""
+    offset = _offset(closes, reference, sorted(closes)[-RECENT_SESSIONS:])
+    return (offset is not None and abs(offset - 1.0) <= MATCH_TOLERANCE
+            and not any(_steps_at(reference, split) for split in splits))
 
 
 def _steps_at(reference: dict[str, float], split: Split) -> bool:
@@ -188,6 +266,45 @@ def fetch_closes(symbol: str, client: httpx.Client) -> dict[str, float] | None:
     except Exception:  # noqa: BLE001 - one bad symbol must not stop the sweep
         return None
     return {d: c for d, c in zip(days, closes, strict=True) if c}
+
+
+def sweep_steps(region: str, provider: dict[str, str], apply: bool = False,
+                workers: int = 6) -> dict[str, object]:
+    """Every name against Yahoo, changed only where it proves it: see `rejoin` and `overlay`."""
+    from app.ingestion.price_pack import load_packed, merge_series
+
+    pack = load_packed(region)
+    keys = [key for key in provider if pack.get(key)]
+    with httpx.Client(follow_redirects=True) as client, ThreadPoolExecutor(workers) as pool:
+        yahoo = dict(zip(keys, pool.map(lambda k: fetch_closes(provider[k], client), keys),
+                         strict=True))
+        # With no splits to allow for, this can only overstate what is wrong. It is a first cut.
+        suspects = []
+        for key, reference in yahoo.items():
+            first = agreement(dict(pack[key]), reference, []) if reference else None
+            if first is not None and first <= MAX_AGREEMENT_BEFORE:
+                suspects.append(key)
+        found = dict(zip(suspects, pool.map(lambda k: fetch_splits(provider[k], client), suspects),
+                         strict=True))
+
+    repaired: dict[str, dict[str, float]] = {}
+    how: dict[str, str] = {}
+    for key in suspects:
+        closes, reference, splits = dict(pack[key]), yahoo[key], found.get(key) or []
+        if not agreement(closes, reference, splits) <= MAX_AGREEMENT_BEFORE:
+            continue
+        joined = rejoin(closes, reference).closes
+        if proven(agreement(closes, reference, splits), agreement(joined, reference, splits)):
+            repaired[key], how[key] = joined, "rejoin"
+        elif continuous(closes, reference, splits):
+            repaired[key], how[key] = overlay(closes, reference), "overlay"
+    if apply and repaired:
+        merge_series(region, repaired)
+    unanswered = sum(1 for reference in yahoo.values() if not reference)
+    log.info("pack-steps[%s]: %d names, %d unanswered, %d disagree, %d proven",
+             region, len(keys), unanswered, len(suspects), len(repaired))
+    return {"names": len(keys), "unanswered": unanswered, "suspects": sorted(suspects),
+            "proven": how, "applied": apply}
 
 
 def sweep(region: str, provider: dict[str, str], apply: bool = False,

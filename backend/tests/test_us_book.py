@@ -14,6 +14,7 @@ HOME = {"AAA": "United States"}
 
 def row(symbol: str, score: float = 80.0, sector: str = "Tech", market: str = "NYSE") -> dict:
     return {"region": "us", "symbol": symbol, "quality_score": score, "sector": sector,
+            "technical_as_of": "2026-11-06",
             "market_code": market}
 
 
@@ -153,3 +154,7 @@ def test_a_step_with_no_closing_price_yet_waits() -> None:
 def test_the_book_does_not_touch_other_markets(monkeypatch) -> None:
     assert rebalance_ledger.HOLD_BUFFER_BY_REGION == {"us": 30}
     assert us_book.SIZE == 15
+
+
+def test_a_name_with_no_chart_cannot_be_bought() -> None:
+    assert not qualifies({**row("AAA"), "technical_as_of": None}, screen(), HOME)

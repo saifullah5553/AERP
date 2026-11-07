@@ -48,7 +48,7 @@ PSX_MAX_GAP = 0.25         # two sessions at the exchange's 10% limit, with room
 PSX_VOLUME_WINDOW = 20
 # A read this recent outlives a failed fetch. Yahoo refuses some requests on any large pass: HUBC
 # and AVN had a chart on one run and none on the next, and that is not a reason to blank them.
-PSX_KEEP_READ_DAYS = 7
+KEEP_READ_DAYS = 7
 # Raise this whenever the scoring itself changes. A score from an older engine is not comparable
 # with a new one, so the first read under a new version is a re-baseline and records no mover.
 TECHNICAL_ENGINE = 2
@@ -302,7 +302,38 @@ def _read_is_recent(r: dict) -> bool:
         seen = datetime.fromisoformat(str(r.get("technical_as_of"))[:10]).date()
     except ValueError:
         return False
-    return (datetime.now(UTC).date() - seen).days <= PSX_KEEP_READ_DAYS
+    return (datetime.now(UTC).date() - seen).days <= KEEP_READ_DAYS
+
+
+def _stopped(hist: dict[str, Any], targets: list[dict]) -> list[dict]:
+    """Rows outside PSX whose chart has gone or stopped, taking any frozen bars out of `hist`.
+
+    EA, WBS, QRVO and about ninety others stopped trading and Yahoo answers with one bar, so no
+    new read was made and the old one stood: 22 US names still showed a Buy on a price months
+    old. Judged against the market's own newest bar, because a Tadawul Eid closure is nine days
+    with every name quiet. A market with no bars at all is an outage, so it is left alone.
+    """
+    newest: dict[Any, str] = {}
+    for r in targets:
+        bars = hist.get(r["provider_symbol"])
+        if bars:
+            newest[r.get("region")] = max(newest.get(r.get("region"), ""), bars[0][-1])
+    gone = []
+    for r in targets:
+        region, sym = r.get("region"), r["provider_symbol"]
+        if region == "psx" or region not in newest:
+            continue
+        bars = hist.get(sym)
+        if bars and _days_between(bars[0][-1], newest[region]) <= KEEP_READ_DAYS:
+            continue
+        hist.pop(sym, None)
+        if not _read_is_recent(r):
+            gone.append(r)
+    return gone
+
+
+def _days_between(first: str, last: str) -> int:
+    return (datetime.fromisoformat(last[:10]) - datetime.fromisoformat(first[:10])).days
 
 
 def _withdraw_read(r: dict, company: Path, regime_map: dict) -> None:
@@ -459,6 +490,7 @@ def refresh_technicals(
             hist[sym] = checked
         elif not _read_is_recent(r):
             uncharted.append(r)
+    stopped = _stopped(hist, targets)
 
     today = datetime.now(UTC).date().isoformat()
     updated = 0
@@ -664,8 +696,12 @@ def refresh_technicals(
                 pass
         updated += 1
 
-    for r in uncharted:
+    for r in [*uncharted, *stopped]:
         _withdraw_read(r, company, regime_map)
+    if stopped:
+        print(f"::warning::refresh-technicals: {len(stopped)} names outside PSX carry no signal, "
+              f"their charts having stopped: {sorted(str(r.get('symbol')) for r in stopped)[:40]}",
+              flush=True)
     if uncharted:
         names = sorted(str(r.get("symbol")) for r in uncharted)
         rejected = sorted(set(names) - set(unserved))
@@ -682,7 +718,7 @@ def refresh_technicals(
 
     result = {
         "targets": len(targets), "quoted": len(hist),
-        "updated": updated, "uncharted": len(uncharted), "movers": len(deltas),
+        "updated": updated, "uncharted": len(uncharted) + len(stopped), "movers": len(deltas),
         "signal_moves": len(smoves),
     }
     log.info("refresh-technicals: %s", result)

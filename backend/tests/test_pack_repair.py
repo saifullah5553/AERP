@@ -6,7 +6,15 @@ from datetime import date, timedelta
 
 import pytest
 from app.ingestion import pack_repair, price_pack
-from app.ingestion.pack_repair import Split, agreement, proven, repair
+from app.ingestion.pack_repair import (
+    Split,
+    agreement,
+    continuous,
+    overlay,
+    proven,
+    rejoin,
+    repair,
+)
 
 
 def _series(start: str, closes: list[float]) -> dict[str, float]:
@@ -152,3 +160,113 @@ def test_the_sweep_writes_nothing_unless_told_to(monkeypatch) -> None:
     written = _sweep_world(monkeypatch, {"UBL": _broken()}, {"UBL.KA": _unadjusted()})
     assert pack_repair.sweep("psx", {"UBL": "UBL.KA"}, workers=2)["proven"] == ["UBL"]
     assert written == []
+
+
+def _flat(price: float, days: int = 40, start: str = "2023-09-01") -> dict[str, float]:
+    return _series(start, [price] * days)
+
+
+def test_a_step_only_we_have_is_joined_to_the_reference() -> None:
+    """Tadawul 2282: 0.651 then 66.1, while Yahoo ran at 65 throughout."""
+    reference = _flat(65.0)
+    days = sorted(reference)
+    closes = {d: (0.65 if i < 20 else 65.0) for i, d in enumerate(days)}
+
+    res = rejoin(closes, reference)
+
+    assert res.closes[days[0]] == pytest.approx(65.0)
+    assert res.closes[days[-1]] == 65.0
+    assert res.applied == [(days[20], pytest.approx(100.0))]
+
+
+def test_a_step_the_reference_also_made_is_real() -> None:
+    days = sorted(_flat(10.0))
+    closes = {d: (10.0 if i < 20 else 25.0) for i, d in enumerate(days)}
+
+    res = rejoin(closes, dict(closes))
+
+    assert res.closes == closes
+    assert res.applied == []
+
+
+def test_a_step_with_no_reference_nearby_is_left_and_reported() -> None:
+    days = sorted(_flat(10.0))
+    closes = {d: (10.0 if i < 20 else 30.0) for i, d in enumerate(days)}
+    reference = {d: 30.0 for d in days[20:]}
+
+    res = rejoin(closes, reference)
+
+    assert res.closes == closes
+    assert res.unexplained == [(days[20], 10.0, 30.0)]
+
+
+def test_a_stretch_on_the_wrong_scale_comes_back_at_both_ends() -> None:
+    reference = _flat(50.0, days=60)
+    days = sorted(reference)
+    closes = {d: (0.5 if 20 <= i < 40 else 50.0) for i, d in enumerate(days)}
+
+    res = rejoin(closes, reference)
+
+    assert all(v == pytest.approx(50.0) for v in res.closes.values())
+
+
+def test_a_real_move_beside_a_break_keeps_its_size() -> None:
+    days = sorted(_flat(10.0, days=60))
+    reference = {d: (10.0 if i < 45 else 20.0) for i, d in enumerate(days)}
+    closes = {d: reference[d] / (100.0 if i < 20 else 1.0) for i, d in enumerate(days)}
+
+    res = rejoin(closes, reference)
+
+    assert res.closes[days[0]] == pytest.approx(10.0)
+    assert res.closes[days[-1]] == 20.0
+
+
+def test_a_staircase_of_small_bonuses_takes_the_reference() -> None:
+    """1020: 0.64, 0.80, 1.00 of Yahoo, each stretch adjusted twice, no step big enough to find."""
+    reference = _flat(10.0, days=160)
+    days = sorted(reference)
+    closes = {d: 10.0 * (0.64 if i < 40 else 0.8 if i < 80 else 1.0) for i, d in enumerate(days)}
+
+    assert continuous(closes, reference, [])
+    assert overlay(closes, reference) == reference
+
+
+def test_a_day_the_reference_lacks_moves_with_its_neighbour() -> None:
+    reference = _flat(10.0, days=80)
+    days = sorted(reference)
+    closes = {d: (1.0 if i < 10 else 10.0) for i, d in enumerate(days)}
+    del reference[days[0]]
+
+    assert overlay(closes, reference)[days[0]] == pytest.approx(10.0)
+
+
+def test_the_recent_sessions_stay_ours() -> None:
+    """BOP: the exchange said 30.94, and Yahoo's 30.16 must not replace it."""
+    reference = _flat(30.16, days=80)
+    days = sorted(reference)
+    closes = {d: (3.0 if i < 10 else 30.94) for i, d in enumerate(days)}
+
+    fixed = overlay(closes, reference)
+
+    assert fixed[days[-1]] == 30.94
+    assert fixed[days[0]] == 30.16
+
+
+def test_an_old_day_already_close_is_not_rewritten() -> None:
+    reference = _flat(30.16, days=80)
+    days = sorted(reference)
+    closes = {d: (3.0 if i < 10 else 30.94) for i, d in enumerate(days)}
+
+    assert overlay(closes, reference)[days[12]] == 30.94
+
+
+def test_a_reference_still_carrying_a_split_cannot_stand_in() -> None:
+    """VIVIANA: Yahoo steps at its bonus, so our smooth closes are the right ones."""
+    reference = {**_flat(16.0, days=60), **_flat(10.0, days=60, start="2023-11-01")}
+    closes = {d: 10.0 for d in reference}
+
+    assert not continuous(closes, reference, [Split("2023-11-01", 1.6)])
+
+
+def test_a_reference_on_another_basis_today_cannot_stand_in() -> None:
+    assert not continuous(_flat(5.0, days=80), _flat(10.0, days=80), [])

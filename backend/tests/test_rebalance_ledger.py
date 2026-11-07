@@ -226,3 +226,13 @@ def test_the_record_opens_on_the_market_start() -> None:
 
     assert led["first_quarter"] == "Mar 26"
     assert sorted(led["locked"]) == ["2025-12-31", "2026-03-31"]
+
+
+def test_a_name_that_stopped_trading_cannot_be_bought() -> None:
+    hist, prices = _two_quarters()
+    hist["DEAD"] = [("2025-12-31", 99.0), ("2026-03-31", 99.0)]
+    prices.table["DEAD"] = {"2025-06-30": 40.0}
+
+    led = build_region(_rows(hist), "psx", prices, top_n=1)
+
+    assert "DEAD" not in led["locked"]["2025-12-31"]["picks"]

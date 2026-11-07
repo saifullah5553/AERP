@@ -37,6 +37,11 @@ PACK_DIR = Path(__file__).resolve().parents[3] / "data" / "prices"
 # Loaded once per region per process. The ledger asks for thousands of symbols in a row, and
 # re-reading a 26 MB gzip for each of them would take the rebuild from seconds to hours.
 _CACHE: dict[str, dict[str, dict[str, float]]] = {}
+# See _rebase. Five sessions, because one bad print must not rescale five years. A split is at
+# least 4:3, and closes stored to 7 significant figures match far tighter than these.
+REBASE_DAYS = 5
+REBASE_MIN = 0.02
+REBASE_AGREEMENT = 0.005
 
 
 def pack_region(region: str, store: Path | None = None) -> dict[str, int]:
@@ -90,6 +95,29 @@ def pack_region(region: str, store: Path | None = None) -> dict[str, int]:
     return _write(region, merged, kept=len(existing))
 
 
+def _rebase(stored: dict[str, float], fresh: dict[str, float]) -> None:
+    """Move what is older than `fresh` onto its basis, when the source has restated the name.
+
+    The daily fold rewrites a year of closes. A split makes the source restate that year, and left
+    alone everything older stays on the old basis, so each split cut a new seam a year back: 1,100
+    names had one. Where the first days of the fold all differ from what we hold by one factor,
+    that factor is the restatement and the rest of the series takes it too. Days that disagree
+    among themselves are a bad print, which changes nothing older.
+    """
+    days = sorted(fresh)
+    shared = [d for d in days if stored.get(d)][:REBASE_DAYS]
+    if len(shared) < REBASE_DAYS or shared[0] != days[0]:
+        return
+    ratios = [fresh[d] / stored[d] for d in shared]
+    factor = sorted(ratios)[len(ratios) // 2]
+    if (abs(factor - 1.0) < REBASE_MIN
+            or any(abs(r / factor - 1.0) > REBASE_AGREEMENT for r in ratios)):
+        return
+    for day, close in stored.items():
+        if day < days[0]:
+            stored[day] = float(f"{close * factor:.7g}")
+
+
 def merge_series(region: str, series: dict[str, dict[str, float]],
                  volumes: dict[str, dict[str, float]] | None = None) -> dict[str, int]:
     """Fold freshly fetched {symbol: {date: close}} into the stored pack.
@@ -112,7 +140,9 @@ def merge_series(region: str, series: dict[str, dict[str, float]],
             if day and price > 0:
                 clean[str(day)[:10]] = float(f"{price:.7g}")
         if clean:
-            merged.setdefault(key, {}).update(clean)
+            stored = merged.setdefault(key, {})
+            _rebase(stored, clean)
+            stored.update(clean)
 
     load_packed(region)                      # ensure the volume cache is populated
     merged_vol = {s: dict(v) for s, v in _VOL_CACHE.get(region, {}).items()}

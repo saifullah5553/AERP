@@ -175,3 +175,41 @@ def test_the_pack_counts_as_bars_for_the_ledger(tmp_path, monkeypatch):
     with gzip.open(tmp_path / "prices" / "psx.json.gz", "wb") as fh:
         fh.write(json.dumps({"LUCK": {"d": ["2026-07-27"], "c": [10.0]}}).encode())
     assert rebalance_ledger._has_bars("psx") is True
+
+
+def _closes(start: int, stop: int, value: float) -> dict[str, float]:
+    return {f"2026-01-{d:02d}": value for d in range(start, stop)}
+
+
+def test_a_restated_year_takes_the_older_history_with_it() -> None:
+    """A 2:1 split: the source halves the fold, so everything older must halve too."""
+    stored = _closes(1, 21, 100.0)
+
+    price_pack._rebase(stored, _closes(11, 21, 50.0))
+
+    assert stored["2026-01-01"] == 50.0
+
+
+def test_an_ordinary_fold_changes_nothing_older() -> None:
+    stored = _closes(1, 21, 100.0)
+
+    price_pack._rebase(stored, _closes(11, 21, 100.0))
+
+    assert stored["2026-01-01"] == 100.0
+
+
+def test_one_bad_print_does_not_rescale_the_past() -> None:
+    stored = _closes(1, 21, 100.0)
+    fresh = {**_closes(11, 21, 100.0), "2026-01-11": 50.0}
+
+    price_pack._rebase(stored, fresh)
+
+    assert stored["2026-01-01"] == 100.0
+
+
+def test_a_fold_that_does_not_overlap_what_we_hold_changes_nothing() -> None:
+    stored = _closes(1, 11, 100.0)
+
+    price_pack._rebase(stored, _closes(11, 21, 50.0))
+
+    assert stored["2026-01-01"] == 100.0

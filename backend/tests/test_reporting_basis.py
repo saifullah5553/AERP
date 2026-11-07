@@ -224,3 +224,22 @@ def test_a_name_on_another_basis_is_not_a_us_portfolio_holding(tmp_path: Path) -
                        off_basis={"IH"})
 
     assert not check("IH", "2026-03-31", "2026-05-29")
+
+
+def test_a_peer_multiple_reads_a_foreign_filer_on_its_accounts(tmp_path: Path, monkeypatch) -> None:
+    """A dollar quote against rupee equity went into the sector median as a P/B of 0.01."""
+    from app.engines.valuation import multi
+
+    doc = {"statements_ttm": {
+        "income": [{"fiscal_date": "2026-06-30", "weighted_shares": 100.0}],
+        "balance": [{"fiscal_date": "2026-06-30", "total_equity": 42500.0}]}}
+    rows = []
+    for i in range(multi.MIN_PEERS):
+        symbol = f"F{i}"
+        (tmp_path / f"{symbol}.json").write_text(json.dumps(doc), encoding="utf-8")
+        rows.append({"symbol": symbol, "provider_symbol": symbol, "region": "us",
+                     "sector": "Banks", "price": 25.0})
+    table = Basis({r["symbol"]: {"factors": {"2026-06-30": 85.0}} for r in rows})
+    monkeypatch.setattr(reporting_basis, "load_basis", lambda: table)
+
+    assert multi.sector_multiples(rows, tmp_path)["us|Banks"]["pb"] == 5.0

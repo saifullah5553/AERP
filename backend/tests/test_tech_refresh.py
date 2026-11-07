@@ -478,3 +478,64 @@ def test_the_last_session_is_kept_once_the_market_has_shut(monkeypatch) -> None:
     monkeypatch.setattr(tech_refresh.time, "time", lambda: SYDNEY_NOV6_OPEN + 30_000)
 
     assert tech_refresh.fetch_history("BHP.AX", chart)[0][-1] == "2026-11-06"
+
+
+def _us_snapshot(tmp_path, days: list[str], last_read: str | None) -> None:
+    rows = [{"provider_symbol": s, "symbol": s, "region": "us", "price": 100.0,
+             "technical_score": 70.0, "composite_score": 74.0, "signal": "buy",
+             "fundamental_score": 75.0, "technical_as_of": last_read,
+             "technical_engine": tech_refresh.TECHNICAL_ENGINE} for s in ("LIVE", "GONE")]
+    (tmp_path / "company").mkdir()
+    for r in rows:
+        (tmp_path / "company" / f"{r['provider_symbol']}.json").write_text(
+            json.dumps({"scores": {"fundamental": 75.0}, "signal": {}}), encoding="utf-8")
+    (tmp_path / "screener.json").write_text(json.dumps(rows), encoding="utf-8")
+
+
+def _saved(tmp_path) -> dict[str, dict]:
+    rows = json.loads((tmp_path / "screener.json").read_text(encoding="utf-8"))
+    return {r["symbol"]: r for r in rows}
+
+
+def _us_market(monkeypatch, answer) -> None:
+    monkeypatch.setattr(price_pack, "merge_series", lambda region, series, **kw: None)
+    monkeypatch.setattr(tech_refresh, "fetch_history", answer)
+    monkeypatch.setattr(tech_refresh, "RETRY_PAUSE_SECONDS", 0)
+    monkeypatch.setattr(tech_refresh, "_benchmark_bars", lambda region: [])
+
+
+def test_a_name_that_stopped_trading_loses_its_signal(tmp_path, monkeypatch) -> None:
+    """EA and WBS: one bar from Yahoo, so nothing replaced a Buy read months ago."""
+    days = _DATES[:_N]
+    _us_snapshot(tmp_path, days, None)
+    bars = _yahoo(days, list(_RISING))
+    _us_market(monkeypatch, lambda sym, client, **kw: bars if sym == "LIVE" else None)
+
+    tech_refresh.refresh_technicals(tmp_path)
+
+    saved = _saved(tmp_path)
+    assert saved["GONE"]["signal"] is None and saved["GONE"]["technical_score"] is None
+    assert saved["LIVE"]["signal"] is not None
+
+
+def test_bars_that_stop_short_of_the_market_are_no_chart(tmp_path, monkeypatch) -> None:
+    days = _DATES[:_N]
+    _us_snapshot(tmp_path, days, None)
+    live = _yahoo(days, list(_RISING))
+    frozen = _yahoo(days[:-20], list(_RISING)[:-20])
+    _us_market(monkeypatch, lambda sym, client, **kw: live if sym == "LIVE" else frozen)
+
+    tech_refresh.refresh_technicals(tmp_path)
+
+    assert _saved(tmp_path)["GONE"]["signal"] is None
+
+
+def test_a_market_with_no_bars_at_all_is_an_outage_and_keeps_its_reads(tmp_path,
+                                                                       monkeypatch) -> None:
+    days = _DATES[:_N]
+    _us_snapshot(tmp_path, days, None)
+    _us_market(monkeypatch, lambda sym, client, **kw: None)
+
+    tech_refresh.refresh_technicals(tmp_path)
+
+    assert _saved(tmp_path)["GONE"]["signal"] == "buy"

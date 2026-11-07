@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 from collections import Counter
 from collections.abc import Callable, Iterable
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -69,6 +69,9 @@ MIN_COVERAGE = 0.70
 # A quarter we cannot price near its own trade date is one we cannot reconstruct. It is dropped,
 # not recorded with a date four years out.
 MAX_FILL_LAG_DAYS = 45
+# A name whose prices end this long before the trade date had stopped trading, so nobody could buy
+# it. EA, WBS and JB Chemicals keep their last scores long after they are gone.
+MAX_LAST_PRICE_AGE_DAYS = 10
 # No sector may fill more of a portfolio than this. Scored for its own country and industry, the
 # US top 15 was 14 financials: one bet, not fifteen. The rule walks down the ranking instead.
 MAX_SECTOR_SHARE = 0.25
@@ -334,8 +337,10 @@ def build_region(rows: list[dict], region: str, prices: Prices,
             picks, universe = locks[quarter_end]["picks"], locks[quarter_end]["universe"]
         else:
             scores = by_quarter.get(quarter_end, {})
+            alive = (date.fromisoformat(target)
+                     - timedelta(days=MAX_LAST_PRICE_AGE_DAYS)).isoformat()
             ranked = [kv for kv in sorted(scores.items(), key=lambda kv: -kv[1])
-                      if prices.series(kv[0])]
+                      if max(prices.series(kv[0]), default="") >= alive]
             if narrow:
                 ranked = narrow(ranked, quarter_end, target)
             chosen = capped_picks(ranked, names, top_n, keep=held,

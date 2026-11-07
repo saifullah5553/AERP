@@ -81,7 +81,9 @@ def qualifies(row: dict, screen: dict[str, dict[str, float]], domicile: dict[str
             and estimate is not None
             and all(estimate[name] >= MIN_GROWTH for name in ("f0", "f1", "f2"))
             and estimate["analysts"] >= MIN_ANALYSTS
-            and isinstance(score, int | float) and score >= MIN_SCORE and verified)
+            and isinstance(score, int | float) and score >= MIN_SCORE and verified
+            # No chart means it has stopped trading, and a position needs a price to fill at.
+            and bool(row.get("technical_as_of")))
 
 
 def select(rows: list[dict], screen: dict[str, dict[str, float]], domicile: dict[str, str],

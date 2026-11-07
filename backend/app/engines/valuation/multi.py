@@ -150,6 +150,9 @@ def dividend_discount(dps: float | None, cost_of_equity: float, growth: float) -
                   f"{cost_of_equity:.1%}")
 
 
+NEWEST = "9999-12-31"
+
+
 def sector_multiples(rows: list[dict], company_dir: Any) -> dict[str, dict[str, Any]]:
     """Median P/E, P/B and EV/EBITDA per sector, from OUR universe.
 
@@ -162,7 +165,9 @@ def sector_multiples(rows: list[dict], company_dir: Any) -> dict[str, dict[str, 
     from statistics import median as _median
 
     from app.core.safe_path import safe_file
+    from app.ingestion.reporting_basis import load_basis
 
+    basis = load_basis()
     buckets: dict[str, dict[str, list[float]]] = {}
     for r in rows:
         sector = r.get("sector")
@@ -194,12 +199,15 @@ def sector_multiples(rows: list[dict], company_dir: Any) -> dict[str, dict[str, 
         ebitda = _latest(inc, "ebitda")
         debt = _latest(bal, "total_debt") or 0.0
         cash_now = _latest(bal, "cash_and_equivalents") or 0.0
+        # A foreign filer's accounts are not in dollars or per ADS: see reporting_basis. Its
+        # dollar quote against rupee equity went into the peer median as a P/B of 0.01.
+        on_books = price * basis.factor(str(r.get("symbol")), NEWEST) if region == "us" else price
         if shares and shares > 0 and equity and equity > 0:
-            pb = price / (equity / shares)
+            pb = on_books / (equity / shares)
             if 0 < pb < 20:
                 slot["pb"].append(pb)
             if ebitda and ebitda > 0:
-                ev = price * shares + debt - cash_now
+                ev = on_books * shares + debt - cash_now
                 mult = ev / ebitda
                 if 0 < mult < 40:
                     slot["ev_ebitda"].append(mult)
