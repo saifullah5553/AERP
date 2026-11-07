@@ -158,3 +158,71 @@ def test_a_company_with_no_sector_is_not_capped() -> None:
     ranked = [(f"X{i}", 99.0 - i) for i in range(5)]
 
     assert len(capped_picks(ranked, {}, 5)) == 5
+
+
+def _two_quarters() -> tuple[dict, FakePrices]:
+    hist = {
+        "OLD": [("2025-12-31", 90.0), ("2026-03-31", 80.0)],
+        "NEW": [("2025-12-31", 10.0), ("2026-03-31", 95.0)],
+    }
+    for i in range(40):
+        hist[f"PAD{i}"] = [("2025-12-31", 1.0), ("2026-03-31", 1.0)]
+    return hist, FakePrices({"OLD": {"2026-02-28": 100.0, "2026-05-31": 120.0},
+                             "NEW": {"2026-02-28": 50.0, "2026-05-31": 55.0}})
+
+
+def test_a_recorded_rebalance_survives_its_scores_rolling_out_of_history() -> None:
+    """Twenty quarters per company, so each new result takes the oldest one away."""
+    hist, prices = _two_quarters()
+    first = build_region(_rows(hist), "psx", prices, top_n=1)
+    rolled = {symbol: points[1:] for symbol, points in hist.items()}
+
+    again = build_region(_rows(rolled), "psx", prices, top_n=1, locks=first["locked"])
+
+    assert again["quarters"] == first["quarters"]
+    assert again["open_positions"] == first["open_positions"]
+    assert again["locked"] == first["locked"]
+
+
+def test_a_later_change_of_score_does_not_change_what_was_bought() -> None:
+    hist, prices = _two_quarters()
+    first = build_region(_rows(hist), "psx", prices, top_n=1)
+    hist["NEW"] = [("2025-12-31", 99.0), ("2026-03-31", 95.0)]
+
+    again = build_region(_rows(hist), "psx", prices, top_n=1, locks=first["locked"])
+
+    assert list(again["locked"]["2025-12-31"]["picks"]) == ["OLD"]
+    assert again["quarters"][0]["exits"][0]["symbol"] == "OLD"
+
+
+def test_a_repaired_price_still_reaches_a_locked_quarter() -> None:
+    hist, prices = _two_quarters()
+    first = build_region(_rows(hist), "psx", prices, top_n=1)
+    prices.table["OLD"]["2026-05-31"] = 150.0
+
+    again = build_region(_rows(hist), "psx", prices, top_n=1, locks=first["locked"])
+
+    assert again["quarters"][0]["portfolio_return_pct"] == 50.0
+
+
+def test_a_short_book_is_not_locked() -> None:
+    """A missing input on one run must not become the record."""
+    hist, prices = _two_quarters()
+
+    led = build_region(_rows(hist), "psx", prices, top_n=1,
+                       narrow=lambda ranked, quarter, day: [])
+
+    assert led["locked"] == {}
+
+
+def test_the_record_opens_on_the_market_start() -> None:
+    hist, prices = _two_quarters()
+    for points in hist.values():
+        points.insert(0, ("2025-09-30", 50.0))
+    for table in prices.table.values():
+        table["2025-11-30"] = 100.0
+
+    led = build_region(_rows(hist), "psx", prices, top_n=1, start="2025-12-31")
+
+    assert led["first_quarter"] == "Mar 26"
+    assert sorted(led["locked"]) == ["2025-12-31", "2026-03-31"]

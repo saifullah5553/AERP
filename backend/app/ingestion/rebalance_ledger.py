@@ -38,7 +38,13 @@ log = get_logger(__name__)
 
 TOP_N = 20
 LAG_MONTHS = 2
-QUARTERS = 0        # 0 = every quarter we have scores for, back to 2021
+QUARTERS = 0        # 0 = every quarter from the market's RECORD_START
+# The results each market's record opens on: the first quarter holding 70% of today's universe,
+# worked out on 7 November 2026 and pinned. A company keeps twenty quarters of scores, so every
+# new result thinned the oldest rebalances: the US opened on 99 names against 4,902 and its
+# headline fell twenty points in one Daily. Pinned because the same test run later would drift.
+RECORD_START = {"us": "2021-12-31", "india": "2021-12-31", "australia": "2023-12-31",
+                "psx": "2021-12-31", "gcc": "2021-12-31", "dfm": "2021-12-31"}
 # Below this the "market" is too thin for a top-20 to mean anything - picking 20 of 25 names is
 # not a selection, it is the market with a haircut.
 MIN_UNIVERSE = 30
@@ -257,8 +263,17 @@ def _follow_book(book: list[dict], held: dict[str, dict], quarters: list[dict],
 def build_region(rows: list[dict], region: str, prices: Prices,
                  top_n: int = TOP_N, quarters: int = QUARTERS,
                  narrow: Callable[[list, str, str], list] | None = None,
-                 book: list[dict] | None = None) -> dict[str, Any]:
-    """The ledger for one market: the last `quarters` rebalances, with entries and exits."""
+                 book: list[dict] | None = None, start: str = "",
+                 locks: dict[str, dict] | None = None) -> dict[str, Any]:
+    """The ledger for one market: the last `quarters` rebalances, with entries and exits.
+
+    A rebalance is chosen once. Its picks go into `locked` in the published file and every later
+    run reads them back, so new results, a shorter score history or a change to the filters
+    cannot rewrite what the record says was bought. Prices are still read fresh, so a repaired
+    series reaches the returns. To re-derive a market on purpose, delete its `locked` key.
+    """
+    locks = locks or {}
+    locked = dict(locks)
     index_series = _index_closes(region)
     scored = [r for r in rows if r.get("region") == region and r.get("score_history")]
     by_quarter = _scores_by_quarter(scored)
@@ -273,19 +288,20 @@ def build_region(rows: list[dict], region: str, prices: Prices,
     fullest = max((len(names) for names in by_quarter.values()), default=0)
     while usable and fullest and len(by_quarter[usable[-1]]) < MIN_COVERAGE * fullest:
         usable.pop()
+    # A locked quarter stays in the walk after its scores have rolled out of the history.
+    usable = sorted(q for q in {*usable, *locks} if q >= start)
     if len(usable) < 2:
         # Same shape as a full result. A market with no history should render as empty, not
         # crash whatever is reading the file.
         return {"region": region, "label": REGION_LABELS.get(region, region.upper()),
                 "top_n": top_n, "lag_months": LAG_MONTHS, "quarters": [],
                 "open_positions": [], "realised_trades": 0,
-                "realised_avg_return_pct": None, "realised_winners": 0,
+                "realised_avg_return_pct": None, "realised_winners": 0, "locked": locked,
                 "note": "not enough scored history for a rebalance"}
 
     # One extra quarter at the front: a position's return needs the rebalance AFTER it, so
-    # showing N completed quarters means walking N+1 boundaries. quarters=0 walks the lot -
-    # the score history runs twenty periods, so the record reaches back to 2021 rather than
-    # stopping at whatever the last four happen to be.
+    # showing N completed quarters means walking N+1 boundaries. quarters=0 walks the lot, from
+    # the market's start, rather than stopping at whatever the last four happen to be.
     walk = usable if not quarters else usable[-(quarters + 1):]
     names = {r.get("symbol"): r for r in scored}
 
@@ -314,12 +330,22 @@ def build_region(rows: list[dict], region: str, prices: Prices,
         # the rule would have given to the next scorer. The live portfolio already required a
         # price to rank; the reconstruction has to require one too, or the two select from
         # different universes.
-        ranked = [kv for kv in sorted(by_quarter[quarter_end].items(), key=lambda kv: -kv[1])
-                  if prices.series(kv[0])]
-        if narrow:
-            ranked = narrow(ranked, quarter_end, target)
-        picks = capped_picks(ranked, names, top_n, keep=held,
-                             buffer=HOLD_BUFFER_BY_REGION.get(region, 0))
+        if quarter_end in locks:
+            picks, universe = locks[quarter_end]["picks"], locks[quarter_end]["universe"]
+        else:
+            scores = by_quarter.get(quarter_end, {})
+            ranked = [kv for kv in sorted(scores.items(), key=lambda kv: -kv[1])
+                      if prices.series(kv[0])]
+            if narrow:
+                ranked = narrow(ranked, quarter_end, target)
+            chosen = capped_picks(ranked, names, top_n, keep=held,
+                                  buffer=HOLD_BUFFER_BY_REGION.get(region, 0))
+            picks = {symbol: round(scores[symbol], 2) for symbol in sorted(chosen)}
+            universe = len(scores)
+            # Only a full book. A short one means an input was missing on this run, and locking
+            # it would keep that gap for good.
+            if len(picks) == top_n:
+                locked[quarter_end] = {"picks": picks, "universe": universe}
 
         entries, exits = [], []
 
@@ -368,7 +394,7 @@ def build_region(rows: list[dict], region: str, prices: Prices,
             entries.append({
                 "symbol": symbol, "name": (names.get(symbol) or {}).get("name"),
                 "sector": (names.get(symbol) or {}).get("sector"),
-                "score": round(by_quarter[quarter_end][symbol], 2),
+                "score": picks[symbol],
                 "entry_date": held[symbol]["entry_date"],
                 "entry_price": held[symbol]["entry_price"],
             })
@@ -425,7 +451,7 @@ def build_region(rows: list[dict], region: str, prices: Prices,
             "period_days": ((date.fromisoformat(traded_on)
                              - date.fromisoformat(out_quarters[-1]["traded_on"])).days
                             if (i > 0 and out_quarters) else None),
-            "universe": len(by_quarter[quarter_end]),
+            "universe": universe,
             "entries": sorted(entries, key=lambda e: -(e["score"] or 0)),
             "exits": sorted(exits, key=lambda e: (e["return_pct"] is None,
                                                   -(e["return_pct"] or 0))),
@@ -520,6 +546,7 @@ def build_region(rows: list[dict], region: str, prices: Prices,
             if index_quarters and len(out_quarters) > 1 else None),
         "first_quarter": out_quarters[1]["quarter"] if len(out_quarters) > 1 else None,
         "last_quarter": out_quarters[-1]["quarter"] if out_quarters else None,
+        "locked": locked,
     }
 
 
@@ -646,7 +673,8 @@ def build(data_dir: str | Path, top_n: int = TOP_N,
         us = region == "us"
         ledger[region] = build_region(rows, region, prices, size, quarters,
                                       _us_filter(rows, prices, out) if us else None,
-                                      load_book() if us else None)
+                                      load_book() if us else None, RECORD_START.get(region, ""),
+                                      (prior.get(region) or {}).get("locked"))
     doc = {"markets": ledger, "top_n": top_n, "lag_months": LAG_MONTHS,
            "max_sector_share": MAX_SECTOR_SHARE, "reconstructed": True}
     (out / "rebalance_ledger.json").write_text(json.dumps(doc), encoding="utf-8")
