@@ -66,14 +66,17 @@ jobs:
           # writes the PSX pack: they sat on 3 August for nineteen days while PSX PRICES stayed
           # current, which is why the screener looked healthy on a dead chart.
           python -m app.cli refresh-psx-bars --out ../frontend/public/data || true
+          # The results store into the company files, so whatever has been published to it lands
+          # on the next daily run. Fundamentals Refresh does this too, but only at the end of a
+          # scrape of up to five hours, behind any run already going.
+          # BEFORE the prices: refresh-prices divides by these statements' EPS. Applied after,
+          # every new result carried yesterday's P/E for a day, and MUFG showed 5.65 on the
+          # net income its corrected statements had just replaced.
+          python -m app.cli apply-fundamentals --data-dir ../frontend/public/data || true
           python -m app.cli refresh-prices || true
           # No limit: patterns and the strategy's entry timing need an OHLC pass over the WHOLE
           # universe, otherwise most names never get a candlestick/chart pattern at all.
           python -m app.cli refresh-technicals || true
-          # The results store into the company files, so whatever has been published to it lands
-          # on the next daily run. Fundamentals Refresh does this too, but only at the end of a
-          # scrape of up to five hours, behind any run already going.
-          python -m app.cli apply-fundamentals --data-dir ../frontend/public/data || true
           # Quality needs no prices, so score every stock from stored statements first - it is
           # local, fast, and can't be starved by a fetch limit or a rate limiter.
           python -m app.cli refresh-quality || true
