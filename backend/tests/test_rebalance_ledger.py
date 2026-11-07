@@ -236,3 +236,35 @@ def test_a_name_that_stopped_trading_cannot_be_bought() -> None:
     led = build_region(_rows(hist), "psx", prices, top_n=1)
 
     assert "DEAD" not in led["locked"]["2025-12-31"]["picks"]
+
+
+def test_a_name_not_yet_trading_cannot_be_bought_and_cost_the_quarter() -> None:
+    """PSX, Dec 21: nineteen filled on the day, one had prices only from 2026."""
+    hist, prices = _two_quarters()
+    hist["LATER"] = [("2025-12-31", 99.0), ("2026-03-31", 1.0)]
+    prices.table["LATER"] = {"2030-01-02": 40.0}
+
+    led = build_region(_rows(hist), "psx", prices, top_n=1)
+
+    assert "LATER" not in led["locked"]["2025-12-31"]["picks"]
+    assert led["quarters"][0]["period_from"] == "2026-02-28"
+
+
+def test_one_late_exit_does_not_date_the_rebalance() -> None:
+    hist, prices = _two_quarters()
+    prices.table["OLD"] = {"2026-02-28": 100.0, "2026-09-01": 120.0}
+
+    led = build_region(_rows(hist), "psx", prices, top_n=1)
+
+    assert led["quarters"][0]["traded_on"] == "2026-05-31"
+
+
+def test_a_rebalance_with_nothing_priced_yet_waits_and_sells_nothing() -> None:
+    hist, prices = _two_quarters()
+    del prices.table["NEW"]["2026-05-31"]
+    del prices.table["OLD"]["2026-05-31"]
+
+    led = build_region(_rows(hist), "psx", prices, top_n=1)
+
+    assert [p["symbol"] for p in led["open_positions"]] == ["OLD"]
+    assert sorted(led["locked"]) == ["2025-12-31"]

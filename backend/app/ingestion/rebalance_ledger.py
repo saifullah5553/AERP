@@ -69,9 +69,11 @@ MIN_COVERAGE = 0.70
 # A quarter we cannot price near its own trade date is one we cannot reconstruct. It is dropped,
 # not recorded with a date four years out.
 MAX_FILL_LAG_DAYS = 45
-# A name whose prices end this long before the trade date had stopped trading, so nobody could buy
-# it. EA, WBS and JB Chemicals keep their last scores long after they are gone.
-MAX_LAST_PRICE_AGE_DAYS = 10
+# A name with no close this soon after the trade date could not be bought then. EA and WBS keep
+# their last scores after they stop trading, and a PSX name whose prices began in 2026 was picked
+# for February 2022: its 2026 fill then dated the rebalance, which dropped the whole quarter and
+# left one row spanning 821 days.
+MAX_ENTRY_LAG_DAYS = 10
 # No sector may fill more of a portfolio than this. Scored for its own country and industry, the
 # US top 15 was 14 financials: one bet, not fifteen. The rule walks down the ranking instead.
 MAX_SECTOR_SHARE = 0.25
@@ -337,12 +339,16 @@ def build_region(rows: list[dict], region: str, prices: Prices,
             picks, universe = locks[quarter_end]["picks"], locks[quarter_end]["universe"]
         else:
             scores = by_quarter.get(quarter_end, {})
-            alive = (date.fromisoformat(target)
-                     - timedelta(days=MAX_LAST_PRICE_AGE_DAYS)).isoformat()
+            latest = (date.fromisoformat(target)
+                      + timedelta(days=MAX_ENTRY_LAG_DAYS)).isoformat()
             ranked = [kv for kv in sorted(scores.items(), key=lambda kv: -kv[1])
-                      if max(prices.series(kv[0]), default="") >= alive]
+                      if any(target <= day <= latest for day in prices.series(kv[0]))]
             if narrow:
                 ranked = narrow(ranked, quarter_end, target)
+            # On the day itself the pack can end a session short. Wait for the close rather than
+            # sell the book into nothing.
+            if not ranked:
+                continue
             chosen = capped_picks(ranked, names, top_n, keep=held,
                                   buffer=HOLD_BUFFER_BY_REGION.get(region, 0))
             picks = {symbol: round(scores[symbol], 2) for symbol in sorted(chosen)}
@@ -413,6 +419,10 @@ def build_region(rows: list[dict], region: str, prices: Prices,
         # said Saturday after the first attempt.
         sessions = [d for d in ([e["entry_date"] for e in entries]
                                 + [x["exit_date"] for x in exits]) if d and d != target]
+        # A fill on the target itself counts. Leaving those out let one late name date the
+        # whole rebalance, however many had traded on the day.
+        if any(target in prices.series(x["symbol"]) for x in [*entries, *exits]):
+            sessions.append(target)
         if sessions:
             traded_on = min(sessions)
 
