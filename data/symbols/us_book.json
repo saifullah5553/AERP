@@ -1,0 +1,27 @@
+{
+ "rebalances": [
+  {
+   "trade_on": "2026-11-09",
+   "results_for": "2026-06-30",
+   "label": "Nov 26 start",
+   "pool": 99,
+   "picks": {
+    "STRA": 89.4,
+    "PAAS": 88.0,
+    "B": 87.3,
+    "FRST": 85.8,
+    "BCS": 85.8,
+    "ATAT": 85.7,
+    "QNST": 84.0,
+    "INDB": 83.8,
+    "BILI": 82.5,
+    "KMDA": 82.4,
+    "GDDY": 82.2,
+    "FTI": 82.2,
+    "ERO": 81.9,
+    "OPLN": 81.7,
+    "LAUR": 81.6
+   }
+  }
+ ]
+}

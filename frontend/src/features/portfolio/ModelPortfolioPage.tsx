@@ -211,8 +211,10 @@ export default function ModelPortfolioPage() {
           Holds the highest <b>fundamental quality</b> names, rebalanced once a quarter as
           results land: new top scorers are added, names that fall out are dropped. Pakistan
           holds 20, Dubai 10, other markets 15, equal weight. No sector may fill more than 25%
-          of a market's holdings, past quarters included. The US book holds only US-domiciled,
-          profitable companies above $2bn, and keeps a name until it leaves the top 30.
+          of a market's holdings, past quarters included. From November 2026 the US book holds the
+          15 highest scores of 70 or more among NYSE and NASDAQ stocks with EPS growth of 15% or
+          more in the last, current and next fiscal year on analysts' estimates, reset two months
+          after each quarter. Earlier US quarters are reconstructed under the previous rule.
           {" "}
           <b>Each holding is dated to the rebalance its results imply</b>, not to the day the
           portfolio was built — Mar-26 results are acted on at the end of May, two months later,
