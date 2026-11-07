@@ -73,6 +73,25 @@ def test_a_factor_after_a_big_reverse_split_is_not_rounded_away() -> None:
     assert entry["factors"]["2026-06-30"] == 4e-08
 
 
+def test_a_break_in_our_prices_does_not_read_as_a_foreign_currency() -> None:
+    """AVB: a true close of 188 stored as 67, on accounts that are already in dollars."""
+    company = record(net=100.0, shares=10.0)
+    row = {"2026-06-30": {"PE Ratio": 18.8, "Last Close Price": 188.0}}
+
+    entry = entry_for(company, {"2026-06-30": 67.0}, row, {}, "United States")
+
+    assert entry is None
+
+
+def test_a_dividend_adjusted_page_close_leaves_our_close_alone() -> None:
+    company = record(net=100.0, shares=10.0)
+    row = {"2026-06-30": {"PE Ratio": 7.0, "Last Close Price": 8.0}}
+
+    entry = entry_for(company, {"2026-06-30": 10.0}, row, {}, "China")
+
+    assert entry["factors"]["2026-06-30"] == 7.0
+
+
 def test_the_factor_recovers_the_exchange_rate() -> None:
     """Worth 7,000 in the accounts' currency, quoted at 1,000 dollars."""
     row = {"PE Ratio": 20.0, "PS Ratio": 2.0, "PB Ratio": 4.0}

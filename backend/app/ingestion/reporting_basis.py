@@ -46,6 +46,7 @@ HOME = "United States"
 # A US company's factor sits inside this about 94% of the time, on share classes and timing.
 NORMAL_BAND = (0.8, 1.25)
 _MILLION = 1_000_000.0
+CLOSE_TOLERANCE = 1.5
 _PERIOD_END = re.compile(r"[A-Z][a-z]{2} \d{1,2}, \d{4}")
 
 
@@ -158,6 +159,19 @@ def quarter_factor(ratios: dict[str, float | None], close: float, shares: float,
     return statistics.median(implied) if implied else None
 
 
+def _close(ours: float, ratios: dict[str, float | None]) -> float:
+    """Our close, unless the page's own differs by more than dividends can explain.
+
+    AVB's stored series breaks from 190 to 69 in August 2025, which read as a factor of 2.8 and a
+    P/E of 71 against a true 25. The page's close runs up to about 1.3 below ours on old quarters
+    of high-yield names, because it is dividend-adjusted, so only a wider gap counts.
+    """
+    page = ratios.get("Last Close Price")
+    if page and page > 0 and not 1 / CLOSE_TOLERANCE <= ours / page <= CLOSE_TOLERANCE:
+        return page
+    return ours
+
+
 def entry_for(record: dict, closes: dict[str, float], ratios: dict[str, dict],
               current: dict[str, float | None], country: str | None) -> dict | None:
     """One company's stored entry, or None if it should stay as it is."""
@@ -175,8 +189,9 @@ def entry_for(record: dict, closes: dict[str, float], ratios: dict[str, dict],
         cut = bisect.bisect_right(days, day) - 1
         if not row or not shares or cut < 0 or not closes[days[cut]]:
             continue
-        factor = quarter_factor(row, closes[days[cut]], shares, at(income, "net_income", i),
-                                at(income, "revenue", i), at(balance, "total_equity", i))
+        factor = quarter_factor(row, _close(closes[days[cut]], row), shares,
+                                at(income, "net_income", i), at(income, "revenue", i),
+                                at(balance, "total_equity", i))
         if factor:
             # Significant figures, not decimals: after a big reverse split the factor can be
             # 0.00004, and four decimals would store a zero or be out by half.
