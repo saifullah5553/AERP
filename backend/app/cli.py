@@ -541,6 +541,29 @@ def cmd_us_book_rebalance(args: argparse.Namespace) -> None:
         add_rebalance(picks, pool, args.trade_on, args.results_for, args.label)
 
 
+def cmd_refresh_page_stats(args: argparse.Namespace) -> None:
+    """Sector Rotation and every company's ratios, from the screener the Daily has just written."""
+    import json as _json
+    from pathlib import Path
+
+    from app.ingestion import company_ratios, price_pack, sector_stats
+
+    out = Path(args.out)
+    rows = _json.loads((out / "screener.json").read_text(encoding="utf-8"))
+
+    def closes(region: str, symbol: str) -> list[float]:
+        series = price_pack.load_packed(region).get(symbol.upper()) or {}
+        return [series[d] for d in sorted(series)]
+
+    # Companies first: the sync corrects the growth columns on the rows, and the sector medians
+    # are taken from those rows.
+    company_ratios.sync(out, rows)
+    (out / "screener.json").write_text(_json.dumps(rows), encoding="utf-8")
+    stats = sector_stats.build(rows, closes)
+    (out / "sector_stats.json").write_text(_json.dumps(stats), encoding="utf-8")
+    log.info("refresh-page-stats: sectors %s", {r: len(v) for r, v in stats.items()})
+
+
 def cmd_build_us_basis(args: argparse.Namespace) -> None:
     """Rebuild the reporting basis from the Ratios CSVs on this machine."""
     import gzip
@@ -1310,6 +1333,8 @@ def build_parser() -> argparse.ArgumentParser:
     rt.add_argument("--out", default=None, help="snapshot dir (default ../frontend/public/data)")
     add("refresh-us-domicile", cmd_refresh_us_domicile)
     add("build-us-basis", cmd_build_us_basis)
+    ps = add("refresh-page-stats", cmd_refresh_page_stats)
+    ps.add_argument("--out", default="../frontend/public/data")
     book = add("us-book-rebalance", cmd_us_book_rebalance)
     book.add_argument("--zacks", required=True, help="CSV of ticker,f0,f1,f2,analysts in percent")
     book.add_argument("--trade-on", required=True)
