@@ -4,9 +4,11 @@ import ReactDOM from "react-dom/client";
 import App from "@/App";
 import "@/index.css";
 import { loadRuntimeConfig } from "@/lib/liveQuotes";
+import { reloadWhenStale } from "@/lib/staleReload";
 import { initTheme } from "@/lib/theme";
 
 initTheme();
+reloadWhenStale();
 
 // Register the service worker AFTER load, so it never competes with the first paint for
 // bandwidth. Guarded on the API existing and on production: in dev a cached shell would serve
