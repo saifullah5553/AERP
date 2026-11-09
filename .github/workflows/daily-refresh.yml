@@ -92,6 +92,10 @@ jobs:
           # once per calendar quarter as new results land (adds the new top scorers, drops the
           # names that fell out). The command is idempotent within a quarter.
           python -m app.cli model-portfolio || true
+          # Last, from the finished screener: Sector Rotation, Company vs Sector, and every
+          # company's ratios from its own TTM statements. Only a database export wrote these, so
+          # the sector page sat on 22 August and the ratio cards on July's annual figures.
+          python -m app.cli refresh-page-stats --out ../frontend/public/data || true
 
       - name: Detect new Buy/Exit signals
         run: |
