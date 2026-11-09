@@ -6,7 +6,6 @@
    "label": "Nov 26 start",
    "pool": 99,
    "picks": {
-    "STRA": 89.4,
     "PAAS": 88.0,
     "B": 87.3,
     "FRST": 85.8,
@@ -20,7 +19,8 @@
     "FTI": 82.2,
     "ERO": 81.9,
     "OPLN": 81.7,
-    "LAUR": 81.6
+    "LAUR": 81.6,
+    "APEI": 81.3
    }
   }
  ]
