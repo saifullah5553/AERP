@@ -9,6 +9,7 @@ from app.ingestion import price_pack, tech_refresh
 from app.ingestion.tech_refresh import (
     _MAX_MOVES_PER_RUN,
     _composite_at,
+    _drop_frozen,
     _on_exchange_closes,
     _record_signal_move,
     _signal_since,
@@ -539,3 +540,19 @@ def test_a_market_with_no_bars_at_all_is_an_outage_and_keeps_its_reads(tmp_path,
     tech_refresh.refresh_technicals(tmp_path)
 
     assert _saved(tmp_path)["GONE"]["signal"] == "buy"
+
+
+def test_frozen_database_fields_leave_the_company_file() -> None:
+    """RELIANCE showed July's 81% confidence and Pabrai panel beside a live Buy."""
+    d = {"signal": {"signal_type": "buy", "label": "Buy", "confidence": 0.808,
+                    "as_of": "2026-07-27", "rationale": "Composite 40/100 -> Sell",
+                    "triggers": {}, "id": 961},
+         "scores": {"composite": 70.2, "quality": 70.0, "as_of": "2026-07-27", "pabrai": 60.1,
+                    "pabrai_breakdown": {"items": []}, "breakdown": {}}}
+
+    _drop_frozen(d)
+
+    assert d["signal"] == {"signal_type": "buy", "label": "Buy"}
+    assert d["scores"] == {"composite": 70.2, "quality": 70.0}
+    _drop_frozen({"signal": None, "scores": None})
+

@@ -64,6 +64,20 @@ _READ_FIELDS = (
     "div_efi_bullish", "div_efi_bearish", "div_latest", "top_candlestick", "top_chart_pattern",
     "top_pattern", "strategy_action", "strategy_conviction",
 )
+# Left on about 1,250 company files by the database build of 27 July and 10 August, and never
+# written since: the signal card showed that day's confidence beside today's label (RELIANCE read
+# Buy at 81% over a rationale saying "Composite 40/100 -> Sell"), and the Pabrai panel was built
+# from annual statements, which the fundamentals rule excludes, so nothing in the Daily can
+# refresh it. A frozen number beside live ones reads as live, so it goes.
+_STALE_SIGNAL = ("id", "security_id", "as_of", "confidence", "rationale", "triggers")
+_STALE_SCORES = ("id", "security_id", "as_of", "breakdown", "pabrai", "pabrai_breakdown")
+
+
+def _drop_frozen(company: dict) -> None:
+    for block, keys in (("signal", _STALE_SIGNAL), ("scores", _STALE_SCORES)):
+        if isinstance(company.get(block), dict):
+            for key in keys:
+                company[block].pop(key, None)
 
 
 def _f(v: Any) -> float | None:
@@ -365,6 +379,7 @@ def _withdraw_read(r: dict, company: Path, regime_map: dict) -> None:
         d["divergences"] = []
         d["patterns"] = []
         d["signal"] = None
+        _drop_frozen(d)
         cf.write_text(json.dumps(d), encoding="utf-8")
     except (OSError, json.JSONDecodeError):
         pass
@@ -691,6 +706,7 @@ def refresh_technicals(
                     d["signal"]["signal_since"] = r["signal_since"]
                     d["signal"]["price_at_signal"] = r["price_at_signal"]
                     d["signal"]["signal_return_pct"] = ret
+                _drop_frozen(d)
                 cf.write_text(json.dumps(d), encoding="utf-8")
             except (OSError, json.JSONDecodeError):
                 pass
