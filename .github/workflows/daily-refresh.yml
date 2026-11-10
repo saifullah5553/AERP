@@ -16,6 +16,8 @@ name: Daily Technical Refresh
 on:
   schedule:
     - cron: "15 22 * * *" # ONCE DAILY, 22:15 UTC (after the US close; offset from the others)
+    # GitHub delays scheduled runs at busy hours: this one has been starting around 01:40 UTC
+    # and finishing near 04:30, after India and Australia have opened.
   workflow_dispatch:
   push:
     paths: [".github/workflows/daily-refresh.yml"] # self-test on changes
